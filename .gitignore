@@ -1,0 +1,18 @@
+node_modules/
+.next/
+.env*
+!.env.example
+.vercel/
+.DS_Store
+*.log
+coverage/
+playwright-report/
+test-results/
+
+# Repositorio público: fuera datos reales, documentación interna de Effi y herramientas de terceros
+.claude/
+tools/
+supabase/seed/
+docs/effi/api-endpoints.json
+docs/effi/mcp-conector-manual.txt
+web/public/_ref/

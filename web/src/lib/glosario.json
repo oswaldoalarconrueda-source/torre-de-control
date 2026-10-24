@@ -1,0 +1,331 @@
+[
+ {
+  "c": "Estados de una guía u orden",
+  "t": "Montado / Despachado",
+  "d": "Todo lo que se creó en la plataforma ese día, sin importar su estado actual (pendiente, generada, en tránsito, novedad, oficina, devolución o entregado). Solo se excluyen las canceladas. Decisión del usuario (7-oct-2026): \"despachado\" = \"montado\".",
+  "f": "Cantidad = todas las guías/órdenes; dinero = suma de la venta de todas.",
+  "w": "Ventas (tarjetas \"despachado\"), Global, Publicidad (peso de ads)"
+ },
+ {
+  "c": "Estados de una guía u orden",
+  "t": "Entregado",
+  "d": "Guía u orden entregada al cliente. Es la única venta cuyo dinero se confirma en el wallet (Effi) o la cartera (Dropi).",
+  "f": "Effi: \"Entregada a destino\" · Dropi: ENTREGADO.",
+  "w": "Ventas, Productos, Global"
+ },
+ {
+  "c": "Estados de una guía u orden",
+  "t": "Devolución",
+  "d": "Guía devuelta al origen. Cuesta el flete de ida y el de devolución; la mercancía regresa, por eso su costo de mercancía es 0.",
+  "f": "Effi: \"Devolución a origen\" · Dropi: DEVOLUCION.",
+  "w": "Ventas, Global"
+ },
+ {
+  "c": "Estados de una guía u orden",
+  "t": "En tránsito",
+  "d": "Guía en camino: incluye en tránsito, en reparto, intento de entrega, en bodega de la transportadora, recolectada, reexpedición y en procesamiento. Todavía puede terminar entregada o devuelta.",
+  "f": "Agrupa varios estados de la plataforma en uno.",
+  "w": "Resumen diario por estados"
+ },
+ {
+  "c": "Estados de una guía u orden",
+  "t": "Novedad",
+  "d": "Guía con una incidencia reportada por la transportadora (cliente ausente, dirección, rechazo…). Puede terminar entregada o devuelta.",
+  "f": "Effi: Novedad · Dropi: incidencia validada o en ruta.",
+  "w": "Resumen diario por estados"
+ },
+ {
+  "c": "Estados de una guía u orden",
+  "t": "Pendiente (Generada)",
+  "d": "Guía creada que la transportadora todavía no recoge. Aún no se considera enviada.",
+  "f": "Effi: \"Generada\" · Dropi: guía generada, pendiente, pendiente de confirmación o telemercadeo.",
+  "w": "Resumen diario por estados"
+ },
+ {
+  "c": "Estados de una guía u orden",
+  "t": "Disponible en oficina",
+  "d": "Paquete en la oficina de la transportadora esperando que el cliente lo reclame. Puede terminar entregado o devuelto; mientras tanto es dinero sin cobrar.",
+  "f": "Effi: \"Disponible para retiro en oficina\" · Dropi: RECLAME EN OFICINA.",
+  "w": "Disp. en Oficina, Resumen diario"
+ },
+ {
+  "c": "Estados de una guía u orden",
+  "t": "Indemnización",
+  "d": "Guía perdida o siniestrada que la transportadora paga. Se cuenta como ingreso por indemnización, no como venta, y se excluye del cálculo del % devolución. (Colombia)",
+  "f": "Guías con movimiento \"Indemnización de mercancía\".",
+  "w": "PyG, Resumen diario"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "Ventas (tarjeta)",
+  "d": "Cantidad de guías u órdenes creadas en el período. Es el mismo criterio de \"montado\".",
+  "f": "Suma de todas las guías del período, excluyendo canceladas.",
+  "w": "Ventas"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "Venta total (despachado)",
+  "d": "Valor de todo lo montado en el período, en la moneda del país.",
+  "f": "Suma de la venta de todas las guías/órdenes. En Effi es el \"Total venta distribuidor\" (igual al valor a recaudar); en Dropi, el valor de compra en productos.",
+  "w": "Ventas, Global, Publicidad"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "Venta total (entregado)",
+  "d": "Valor de lo que ya se entregó. Es la venta \"real\" del período.",
+  "f": "Suma de la venta de las guías en estado Entregado.",
+  "w": "Ventas"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "Costo mercancía",
+  "d": "Lo que se paga al proveedor por los productos. En devoluciones es 0 porque la mercancía regresa.",
+  "f": "Effi: \"Total compra distribuidor\" · Dropi: total en precios de proveedor.",
+  "w": "Ventas"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "Flete",
+  "d": "Costo de transporte de la guía. En el PyG se usa el cobro real del wallet o la cartera, no el valor del reporte.",
+  "f": "Entregadas: flete total · Devoluciones: flete de ida más el cobro de devolución.",
+  "w": "Ventas, PyG"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "Publicidad (sobre despachado / sobre entregado)",
+  "d": "Cuánto pesa el gasto en publicidad frente a la venta, en dos versiones: sobre todo lo montado y solo sobre lo entregado.",
+  "f": "Gasto de ads del período ÷ venta despachada (o entregada).",
+  "w": "Ventas"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "Fulfillment",
+  "d": "Cobro por bodegaje, alistamiento y empaque en la bodega (Guatemala: Bodega Efficaex · Ecuador: Bodega Effi Quito). Se cobra por guía; solo cuenta lo ya cobrado. Colombia no tiene fulfillment: ni Effi ni Dropi lo cobran allí.",
+  "f": "En Dropi se toma de la columna Comisión.",
+  "w": "Ventas (tarjetas y PyG) y Proyección, en Guatemala y Ecuador"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "4x1000 (Colombia)",
+  "d": "Impuesto a los movimientos financieros: 0,4% sobre el recaudo. Effi lo descuenta por guía.",
+  "f": "Movimiento \"Otros costos 4XMIL sobre recaudo\".",
+  "w": "Solo en el PyG de Colombia y en el Flujo de Caja (no se muestra en las tarjetas ni en la proyección de Ventas)"
+ },
+ {
+  "c": "Ventas y costos",
+  "t": "Costo mercancía vendida x pagar (Vitalcom)",
+  "d": "Costo de los productos Vitalcom de guías entregadas que Effi trae con costo 0. Se reconoce como costo aunque se pague después, por transferencia a Vitalcom.",
+  "f": "Unidades × $9.500 COP.",
+  "w": "PyG de Colombia"
+ },
+ {
+  "c": "Utilidad y proyección",
+  "t": "PyG en base caja",
+  "d": "Solo incluye lo que el wallet (Effi) o la cartera (Dropi) ya confirmó. Una venta entregada pero aún no liquidada todavía no está en el PyG.",
+  "f": "Recaudo − costo − flete − fulfillment, por movimiento confirmado.",
+  "w": "Ventas (Estado de PyG), Informes"
+ },
+ {
+  "c": "Utilidad y proyección",
+  "t": "Proyección: si lo pendiente termina en devolución (\"el sello\")",
+  "d": "Escenario de peor caso: supone que todo lo pendiente (en tránsito, novedad, pendiente, disponible en oficina) termina devuelto. Mide cuánto se perdería.",
+  "f": "Guías pendientes × flete de devolución promedio + fulfillment ya cobrado.",
+  "w": "Ventas (panel de Proyección)"
+ },
+ {
+  "c": "Utilidad y proyección",
+  "t": "Flete de devolución promedio",
+  "d": "Promedio de flete de las guías devueltas, por plataforma. Se usa para proyectar el costo de las pendientes.",
+  "f": "Flete total de devoluciones ÷ cantidad de devoluciones.",
+  "w": "Proyección, Utilidad neta"
+ },
+ {
+  "c": "Utilidad y proyección",
+  "t": "Utilidad neta real",
+  "d": "Resultado del período en caja y con el peor caso incluido: lo confirmado por wallet y cartera, menos la proyección de pendientes y todos los gastos.",
+  "f": "PyG confirmado − proyección de pendientes (peor caso) − publicidad − aplicaciones − administrativos − operativos. No incluye retiros ni transferencias.",
+  "w": "Ventas, Informes, Utilidad"
+ },
+ {
+  "c": "Utilidad y proyección",
+  "t": "% de utilidad neta real sobre venta total",
+  "d": "Qué parte de lo montado queda como utilidad.",
+  "f": "Utilidad neta real ÷ venta total montada (con pendientes).",
+  "w": "Ventas"
+ },
+ {
+  "c": "Utilidad y proyección",
+  "t": "% devolución (fila del Resumen diario)",
+  "d": "NO es solo devoluciones: es todo lo que no se ha entregado (devolución, en tránsito, novedad, pendiente y oficina) sobre el total. Es el peor caso, la otra cara de \"% entregado\"; baja a medida que las guías se entregan.",
+  "f": "(Total − indemnizaciones − canceladas − entregadas) ÷ (Total − indemnizaciones − canceladas).",
+  "w": "Ventas y Productos (Resumen diario por estados)"
+ },
+ {
+  "c": "Utilidad y proyección",
+  "t": "% entregado y % devolución (tarjetas de Global)",
+  "d": "Aquí sí son devoluciones reales: entregadas sobre el total de guías y devoluciones reales sobre el total. Con el mes en curso inmaduro, % entregado se ve bajo porque la mayoría sigue en proceso.",
+  "f": "Entregadas ÷ total de guías · Devoluciones ÷ total de guías.",
+  "w": "Global"
+ },
+ {
+  "c": "Publicidad y monedas",
+  "t": "Peso de ads sobre lo despachado",
+  "d": "Cuánto pesa el gasto en publicidad de un día frente a lo montado ese día (todas las plataformas, convertido a COP).",
+  "f": "Gasto ads del día ÷ venta despachada del día.",
+  "w": "Publicidad"
+ },
+ {
+  "c": "Publicidad y monedas",
+  "t": "Gasto por BM",
+  "d": "Gasto de publicidad por cuenta publicitaria (Business Manager / cuenta de Meta).",
+  "f": "Suma del reporte de Meta por cuenta, país y día.",
+  "w": "Publicidad"
+ },
+ {
+  "c": "Publicidad y monedas",
+  "t": "Campañas sin homologar",
+  "d": "Campañas cuyo nombre no contiene el de ningún producto vendido: su gasto aparece como \"Sin identificar\".",
+  "f": "Se asigna producto si el nombre contiene un fragmento del producto (DREN, VINO, MIEL…).",
+  "w": "Publicidad"
+ },
+ {
+  "c": "Publicidad y monedas",
+  "t": "TRM promedio del mes",
+  "d": "Tasa de pesos por dólar (y por quetzal) que se usa para convertir el gasto de Meta, que se cobra en COP. El mes en curso es provisional: promedio de los días cargados.",
+  "f": "Promedio de la TRM oficial de los días del mes.",
+  "w": "Publicidad, Utilidad, Ventas (PyG)"
+ },
+ {
+  "c": "Publicidad y monedas",
+  "t": "Pedidos del día",
+  "d": "Pedidos que entraron a cada tienda ese día, antes de montar la guía. Se cargan desde la tabla diaria de tiendas (Colombia, Ecuador, Guatemala). No es lo mismo que \"despachados\" ni que las guías por estado.",
+  "f": "Cantidad por país y por día.",
+  "w": "Datos (pedidos vs despachados), Publicidad (CPA real)"
+ },
+ {
+  "c": "Publicidad y monedas",
+  "t": "% despachado",
+  "d": "Despachados del día ÷ pedidos del día. Despachado = guías/órdenes montadas ese día (cualquier estado, sin canceladas). Un día puede pasar de 100% porque se despachan pedidos de días anteriores; el % del período completo es el más confiable.",
+  "f": "Despachados ÷ Pedidos × 100.",
+  "w": "Datos (pedidos vs despachados)"
+ },
+ {
+  "c": "Publicidad y monedas",
+  "t": "No despachados",
+  "d": "Pedidos del día − despachados del día. Si un día se despacha más de lo que entró, el número sale negativo (se están sacando pedidos de días anteriores). El total del período es la suma de los días.",
+  "f": "Pedidos − Despachados, por día; total = suma.",
+  "w": "Datos (pedidos vs despachados)"
+ },
+ {
+  "c": "Publicidad y monedas",
+  "t": "CPA real",
+  "d": "Costo de publicidad por pedido del día: gasto en ads del día ÷ pedidos de la tienda ese día. En COP porque Meta cobra en COP. Solo se calcula en días con pedidos cargados.",
+  "f": "Gasto ads del día (COP) ÷ pedidos del día.",
+  "w": "Publicidad (pedidos y CPA real)"
+ },
+ {
+  "c": "Caja y wallet",
+  "t": "Wallet (Effi) y cartera (Dropi)",
+  "d": "Saldo que cada plataforma tiene a tu favor por lo entregado. Effi lo llama wallet y Dropi cartera. Se actualiza a medida que las guías se entregan (Effi) y en la madrugada (Dropi).",
+  "f": "—",
+  "w": "Ventas (PyG), Flujo de Caja"
+ },
+ {
+  "c": "Caja y wallet",
+  "t": "Retiro de wallet",
+  "d": "Dinero que la plataforma transfiere de su wallet a tu cuenta bancaria. No es utilidad: no entra al PyG, entra al Flujo de Caja.",
+  "f": "—",
+  "w": "Flujo de Caja"
+ },
+ {
+  "c": "Caja y wallet",
+  "t": "Retiro pendiente por confirmar",
+  "d": "Retiro detectado en el wallet cuyo monto en pesos todavía no se conoce. Cuando Effi informa los pesos, pasa a ingreso esperado.",
+  "f": "—",
+  "w": "Flujo de Caja"
+ },
+ {
+  "c": "Caja y wallet",
+  "t": "Depósito sin identificar",
+  "d": "Dinero que entró al banco y todavía no se sabe de qué retiro o servicio viene.",
+  "f": "—",
+  "w": "Flujo de Caja"
+ },
+ {
+  "c": "Caja y wallet",
+  "t": "Flujo de Caja",
+  "d": "Entradas y salidas reales en pesos de la cuenta bancaria, con el saldo neto acumulado. Incluye el 4x1000 de los retiros.",
+  "f": "—",
+  "w": "Flujo de Caja"
+ },
+ {
+  "c": "Utilidad y reparto",
+  "t": "Utilidad total (100%)",
+  "d": "Utilidad de Guatemala + Ecuador (+ Colombia desde septiembre). Julio+agosto y desde septiembre se muestran igual: por país en quetzales, dólares y pesos.",
+  "f": "Cada país en su propia moneda (cifra real); el resto es un supuesto convertido con la TRM promedio del mes del período y US$1 = Q7,6724.",
+  "w": "Utilidad"
+ },
+ {
+  "c": "Utilidad y reparto",
+  "t": "Provisión 10%",
+  "d": "Parte de la utilidad que no se reparte mes a mes, reservada para imprevistos (el negocio hasta hoy no paga impuestos).",
+  "f": "Utilidad total × 10%, solo si la utilidad es positiva; se muestra en las tres monedas.",
+  "w": "Utilidad"
+ },
+ {
+  "c": "Utilidad y reparto",
+  "t": "A repartir (90%)",
+  "d": "Utilidad que sí se reparte entre socios.",
+  "f": "Utilidad total − provisión del 10%.",
+  "w": "Utilidad"
+ },
+ {
+  "c": "Utilidad y reparto",
+  "t": "Dividendos pagados",
+  "d": "Retiros ya pagados a los socios, en quetzales, con la plataforma de donde salieron.",
+  "f": "—",
+  "w": "Utilidad"
+ },
+ {
+  "c": "Utilidad y reparto",
+  "t": "Cifra supuesta (≈)",
+  "d": "Cifra convertida a otra moneda con una tasa asumida. La cifra real de cada país es la de su propia moneda (en negrita); las demás llevan ≈ porque cambian si cambia la tasa.",
+  "f": "Valor real × tasa: US$1 = TRM promedio del mes (COP) y US$1 = Q7,6724. Julio+agosto usa el promedio de agosto, estimado (≈ $3.131).",
+  "w": "Utilidad (desde septiembre)"
+ },
+ {
+  "c": "Control de datos",
+  "t": "Guía sin liquidar",
+  "d": "Guía entregada cuyo dinero todavía no aparece: en Effi, sin movimiento de recaudo en el wallet; en Dropi, sin ganancia en la cartera.",
+  "f": "Entregada − con recaudo (Effi) o con ganancia (Dropi).",
+  "w": "Guías sin liquidar"
+ },
+ {
+  "c": "Control de datos",
+  "t": "Inconsistencia",
+  "d": "Guía donde el dinero no coincide con lo esperado (por ejemplo, entregada pero con solo el cargo de devolución). Hay que reclamarla a Effi o Dropi.",
+  "f": "Neto del wallet ≠ venta − costo − flete − fulfillment.",
+  "w": "Ventas (Inconsistencias pendientes de pago)"
+ },
+ {
+  "c": "Control de datos",
+  "t": "Corte de datos",
+  "d": "Fecha y hora del último archivo montado de cada fuente (guías, movimientos de dinero, publicidad). Si pasan más de 3 días sin actualizar, el dashboard avisa.",
+  "f": "Hora de exportación del archivo; en publicidad, el último día cargado.",
+  "w": "Aviso superior y página Estado de los datos"
+ },
+ {
+  "c": "Control de datos",
+  "t": "Período cerrado 🔒",
+  "d": "Mes ya cerrado cuyo informe no se edita. Los datos en vivo pueden moverse por parámetros (por ejemplo el flete de devolución promedio) sin que el informe guardado cambie.",
+  "f": "—",
+  "w": "Informes"
+ },
+ {
+  "c": "Control de datos",
+  "t": "Plataforma (Effi / Dropi)",
+  "d": "Origen de la guía: Effi es la plataforma de logística propia; Dropi es la de dropshipping. Cada una tiene su wallet o cartera y su ritmo de liquidación.",
+  "f": "—",
+  "w": "En todo el dashboard"
+ }
+]
