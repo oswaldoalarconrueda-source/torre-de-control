@@ -18,7 +18,10 @@ export type NodoEstado = { id: string; label: string; x: number; y: number; n: n
 export type NodoPais = { cuenta: string; bandera: string; x: number; y: number; total: number; estados: NodoEstado[] };
 export type RedNeuronalApi = { disparar: (cuenta: string, estado: string | null) => void };
 
-type Props = { ancho: number; alto: number; centro: { x: number; y: number } | null; total: number; paises: NodoPais[]; maxNodo: number; logo: string | null };
+type Props = {
+  ancho: number; alto: number; centro: { x: number; y: number } | null; total: number; paises: NodoPais[]; maxNodo: number; logo: string | null;
+  onPais?: (cuenta: string, x: number, y: number) => void; // clic en la bandera de un país (x, y en coordenadas del lienzo)
+};
 
 type Neurona = { x: number; y: number; vx: number; vy: number; vida: number; max: number; brillo: number; color: string | null };
 type Senal = { de: { x: number; y: number }; a: { x: number; y: number }; cx: number; cy: number; t: number; color: string; estado: string; key: string };
@@ -72,7 +75,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
     chispas: [] as Chispa[], destellos: [] as Destello[],
     latido: new Map<string, number>(), // clave → momento del último latido (ms)
     combo: new Map<string, { n: number; t: number }>(), // país → entregas seguidas
-    torre: 0, torreEntrega: 0, sacudida: 0,
+    torre: 0, torreEntrega: 0, sacudida: 0, encima: null as string | null,
   });
   const logo = useRef<HTMLImageElement | null>(null);
   // El logo cambia con la sociedad elegida; sin logo se borra el anterior.
@@ -374,7 +377,9 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
           ctx.fillStyle = `rgba(${rgb},0.9)`; ctx.font = `600 ${paises.length === 1 ? 10 : 8}px ui-monospace, monospace`;
           ctx.fillText(s.label.toUpperCase(), s.x, s.y + r + (paises.length === 1 ? 15 : 11));
         }
-        const l = late(p.cuenta), R = (paises.length === 1 ? 54 : 36) * (1 + 0.12 * l);
+        // La bandera de cada país es un poco más grande y se puede pulsar para entrar a su mapa.
+        const encima = st.encima === p.cuenta ? 1 : 0;
+        const l = late(p.cuenta), R = RADIO_PAIS(paises.length) * (1 + 0.12 * l + 0.08 * encima);
         ctx.save();
         ctx.shadowColor = `rgba(${AZUL},0.9)`; ctx.shadowBlur = 14 + 30 * l;
         hexagono(ctx, p.x, p.y, R, 0);
@@ -384,10 +389,14 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         hexagono(ctx, p.x, p.y, R + 9, -(ahora / 6000));
         ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${AZUL},0.3)`; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
         ctx.textAlign = "center";
-        ctx.font = `${paises.length === 1 ? 34 : 22}px system-ui`;
-        ctx.fillText(p.bandera, p.x, p.y + (paises.length === 1 ? -4 : -2));
-        ctx.fillStyle = "#e8eefc"; ctx.font = `600 ${paises.length === 1 ? 15 : 11}px ui-sans-serif, system-ui`;
-        ctx.fillText(p.total.toLocaleString("es-CO"), p.x, p.y + (paises.length === 1 ? 26 : 17));
+        ctx.font = `${paises.length === 1 ? 40 : 28}px system-ui`;
+        ctx.fillText(p.bandera, p.x, p.y + (paises.length === 1 ? -4 : -3));
+        ctx.fillStyle = "#e8eefc"; ctx.font = `700 ${paises.length === 1 ? 16 : 13}px ui-sans-serif, system-ui`;
+        ctx.fillText(p.total.toLocaleString("es-CO"), p.x, p.y + (paises.length === 1 ? 28 : 21));
+        if (encima) {
+          ctx.fillStyle = `rgba(${AZUL},0.95)`; ctx.font = "600 10px ui-sans-serif, system-ui";
+          ctx.fillText("Clic para entrar al mapa", p.x, p.y - R - 14);
+        }
       }
       if (centro) {
         // Logo de Joalix en un círculo con halo dorado que late con cada movimiento.
@@ -434,7 +443,20 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, []);
 
-  return <canvas ref={canvas} className="block w-full" style={{ aspectRatio: `${props.ancho} / ${props.alto}` }} role="img" aria-label="Red neuronal en vivo de cambios de estado por país" />;
+  // Clic y mouse encima de la bandera de un país.
+  const paisEn = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const cv = canvas.current!, k = props.ancho / cv.clientWidth, x = e.nativeEvent.offsetX * k, y = e.nativeEvent.offsetY * k;
+    const R = RADIO_PAIS(props.paises.length) + 10;
+    const p = props.paises.find((q) => Math.hypot(q.x - x, q.y - y) <= R);
+    return p ? { p, x, y } : null;
+  };
+  return (
+    <canvas ref={canvas} className="block w-full" style={{ aspectRatio: `${props.ancho} / ${props.alto}`, cursor: estado.current.encima ? "pointer" : "default" }}
+      role="img" aria-label="Red neuronal en vivo de cambios de estado por país"
+      onMouseMove={(e) => { const h = paisEn(e)?.p.cuenta ?? null; if (h !== estado.current.encima) { estado.current.encima = h; e.currentTarget.style.cursor = h && props.onPais ? "pointer" : "default"; } }}
+      onMouseLeave={() => { estado.current.encima = null; }}
+      onClick={(e) => { const h = paisEn(e); if (h) props.onPais?.(h.p.cuenta, h.p.x, h.p.y); }} />
+  );
 });
 
 function nueva(x: number, y: number, color: string | null, fuerza: number): Neurona {
@@ -446,3 +468,4 @@ function alfa(n: Neurona) {
   return Math.min(1, n.vida / 600, (n.max - n.vida) / 1200);
 }
 const xy = (p: { x: number; y: number }) => ({ cx: p.x, cy: p.y });
+const RADIO_PAIS = (n: number) => (n === 1 ? 62 : 44);

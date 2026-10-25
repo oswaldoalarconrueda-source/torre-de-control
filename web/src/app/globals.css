@@ -155,8 +155,19 @@ body {
 .entra {
   animation: entra 0.9s ease-out;
 }
+/* 🗺️ En vivo → mapa de un país: la red se acerca a la bandera y el mapa aparece desde el fondo, como un portal. */
+@keyframes zoom-pais {
+  to { transform: scale(3.2); opacity: 0; filter: blur(6px); }
+}
+.zoom-pais { animation: zoom-pais 0.55s cubic-bezier(0.6, 0, 0.9, 0.4) forwards; }
+@keyframes metaverso {
+  from { transform: scale(0.35); opacity: 0; filter: blur(10px) brightness(2); }
+  60% { opacity: 1; filter: blur(0) brightness(1.3); }
+  to { transform: none; opacity: 1; filter: none; }
+}
+.metaverso { animation: metaverso 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @media (prefers-reduced-motion: reduce) {
-  .viaje, .latido, .respira, .entra { animation: none; }
+  .viaje, .latido, .respira, .entra, .zoom-pais, .metaverso { animation: none; }
 }
 
 /* ⚡ En vivo: radar que barre, hexágonos que giran y datos que fluyen por las conexiones. */

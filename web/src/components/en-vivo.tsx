@@ -8,6 +8,7 @@ import { infoCuenta } from "@/lib/paises";
 import { hoyBogota, rangosRapidos, sumarDias } from "@/lib/filtros";
 import { COLOR_ESTADO } from "./charts";
 import { RedNeuronal, type RedNeuronalApi } from "./red-neuronal";
+import { MapaNeuronal, type MapaApi } from "./mapa-neuronal";
 import { SelectorFechas, etiquetaRango } from "./selector-fechas";
 
 // ⚡ En vivo: la operación como un "segundo cerebro" con el proceso completo de la empresa. Alrededor de cada país:
@@ -20,7 +21,8 @@ type Cat = "ENTREGADO" | "EN_TRANSITO" | "NOVEDAD" | "EN_OFICINA" | "DEVOLUCION"
 type Etapa = "ORDEN" | "REMISION" | "GENERADA";
 type Evento = {
   cuenta: string; guia: string | null; fecha_hist_est: string; estado_new_efficommerce: string | null; estado_new: string | null;
-  nombre_transportadora_efficommerce: string | null; nombre_ciudad_destinatario: string | null; valor_recaudo: number | null;
+  nombre_transportadora_efficommerce: string | null; nombre_ciudad_destinatario: string | null; nombre_provincia_destinatario: string | null;
+  valor_recaudo: number | null;
   est_guia_new_efficommerce: number | null; pagada: boolean | null;
 };
 type Pulso = {
@@ -43,7 +45,7 @@ const ESTADOS: { id: Cat; label: string }[] = [
 ];
 // El proceso en orden: cada etapa cuelga de la anterior (las órdenes del país; los estados de la guía generada).
 const ETAPAS: { id: Etapa; label: string; color: string }[] = [
-  { id: "ORDEN", label: "Órdenes", color: "#d4a64a" },
+  { id: "ORDEN", label: "Órdenes", color: "#ff6ad5" }, // rosado: distinto del naranja de las novedades
   { id: "REMISION", label: "Remisiones", color: "#b48cff" },
   { id: "GENERADA", label: "Guías generadas", color: "#c9d3ea" },
 ];
@@ -109,6 +111,13 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
   const procesoAntes = useRef<Record<string, number>>({});
   const vistos = useRef(new Set<string>());
   const red = useRef<RedNeuronalApi>(null);
+  // Mapa de un país: se entra pulsando su bandera. "entrando" guarda desde dónde se hace el acercamiento.
+  const [mapa, setMapa] = useState<string | null>(null);
+  const [entrando, setEntrando] = useState<{ cuenta: string; x: number; y: number } | null>(null);
+  const [mapaDatos, setMapaDatos] = useState<Record<string, Record<string, number>>>({});
+  const mapaRef = useRef<MapaApi>(null);
+  const mapaCuenta = useRef<string | null>(null);
+  mapaCuenta.current = mapa;
 
   useEffect(() => {
     try {
@@ -170,7 +179,7 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
     const cargarEventos = async () => {
       let consulta = supabase
         .from("v_feed_estados")
-        .select("cuenta,guia,fecha_hist_est,estado_new_efficommerce,estado_new,nombre_transportadora_efficommerce,nombre_ciudad_destinatario,valor_recaudo,est_guia_new_efficommerce,pagada")
+        .select("cuenta,guia,fecha_hist_est,estado_new_efficommerce,estado_new,nombre_transportadora_efficommerce,nombre_ciudad_destinatario,nombre_provincia_destinatario,valor_recaudo,est_guia_new_efficommerce,pagada")
         .in("cuenta", sel)
         .gte("fecha_hist_est", desdeEv);
       if (hastaEv) consulta = consulta.lt("fecha_hist_est", hastaEv);
@@ -193,9 +202,43 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave]);
 
+  // Mapa: movimientos por departamento cada 15 s; las órdenes, remisiones y guías nuevas se encienden en su departamento.
+  useEffect(() => {
+    if (!mapa) return;
+    const supabase = createClient();
+    let vivo = true;
+    const antes: Record<string, number> = {};
+    let primera = true;
+    const cargar = async () => {
+      const { data } = await supabase.rpc("envivo_mapa", dias
+        ? { p_cuenta: mapa, p_minutos: 0, p_desde: dias.d, p_hasta: dias.h }
+        : { p_cuenta: mapa, p_minutos: ventana });
+      if (!vivo || !data) return;
+      const provs = ((data as { provincias: Record<string, Record<string, number>> }).provincias) ?? {};
+      for (const [prov, cats] of Object.entries(provs)) for (const et of ["ORDEN", "REMISION", "GENERADA"]) {
+        const k = `${prov}|${et}`, n = cats[et] ?? 0, a = antes[k];
+        antes[k] = n;
+        if (primera || a == null || n <= a || !enVivo) continue;
+        for (let i = 0; i < Math.min(8, n - a); i++) setTimeout(() => mapaRef.current?.disparar(prov, et), Math.random() * 12_000);
+      }
+      primera = false;
+      setMapaDatos(provs);
+    };
+    cargar();
+    const t = setInterval(cargar, 15_000);
+    return () => { vivo = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapa, clave]);
+  const entrarMapa = (cuenta: string, x: number, y: number) => {
+    setEntrando({ cuenta, x, y });
+    setTimeout(() => { setMapaDatos({}); setMapa(cuenta); setEntrando(null); }, 520);
+  };
+
   // Cada cambio reproducido dispara una señal en la red y entra a la lista.
   const disparar = useCallback((e: Evento) => {
-    red.current?.disparar(e.cuenta, CAT[e.est_guia_new_efficommerce ?? -1] ?? null);
+    const cat = CAT[e.est_guia_new_efficommerce ?? -1] ?? null;
+    red.current?.disparar(e.cuenta, cat);
+    if (cat && e.cuenta === mapaCuenta.current) mapaRef.current?.disparar(e.nombre_provincia_destinatario, cat);
     setStream((s) => [e, ...s].slice(0, 200));
   }, []);
 
@@ -289,7 +332,26 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_23rem] items-start">
         <div className="card relative overflow-hidden p-0 min-w-0">
+          {mapa ? (
+            <div className="metaverso">
+              <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
+                <button onClick={() => setMapa(null)} className="rounded-full border border-line px-3 py-1 text-xs text-muted hover:text-text">← Volver</button>
+                <span className="font-display text-lg font-semibold">{infoCuenta(mapa).bandera} {infoCuenta(mapa).nombre}</span>
+                <span className="text-xs text-muted">por departamento · {etiquetaVentana}</span>
+                <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-muted">
+                  {[...ETAPAS.map((e) => [e.id, e.label, e.color]), ...ESTADOS.map((e) => [e.id, e.label, COLOR_ESTADO[e.id]])].map(([id, label, color]) => (
+                    <span key={id} className="inline-flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: color }} />{label}</span>
+                  ))}
+                </div>
+              </div>
+              <MapaNeuronal ref={mapaRef} pais={infoCuenta(mapa).pais} datos={mapaDatos} ancho={ANCHO} alto={ALTO}
+                colores={Object.fromEntries([...ETAPAS.map((e) => [e.id, e.color]), ...ESTADOS.map((e) => [e.id, COLOR_ESTADO[e.id]])])} />
+            </div>
+          ) : (
+          <div className={entrando ? "zoom-pais" : ""}
+            style={entrando ? { transformOrigin: `${(entrando.x / ANCHO) * 100}% ${(entrando.y / ALTO) * 100}%` } : undefined}>
           <RedNeuronal ref={red} ancho={ANCHO} alto={ALTO} centro={geo.sola ? null : { x: CX, y: CY }} total={suma()} maxNodo={maxNodo} logo={logo}
+            onPais={entrarMapa}
             paises={geo.paises.map((p) => ({
               cuenta: p.cuenta, bandera: infoCuenta(p.cuenta).bandera, x: p.x, y: p.y, total: enVentana(p.cuenta),
               estados: p.estados.map((e) => ({
@@ -297,6 +359,8 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
                 hoy: esEtapa(e.id) ? datos(p.cuenta)?.proceso_hoy?.[e.id] ?? 0 : datos(p.cuenta)?.hoy[e.id] ?? 0,
               })),
             }))} />
+          </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2">
           <div className="text-[11px] text-muted max-w-xl">
             Proceso de cada país: órdenes → remisiones → guías generadas → estados. Número y tamaño de cada hexágono = movimientos {enVentanaTxt}. Cada movimiento viaja como señal por su tramo; entregas y devoluciones lanzan una onda.
