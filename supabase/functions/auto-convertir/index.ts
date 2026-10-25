@@ -14,6 +14,12 @@
 //   Cantidad: la que siempre tuvo ese producto con ese total en las guías anteriores. Sin antecedentes → revisión.
 // - Guía: transportadora, servicio y forma de pago de las guías hechas; remitente según el convenio; contenido,
 //   valor declarado y recaudo tomados de la remisión.
+//
+// Ecuador (pedidas por el dueño): entrega en oficina ("Oficina Servientrega …", "RETIRA EN CS …") → Servientrega;
+// las demás direcciones → Gintracom. Si Gintracom no deja hacer la guía, se repite con Servientrega y la ciudad queda
+// en la memoria de cobertura (auto_cobertura). Las ciudades donde en los últimos días solo se ha despachado a domicilio
+// por Servientrega también van directo por Servientrega. Como en Ecuador una persona hace las remisiones a mano, el
+// agente también arma la guía de las remisiones vigentes sin guía.
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -26,6 +32,12 @@ const MAX_ORDENES = 15;
 const PAISES_CREACION = ['TIENDA_GT'];
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const ESPERA_GUIA_MIN = 15;   // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía
+const PAGINAS_REGLAS = 30;    // guías y remisiones de 10 días (Ecuador hace unas 250 guías al día)
+const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIENDA_CO: 'COP', TIENDA_CR: 'CRC' };
+// Países que escogen transportadora por dirección (ids de transportadora en Effi). Los demás usan la más común.
+const TRANSPORTE_PAIS: Record<string, { oficina: number; domicilio: number; respaldo: number }> = {
+  TIENDA_EC: { oficina: 1, domicilio: 5, respaldo: 1 },   // 1 Servientrega · 5 Gintracom
+};
 
 type Json = Record<string, any>;
 
@@ -96,14 +108,73 @@ const masComun = <T,>(xs: T[]) => {
 const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 // "3 * DRENAJE LINFATICO 59ML. 1 * OFTALMIEL. " → [{cant: 3, nombre: 'DRENAJE LINFATICO 59ML'}, ...]
 const lineas = (contenido: string) => [...contenido.matchAll(/(\d+)\s*\*\s*([^.]+)\./g)].map((m) => ({ cant: Number(m[1]), nombre: norm(m[2]) }));
+// Entrega en oficina de la transportadora: "Oficina Servientrega QUEVEDO…", "RETIRA EN CS TULCAN…", "Retiro en oficina…".
+const esOficina = (direccion: string) => /\bOFICINA\b|\bRETIR(A|O|AR)\b|\bCS\b/.test(norm(direccion ?? ''));
+const camposTransporte = (t: Json) => ({
+  transportadora: t.transportadora, t_servicio: t.t_servicio, t_forma_pago: t.t_forma_pago,
+  cant_paquetes: t.cant_paquetes || 1, peso_total: t.peso_total || 1, volumen_total: 1,
+});
+
+// Transportadora para un destino. Guatemala: la de siempre. Ecuador: oficina → Servientrega; ciudad sin cobertura
+// de Gintracom (memoria o historial) → Servientrega; el resto → Gintracom.
+function elegirTransporte(cuenta: string, reglas: Json, memoria: Set<number>, direccion: string, ciudad: number, nombreCiudad: string) {
+  const tp = TRANSPORTE_PAIS[cuenta];
+  if (!tp) return reglas?.transporte ? { t: { ...reglas.transporte, nombre: reglas.nombreTransportadora } as Json, motivo: '' } : null;
+  const de = (id: number) => (reglas?.transportes?.[String(id)] ?? null) as Json | null;
+  let id = tp.domicilio, motivo = 'entrega a domicilio';
+  if (esOficina(direccion)) { id = tp.oficina; motivo = 'entrega en oficina'; }
+  else if (memoria.has(ciudad) || reglas?.sinCobertura?.[String(ciudad)]) {
+    id = tp.respaldo;
+    motivo = `${String(de(tp.domicilio)?.nombre ?? 'la transportadora').split('|')[0].trim()} no tiene cobertura en ${nombreCiudad}`;
+  }
+  const t = de(id);
+  return t ? { t, motivo } : null;
+}
+
+const primeraGuia = (g: { respuesta: Json | null }) => {
+  const d = g.respuesta?.data as Json | undefined;
+  return (Array.isArray(d) ? d[0] : d?.guias?.[0] ?? d) as Json | undefined;
+};
+const fallaGuia = (g: { ok: boolean }, p: Json | undefined) => !g.ok || (!!p && String(p.vigente) === '0');
+const detalleGuia = (g: { status: number; respuesta: Json | null }, p: Json | undefined) => {
+  const d = g.respuesta?.mensaje ?? p?.response ?? `HTTP ${g.status}`;
+  return typeof d === 'string' ? d : JSON.stringify(d);
+};
+
+// Crea la guía. En Ecuador, si la transportadora de domicilio no la deja hacer, la ciudad queda en la memoria de
+// cobertura y se repite con la de respaldo.
+async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, destino: { ciudad: number; nombre: string },
+  ev: (ok: boolean | null, mensaje: string, datos?: Json | null) => Promise<unknown>) {
+  let g = await api.post('guia_transporte', guia);
+  let p = primeraGuia(g);
+  const tp = TRANSPORTE_PAIS[cuenta];
+  const respaldo = tp && reglas?.transportes?.[String(tp.respaldo)];
+  if (fallaGuia(g, p) && tp && respaldo && Number(guia.transportadora) === tp.domicilio) {
+    const detalle = detalleGuia(g, p);
+    await rpc('auto_sin_cobertura', { p_cuenta: cuenta, p_transportadora: tp.domicilio, p_ciudad: destino.ciudad, p_nombre_ciudad: destino.nombre, p_motivo: detalle });
+    await ev(null, `Gintracom no dejó hacer la guía (${detalle}). Se hace con Servientrega y ${destino.nombre} queda en la memoria de cobertura`, { enviado: guia, respuesta: g.respuesta, status: g.status });
+    guia = { ...guia, ...camposTransporte(respaldo), idempotency_key: `${guia.idempotency_key}-resp` };
+    g = await api.post('guia_transporte', guia);
+    p = primeraGuia(g);
+  }
+  return { g, p, guia, ok: !fallaGuia(g, p), detalle: detalleGuia(g, p) };
+}
+
+// Memoria de cobertura: ciudades donde la transportadora de domicilio no dejó hacer guías.
+async function memoriaCobertura(cuenta: string) {
+  const tp = TRANSPORTE_PAIS[cuenta];
+  if (!tp) return new Set<number>();
+  const filas: { ciudad: number }[] = await tabla(`auto_cobertura?cuenta=eq.${cuenta}&transportadora=eq.${tp.domicilio}&select=ciudad`);
+  return new Set(filas.map((f) => Number(f.ciudad)));
+}
 
 // Reglas aprendidas de las guías de los últimos 10 días: remitente por convenio y parámetros de la transportadora.
-async function aprenderReglas(api: Effi, off: number) {
+async function aprenderReglas(api: Effi, off: number, cuenta: string) {
   const hoy = new Date(Date.now() + off * 60_000);
   const desde = new Date(hoy.getTime() - 10 * DAY_MS).toISOString().slice(0, 10);
   const hasta = new Date(hoy.getTime() + DAY_MS).toISOString().slice(0, 10);
-  const guias = await api.todas('guia_transporte', { desde, hasta });
-  const rems = await api.todas('remision_v', { desde, hasta });
+  const guias = await api.todas('guia_transporte', { desde, hasta }, PAGINAS_REGLAS);
+  const rems = await api.todas('remision_v', { desde, hasta }, PAGINAS_REGLAS);
   const convenioDe = new Map(rems.map((r) => [`${r.sucursal}-${r.id}`, r.convenio_dropshipping]));
   const conDoc = guias.filter((g) => String(g.t_trans_ref) === '4' && g.vigente !== '0');
   const remitentes: Record<string, string> = {};
@@ -120,7 +191,33 @@ async function aprenderReglas(api: Effi, off: number) {
   })));
   const nombreTransportadora = masComun(conDoc.map((g) => String(g.nombre_transportadora)));
   const formaPagoRemision = masComun(rems.filter((r) => r.vigente !== '0').map((r) => Number(r.t_forma_pago)));
-  return { remitentes, transporte, nombreTransportadora, formaPagoRemision, guias_vistas: conDoc.length };
+  // Parámetros de cada transportadora (Ecuador usa dos, con forma de pago distinta).
+  const transportes: Record<string, Json> = {};
+  for (const id of new Set(conDoc.map((g) => String(g.transportadora)))) {
+    const xs = conDoc.filter((g) => String(g.transportadora) === id);
+    transportes[id] = {
+      ...masComun(xs.map((g) => ({
+        transportadora: Number(g.transportadora), t_servicio: Number(g.id_t_servicio), t_forma_pago: Number(g.t_forma_pago),
+        cant_paquetes: Number(g.cant_paquetes), peso_total: Number(g.peso_total),
+      }))),
+      nombre: masComun(xs.map((g) => String(g.nombre_transportadora))), guias: xs.length,
+    };
+  }
+  // Ciudades donde a domicilio solo se ha despachado con la de respaldo: ahí la de domicilio no tiene cobertura.
+  let sinCobertura: Record<string, string> | undefined;
+  const tp = TRANSPORTE_PAIS[cuenta];
+  if (tp) {
+    const porCiudad = new Map<string, { nombre: string; dom: number; resp: number }>();
+    for (const g of conDoc) {
+      if (esOficina(g.direccion_destinatario)) continue;
+      const c = porCiudad.get(String(g.ciudad_destinatario)) ?? { nombre: String(g.nombre_ciudad_destinatario ?? ''), dom: 0, resp: 0 };
+      if (Number(g.transportadora) === tp.domicilio) c.dom++;
+      else if (Number(g.transportadora) === tp.respaldo) c.resp++;
+      porCiudad.set(String(g.ciudad_destinatario), c);
+    }
+    sinCobertura = Object.fromEntries([...porCiudad].filter(([, c]) => c.dom === 0 && c.resp > 0).map(([k, c]) => [k, c.nombre]));
+  }
+  return { remitentes, transporte, nombreTransportadora, formaPagoRemision, transportes, sinCobertura, guias_vistas: conDoc.length };
 }
 
 async function convertir(cuenta: string) {
@@ -135,19 +232,21 @@ async function convertir(cuenta: string) {
 
   // Reglas (se recalculan cada 6 horas).
   let reglas = cfg.reglas;
-  let reglasNuevas = null;
+  let reglasNuevas: Json | null = null;
   if (!reglas || !cfg.reglas_en || Date.now() - Date.parse(cfg.reglas_en) > REGLAS_HORAS * 3600_000) {
-    reglas = reglasNuevas = await aprenderReglas(api, off);
+    reglas = reglasNuevas = await aprenderReglas(api, off, cuenta);
   }
+  const memoria = await memoriaCobertura(cuenta);
 
   // Órdenes vigentes sin remisión de los últimos 3 días.
   const hoy = new Date(Date.now() + off * 60_000);
   const desde = new Date(hoy.getTime() - 3 * DAY_MS).toISOString().slice(0, 10);
   const hasta = new Date(hoy.getTime() + DAY_MS).toISOString().slice(0, 10);
   const pendientes = (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => !o.id_remision_v).slice(0, MAX_ORDENES);
+  const planesGuia = TRANSPORTE_PAIS[cuenta] ? await planearGuias(api, cuenta, reglas, memoria, desde, hasta) : [];
   if (!pendientes.length) {
-    await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: [], p_reglas: reglasNuevas });
-    return { pendientes: 0 };
+    await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: planesGuia, p_reglas: reglasNuevas });
+    return { pendientes: 0, guias: planesGuia.length };
   }
 
   // Artículos de la empresa (sin el concepto FLETE) y lo ya detectado antes.
@@ -200,14 +299,15 @@ async function convertir(cuenta: string) {
     // 4. Remitente según el convenio.
     const remitente = reglas?.remitentes?.[convenio];
     if (!remitente) { revision(`No hay guías anteriores con el convenio ${convenio} para saber el remitente`); continue; }
-    if (!reglas?.transporte) { revision('No hay guías anteriores para saber la transportadora'); continue; }
+    const elegido = elegirTransporte(cuenta, reglas, memoria, String(o.direccion_cliente ?? ''), Number(o.ciudad_cliente), String(o.nombre_ciudad ?? ''));
+    if (!elegido) { revision('No hay guías anteriores para saber la transportadora'); continue; }
 
     plan.remision = {
       idempotency_key: `torre-rv-${o.sucursal}-${o.id}`,
       action: 3,
       json_ref: JSON.stringify([{ sucursal: Number(o.sucursal), id: Number(o.id) }]),
       sucursal: Number(o.sucursal), bodega: Number(o.bodega ?? 1), centro_costos: centro,
-      fecha_entrega: String(o.fecha_entrega ?? '').slice(0, 10), divisa: 'GTQ', trm: 1,
+      fecha_entrega: String(o.fecha_entrega ?? '').slice(0, 10), divisa: DIVISA[cuenta] ?? 'GTQ', trm: 1,
       cliente: o.cliente, id_pais_cliente: Number(o.pais_cliente), id_provincia_cliente: Number(o.provincia_cliente),
       id_ciudad_cliente: Number(o.ciudad_cliente), direccion_cliente: o.direccion_cliente,
       convenio_dropshipping: convenio,
@@ -216,9 +316,7 @@ async function convertir(cuenta: string) {
     };
     plan.guia = {
       idempotency_key: `torre-gt-${o.sucursal}-${o.id}`,
-      sucursal: Number(o.sucursal), transportadora: reglas.transporte.transportadora, t_servicio: reglas.transporte.t_servicio,
-      t_forma_pago: reglas.transporte.t_forma_pago, cant_paquetes: reglas.transporte.cant_paquetes || 1,
-      peso_total: reglas.transporte.peso_total || 1, volumen_total: 1,
+      sucursal: Number(o.sucursal), ...camposTransporte(elegido.t),
       contenido_check: true, valor_declarado_check: true,
       t_trans_ref: [4], sucursal_ref: [Number(o.sucursal)], id_ref: ['(id de la remisión creada)'],
       centro_costos: [centro], remitente: [Number(remitente)], destinatario: [o.cliente],
@@ -227,13 +325,13 @@ async function convertir(cuenta: string) {
     };
     plan.resumen = {
       producto: det[0].nombre, cantidad, precio, total, convenio, recuperado, centro,
-      remitente: Number(remitente), transportadora: reglas.nombreTransportadora,
+      remitente: Number(remitente), transportadora: elegido.t.nombre, motivo_transportadora: elegido.motivo, ciudad: o.nombre_ciudad,
       antecedentes: candidatas[0].n,
     };
     planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: det, estado: 'lista', motivo: null, plan });
   }
 
-  const n = await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: planes, p_reglas: reglasNuevas });
+  const n = await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: [...planes, ...planesGuia], p_reglas: reglasNuevas });
   const salida: Json = { pendientes: pendientes.length, planes: planes.length, listas: planes.filter((p) => p.estado === 'lista').length, guardadas: n };
   if (cfg.modo === 'automatico' && PAISES_CREACION.includes(cuenta)) {
     salida.creadas = [];
@@ -245,18 +343,59 @@ async function convertir(cuenta: string) {
   return salida;
 }
 
+// Guía de una remisión ya hecha en Effi (contenido, valor declarado y recaudo salen de la remisión).
+const guiaDeRemision = (r: Json, t: Json, remitente: string | number, centro: number) => ({
+  idempotency_key: `torre-gt-rv-${r.sucursal}-${r.id}`,
+  sucursal: Number(r.sucursal), ...camposTransporte(t),
+  contenido_check: true, valor_declarado_check: true,
+  t_trans_ref: [4], sucursal_ref: [Number(r.sucursal)], id_ref: [Number(r.id)],
+  centro_costos: [Number(r.centro_costos ?? centro)], remitente: [Number(remitente)], destinatario: [r.cliente],
+  id_pais_destinatario: [Number(r.pais_cliente)], id_provincia_destinatario: [Number(r.provincia_cliente)],
+  id_ciudad_destinatario: [Number(r.ciudad_cliente)], direccion_destinatario: [r.direccion_cliente],
+});
+
+// Plan de guía de las remisiones vigentes sin guía (en Ecuador las remisiones las hace una persona a mano): se guarda
+// en la orden de origen, con la transportadora que toca y el porqué. No crea nada.
+async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Set<number>, desde: string, hasta: string) {
+  const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
+    .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0);
+  if (!rems.length) return [];
+  const ordenes: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id_remision=in.(${rems.map((r) => r.id).join(',')})&select=sucursal,id,sucursal_remision,id_remision`);
+  const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado`);
+  const planes: Json[] = [];
+  for (const r of rems) {
+    const o = ordenes.find((x) => Number(x.id_remision) === Number(r.id) && Number(x.sucursal_remision) === Number(r.sucursal));
+    if (!o) continue;
+    const base = { sucursal: Number(o.sucursal), id: Number(o.id) };
+    const plan: Json = { remision_existente: { sucursal: Number(r.sucursal), id: Number(r.id) } };
+    const remitente = reglas?.remitentes?.[r.convenio_dropshipping];
+    if (!remitente) { planes.push({ ...base, estado: 'revision', motivo: `No hay guías anteriores con el convenio ${r.convenio_dropshipping} para saber el remitente`, plan }); continue; }
+    const elegido = elegirTransporte(cuenta, reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
+    if (!elegido) { planes.push({ ...base, estado: 'revision', motivo: 'No hay guías anteriores para saber la transportadora', plan }); continue; }
+    plan.guia = guiaDeRemision(r, elegido.t, remitente, centros.centro_normal);
+    plan.resumen = {
+      solo_guia: true, remision: Number(r.id_transaccion ?? r.id), total: Number(r.total), ciudad: r.nombre_ciudad,
+      transportadora: elegido.t.nombre, motivo_transportadora: elegido.motivo, remitente: Number(remitente),
+      recuperado: Number(r.centro_costos) === Number(centros.centro_recuperado),
+    };
+    planes.push({ ...base, estado: 'lista', motivo: null, plan });
+  }
+  return planes;
+}
+
 // Automático: guía para las remisiones vigentes sin guía de los últimos 3 días (las que hizo alguien a mano o las que
 // quedaron sin guía por un error), con más de ESPERA_GUIA_MIN minutos para no chocar con quien la esté haciendo.
 async function guiasPendientes(cuenta: string) {
   const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,centro_normal`);
-  if (cfg?.modo !== 'automatico' || !PAISES_CREACION.includes(cuenta) || !cfg.reglas?.transporte) return [];
+  if (cfg?.modo !== 'automatico' || !PAISES_CREACION.includes(cuenta) || !cfg.reglas) return [];
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
   const key = keys.find((k) => k.slug === cuenta)?.api_key;
   if (!key) return [];
   const api = new Effi(key);
+  const memoria = await memoriaCobertura(cuenta);
   const hoy = Date.now();
   const desde = new Date(hoy - 3 * DAY_MS).toISOString().slice(0, 10), hasta = new Date(hoy + 2 * DAY_MS).toISOString().slice(0, 10);
-  const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }))
+  const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0)
     .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > ESPERA_GUIA_MIN * 60_000)
     .slice(0, MAX_CREAR);
@@ -268,28 +407,18 @@ async function guiasPendientes(cuenta: string) {
       rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: orden?.sucursal ?? null, p_id: orden?.id ?? null, p_paso: 'guia', p_ok: ok, p_mensaje: mensaje, p_datos: datos });
     const remitente = cfg.reglas.remitentes?.[r.convenio_dropshipping];
     if (!remitente) { await ev(false, `Remisión ${r.id}: no hay guías anteriores con el convenio ${r.convenio_dropshipping} para saber el remitente`); continue; }
-    const t = cfg.reglas.transporte;
-    const guia = {
-      idempotency_key: `torre-gt-rv-${r.sucursal}-${r.id}`,
-      sucursal: Number(r.sucursal), transportadora: t.transportadora, t_servicio: t.t_servicio, t_forma_pago: t.t_forma_pago,
-      cant_paquetes: t.cant_paquetes || 1, peso_total: t.peso_total || 1, volumen_total: 1,
-      contenido_check: true, valor_declarado_check: true,
-      t_trans_ref: [4], sucursal_ref: [Number(r.sucursal)], id_ref: [Number(r.id)],
-      centro_costos: [Number(r.centro_costos ?? cfg.centro_normal)], remitente: [Number(remitente)], destinatario: [r.cliente],
-      id_pais_destinatario: [Number(r.pais_cliente)], id_provincia_destinatario: [Number(r.provincia_cliente)],
-      id_ciudad_destinatario: [Number(r.ciudad_cliente)], direccion_destinatario: [r.direccion_cliente],
-    };
-    await ev(null, `Automático: haciendo la guía de la remisión ${r.id} (estaba sin guía)…`, { enviado: guia });
-    const g = await api.post('guia_transporte', guia);
-    const primera = (g.respuesta?.data?.guias?.[0] ?? g.respuesta?.data) as Json | undefined;
-    if (!g.ok || (primera && String(primera.vigente) === '0')) {
-      const detalle = g.respuesta?.mensaje ?? primera?.response ?? `HTTP ${g.status}`;
-      await ev(false, `Effi no dejó crear la guía de la remisión ${r.id}: ${typeof detalle === 'string' ? detalle : JSON.stringify(detalle)}`, { enviado: guia, respuesta: g.respuesta, status: g.status });
+    const elegido = elegirTransporte(cuenta, cfg.reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
+    if (!elegido) { await ev(false, `Remisión ${r.id}: no hay guías anteriores para saber la transportadora`); continue; }
+    const guia = guiaDeRemision(r, elegido.t, remitente, cfg.centro_normal);
+    await ev(null, `Automático: haciendo la guía de la remisión ${r.id} (estaba sin guía)${elegido.motivo ? ` por ${String(elegido.t.nombre).split('|')[0].trim()}: ${elegido.motivo}` : ''}…`, { enviado: guia });
+    const h = await hacerGuia(api, cuenta, cfg.reglas, guia, { ciudad: Number(r.ciudad_cliente), nombre: String(r.nombre_ciudad ?? '') }, ev);
+    if (!h.ok) {
+      await ev(false, `Effi no dejó crear la guía de la remisión ${r.id}: ${h.detalle}`, { enviado: h.guia, respuesta: h.g.respuesta, status: h.g.status });
       hechas.push({ remision: r.id, ok: false });
       continue;
     }
-    await ev(true, `Guía ${primera?.guia ?? ''} creada para la remisión ${r.id}`, { respuesta: g.respuesta });
-    hechas.push({ remision: r.id, ok: true, guia: primera?.guia });
+    await ev(true, `Guía ${h.p?.guia ?? ''} creada para la remisión ${r.id}`, { respuesta: h.g.respuesta });
+    hechas.push({ remision: r.id, ok: true, guia: h.p?.guia });
   }
   return hechas;
 }
@@ -342,15 +471,16 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   }
 
   // 2. Guía de transporte con la remisión recién creada.
-  const guia = { ...plan.guia, id_ref: [Number(remision!.id)], sucursal_ref: [Number(remision!.sucursal ?? sucursal)] };
-  await ev('guia', null, 'Creando la guía de transporte en Effi…', { enviado: guia });
-  const g = await api.post('guia_transporte', guia);
   // Effi responde { data: { guias: [ {id, guia, vigente, response, url_guia_transportadora, …} ], cantidad } }.
-  const datosGuia = g.respuesta?.data as Json | undefined;
-  const primera = (Array.isArray(datosGuia) ? datosGuia[0] : datosGuia?.guias?.[0] ?? datosGuia) as Json | undefined;
-  if (!g.ok || (primera && String(primera.vigente) === '0')) {
-    const detalle = g.respuesta?.mensaje ?? primera?.response ?? `HTTP ${g.status}`;
-    const motivo = `Remisión ${remision!.id_transaccion ?? remision!.id} creada, pero Effi no dejó crear la guía: ${typeof detalle === 'string' ? detalle : JSON.stringify(detalle)}`;
+  const [cfgReglas] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=reglas`);
+  const guiaBase = { ...plan.guia, id_ref: [Number(remision!.id)], sucursal_ref: [Number(remision!.sucursal ?? sucursal)] };
+  await ev('guia', null, 'Creando la guía de transporte en Effi…', { enviado: guiaBase });
+  const h = await hacerGuia(api, cuenta, cfgReglas?.reglas, guiaBase,
+    { ciudad: Number(plan.guia?.id_ciudad_destinatario?.[0]), nombre: String(plan.resumen?.ciudad ?? '') },
+    (ok, mensaje, datos = null) => ev('guia', ok, mensaje, datos));
+  const { g, p: primera, guia } = h;
+  if (!h.ok) {
+    const motivo = `Remisión ${remision!.id_transaccion ?? remision!.id} creada, pero Effi no dejó crear la guía: ${h.detalle}`;
     await ev('guia', false, motivo, { enviado: guia, respuesta: g.respuesta, status: g.status });
     await resultado('error', motivo, { paso: 'guia', remision, enviado: guia, respuesta: g.respuesta, status: g.status });
     return { creada: false, motivo };

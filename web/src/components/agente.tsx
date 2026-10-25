@@ -461,6 +461,24 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
     );
   }
   const r = o.plan?.resumen ?? {};
+  // Transportadora escogida y por qué (Ecuador: oficina → Servientrega, sin cobertura de Gintracom, domicilio).
+  const transporte = r.transportadora ? (
+    <div className="text-blue-2 whitespace-normal">
+      🚚 {String(r.transportadora).split("|")[0].trim()}{r.motivo_transportadora ? ` · ${String(r.motivo_transportadora)}` : ""}
+    </div>
+  ) : null;
+  if (r.solo_guia) {
+    return (
+      <div className="text-xs">
+        <button onClick={onAlternar} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-green bg-white/5 hover:bg-white/10">
+          {abierto ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Guía lista para crear
+        </button>
+        <div className="mt-1 text-muted">Remisión {String(r.remision)} · remitente {String(r.remitente)}{r.recuperado ? " · Recuperado" : ""}</div>
+        {transporte}
+        {o.plan_en && <div className="text-[10px] text-muted">simulada {haceCuanto(o.plan_en)}</div>}
+      </div>
+    );
+  }
   return (
     <div className="text-xs">
       <button onClick={onAlternar} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-green bg-white/5 hover:bg-white/10">
@@ -472,6 +490,7 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
       <div className="text-muted">
         Centro {r.recuperado ? "Recuperado" : "Principal"} · remitente {String(r.remitente)} · {Number(r.antecedentes).toLocaleString("es-CO")} antecedentes
       </div>
+      {transporte}
       {o.plan_en && <div className="text-[10px] text-muted">simulada {haceCuanto(o.plan_en)}</div>}
     </div>
   );
