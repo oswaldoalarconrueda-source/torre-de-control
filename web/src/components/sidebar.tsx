@@ -1,19 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Menu, X } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, type ItemMenu } from "@/lib/menu";
 import { tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
 
-export function Sidebar({ acceso, email, ultimoSync, sociedad }: { acceso: Acceso; email: string; ultimoSync: string; sociedad: string }) {
+export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista }: {
+  acceso: Acceso; email: string; ultimoSync: string; sociedad: string; sociedades: string[] | null; vista: string | null;
+}) {
   const esOwner = acceso.rol === "owner";
   const path = usePathname();
   const sp = useSearchParams();
+  const router = useRouter();
   const [abierto, setAbierto] = useState(false);
+  const [cambiando, start] = useTransition();
+  // Dueño: qué Torre mira. Se guarda en su usuario y la base filtra todo por esa sociedad; el país elegido se suelta
+  // porque puede ser de otra sociedad.
+  async function verSociedad(s: string) {
+    const { error } = await createClient().rpc("app_ver_sociedad", { p_sociedad: s || null });
+    if (error) return;
+    start(() => { router.push(path); router.refresh(); });
+  }
   const qs = sp.toString() ? `?${sp.toString()}` : "";
 
   useEffect(() => setAbierto(false), [path]);
@@ -44,7 +56,16 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad }: { acceso: Acces
         <Logo />
         <div className="min-w-0 flex-1">
           <div className="font-display font-semibold tracking-tight leading-tight">Torre de Control</div>
-          <div className="text-[11px] text-muted truncate">{sociedad}</div>
+          {sociedades ? (
+            <select value={vista ?? ""} onChange={(e) => verSociedad(e.target.value)} disabled={cambiando}
+              aria-label="Qué Torre de control ver"
+              className="mt-0.5 -ml-1 max-w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-muted hover:border-line hover:text-text focus:border-line">
+              <option value="" className="bg-bg text-text">Todas las sociedades</option>
+              {sociedades.map((s) => <option key={s} value={s} className="bg-bg text-text">{s}</option>)}
+            </select>
+          ) : (
+            <div className="text-[11px] text-muted truncate">{sociedad}</div>
+          )}
         </div>
         {tieneModulo(acceso, "guias") && <Link href="/en-vivo" title="Ver la operación en vivo"
           className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${

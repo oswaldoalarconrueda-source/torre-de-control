@@ -17,13 +17,19 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
   const prom = (v: number, n: number) => (n ? $(v / n) : "—");
 
   const tarifa = TARIFA_FULFILLMENT[cuenta];
-  // Effi: tarifa por guía despachada (GT/EC) o 4x1000 (CO). Dropi: su comisión, que se cobra en las entregadas.
+  // Effi: tarifa por guía despachada (NaturalFitt GT/EC), 4x1000 (CO) o, en las demás cuentas (p. ej. Valka), el
+  // fulfillment que Effi cobra directamente en el wallet. Dropi: su comisión, que se cobra en las entregadas.
   const P = d.plataformas;
+  const delWallet = tarifa == null && Number(d.fulfillment_wallet ?? 0) !== 0;
   const full = tarifa != null
     ? { total: P.effi * tarifa + d.comision_dropi, label: P.effi ? "Fulfillment" : "Comisión Dropi" }
-    : { total: d.x4 + d.comision_dropi, label: P.effi ? "4x1000" : "Comisión Dropi" };
+    : delWallet
+      ? { total: Number(d.fulfillment_wallet) + d.x4 + d.comision_dropi, label: P.effi ? "Fulfillment" : "Comisión Dropi" }
+      : { total: d.x4 + d.comision_dropi, label: P.effi ? "4x1000" : "Comisión Dropi" };
   const fullSub = [
-    P.effi ? (tarifa != null ? `${entero(P.effi)} guías Effi × ${$(tarifa)} por despacho` : "4x1000 cobrado en el wallet sobre el recaudo") : null,
+    P.effi ? (tarifa != null ? `${entero(P.effi)} guías Effi × ${$(tarifa)} por despacho`
+      : delWallet ? "Lo que Effi cobró en el wallet por fulfillment (bodegaje, alistamiento, empaque)"
+      : "4x1000 cobrado en el wallet sobre el recaudo") : null,
     P.dropi ? `Dropi: comisión ${$(d.comision_dropi)} sobre ${entero(P.dropi_entregadas)} entregadas` : null,
   ].filter(Boolean).join(" · ");
   const D = d.despachado, E = d.entregado;
