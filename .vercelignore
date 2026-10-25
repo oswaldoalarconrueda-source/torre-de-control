@@ -1,0 +1,11 @@
+# Lo que nunca sube a Vercel cuando se publica desde este computador (datos reales y archivos internos)
+.env*
+**/.env*
+/.claude
+/tools
+/supabase
+/docs
+/scripts
+/web/public/_ref
+/web/node_modules
+/web/.next
