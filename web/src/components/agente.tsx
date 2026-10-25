@@ -276,7 +276,8 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
         </div>
       )}
 
-      <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()} />
+      <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()}
+        completas={datos.ordenes.filter((o) => o.estado === "completa").map((o) => o.id)} />
 
       <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         <Indicador titulo="Órdenes del mes" valor={entero(r.mes_total ?? 0)} color="var(--blue-2)" />

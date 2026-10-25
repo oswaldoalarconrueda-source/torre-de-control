@@ -437,6 +437,8 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
 
   if (!PAISES_CREACION.includes(cuenta)) throw new Error('La creación no está montada para este país');
   const [fila] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id=eq.${id}&select=plan,plan_estado,decision`);
+  // Orden recién llegada que la vigilancia (cada 2 minutos) aún no registra: no es error, se crea en la próxima corrida.
+  if (automatico && !fila) return { creada: false, motivo: 'aún no registrada' };
   const autorizada = automatico ? fila?.plan_estado === 'lista' : fila?.decision === 'ejecutar';
   if (!fila || !autorizada || !(fila.plan?.remision || (fila.plan?.remision_existente && fila.plan?.guia))) {
     await ev('fin', false, automatico ? 'Automático: la orden ya no estaba lista para crear' : 'La orden no está marcada para ejecutar o no tiene plan');

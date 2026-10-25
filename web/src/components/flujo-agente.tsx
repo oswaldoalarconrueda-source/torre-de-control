@@ -15,8 +15,9 @@ type Resumen = { sin_remision: number; sin_guia: number; listas?: number; plan_r
 
 const ZONA: Record<string, string> = { TIENDA_CO: "America/Bogota", TIENDA_EC: "America/Guayaquil", TIENDA_GT: "America/Guatemala", TIENDA_CR: "America/Costa_Rica" };
 
-export function FlujoAgente({ cuenta, resumen, proxima, onNuevo }: {
+export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
   cuenta: string; resumen: Resumen; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
+  completas?: number[]; // órdenes que ya tienen remisión y guía
 }) {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [abierto, setAbierto] = useState<number | null>(null);
@@ -48,7 +49,11 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo }: {
   const hoy = useMemo(() => eventos.filter((e) => dia(Date.parse(e.creado_en)) === dia(ahora)), [eventos, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
   const remisiones = hoy.filter((e) => e.paso === "remision" && e.ok === true).length;
   const guias = hoy.filter((e) => e.paso === "guia" && e.ok === true).length;
-  const errores = hoy.filter((e) => e.ok === false);
+  // Errores que siguen pendientes: no cuenta el de una orden que después quedó completa (la creó la Torre en un
+  // intento siguiente o alguien a mano).
+  const errores = hoy.filter((e) => e.ok === false && !(e.id_orden != null && (
+    completas?.includes(e.id_orden) ||
+    hoy.some((x) => x.id_orden === e.id_orden && x.id > e.id && x.ok === true && (x.paso === "fin" || x.paso === "guia")))));
 
   // ¿Está creando algo ahora? El último paso en curso de una orden que todavía no terminó (menos de 2 minutos).
   const activo = useMemo(() => {
