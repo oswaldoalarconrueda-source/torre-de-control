@@ -1,6 +1,7 @@
 // auto-convertir: el Agente arma la remisión y la guía de cada orden de venta vigente sin remisión.
 // Simulación (cron): guarda en auto_ordenes.plan lo que enviaría a Effi y no crea nada.
-// Creación (solo Guatemala): cuando el dueño pulsa "Ejecutar", o sola en modo Automático, crea la remisión y después la
+// Creación (Guatemala y Ecuador): cuando el dueño pulsa "Ejecutar" o "Ejecutar ahora" (?ahora=1), o sola en modo
+// Automático (solo Guatemala), crea la remisión y después la
 // guía, dejando cada paso en auto_eventos (bitácora en vivo) y el resultado o el error de Effi, con lo enviado y lo
 // respondido, en el plan. En Automático también hace la guía de las remisiones vigentes sin guía (más de 15 minutos).
 //
@@ -28,8 +29,10 @@ const MIN_GAP_MS = 560;
 const DAY_MS = 86_400_000;
 const REGLAS_HORAS = 6;
 const MAX_ORDENES = 15;
-// Las reglas de creación son de Guatemala: Costa Rica, Ecuador y Colombia funcionan distinto.
-const PAISES_CREACION = ['TIENDA_GT'];
+// Países donde la Torre crea en Effi (remisión y guía). Ecuador solo crea cuando el dueño pulsa "Ejecutar ahora" o
+// "Ejecutar" (el Automático sigue montado solo para Guatemala). Costa Rica y Colombia funcionan distinto.
+const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC'];
+const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const ESPERA_GUIA_MIN = 15;   // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía
 const PAGINAS_REGLAS = 30;    // guías y remisiones de 10 días (Ecuador hace unas 250 guías al día)
@@ -220,7 +223,8 @@ async function aprenderReglas(api: Effi, off: number, cuenta: string) {
   return { remitentes, transporte, nombreTransportadora, formaPagoRemision, transportes, sinCobertura, guias_vistas: conDoc.length };
 }
 
-async function convertir(cuenta: string) {
+// ahora = "Ejecutar ahora" del dueño: crea lo que esté listo aunque el país esté en Manual.
+async function convertir(cuenta: string, ahora = false) {
   const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,reglas_en`);
   if (!cfg || !['simular', 'automatico'].includes(cfg.modo)) return { omitida: 'modo sin conversión' };
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
@@ -333,10 +337,10 @@ async function convertir(cuenta: string) {
 
   const n = await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: [...planes, ...planesGuia], p_reglas: reglasNuevas });
   const salida: Json = { pendientes: pendientes.length, planes: planes.length, listas: planes.filter((p) => p.estado === 'lista').length, guardadas: n };
-  if (cfg.modo === 'automatico' && PAISES_CREACION.includes(cuenta)) {
+  if ((cfg.modo === 'automatico' || ahora) && PAISES_CREACION.includes(cuenta)) {
     salida.creadas = [];
     for (const p of planes.filter((x) => x.estado === 'lista').slice(0, MAX_CREAR)) {
-      if (!(await sigueAutomatico(cuenta))) break;
+      if (!ahora && !(await sigueAutomatico(cuenta))) break;
       salida.creadas.push(await crear(cuenta, p.sucursal, p.id, true));
     }
   }
@@ -385,9 +389,10 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
 
 // Automático: guía para las remisiones vigentes sin guía de los últimos 3 días (las que hizo alguien a mano o las que
 // quedaron sin guía por un error), con más de ESPERA_GUIA_MIN minutos para no chocar con quien la esté haciendo.
-async function guiasPendientes(cuenta: string) {
+async function guiasPendientes(cuenta: string, ahora = false) {
   const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,centro_normal`);
-  if (cfg?.modo !== 'automatico' || !PAISES_CREACION.includes(cuenta) || !cfg.reglas) return [];
+  if ((cfg?.modo !== 'automatico' && !ahora) || !PAISES_CREACION.includes(cuenta) || !cfg.reglas) return [];
+  const espera = (ahora ? ESPERA_GUIA_AHORA_MIN : ESPERA_GUIA_MIN) * 60_000;
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
   const key = keys.find((k) => k.slug === cuenta)?.api_key;
   if (!key) return [];
@@ -397,11 +402,11 @@ async function guiasPendientes(cuenta: string) {
   const desde = new Date(hoy - 3 * DAY_MS).toISOString().slice(0, 10), hasta = new Date(hoy + 2 * DAY_MS).toISOString().slice(0, 10);
   const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0)
-    .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > ESPERA_GUIA_MIN * 60_000)
+    .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > espera)
     .slice(0, MAX_CREAR);
   const hechas: Json[] = [];
   for (const r of rems) {
-    if (!(await sigueAutomatico(cuenta))) break;
+    if (!ahora && !(await sigueAutomatico(cuenta))) break;
     const [orden] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${r.sucursal}&id_remision=eq.${r.id}&select=sucursal,id`);
     const ev = (ok: boolean | null, mensaje: string, datos: Json | null = null) =>
       rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: orden?.sucursal ?? null, p_id: orden?.id ?? null, p_paso: 'guia', p_ok: ok, p_mensaje: mensaje, p_datos: datos });
@@ -410,7 +415,7 @@ async function guiasPendientes(cuenta: string) {
     const elegido = elegirTransporte(cuenta, cfg.reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
     if (!elegido) { await ev(false, `Remisión ${r.id}: no hay guías anteriores para saber la transportadora`); continue; }
     const guia = guiaDeRemision(r, elegido.t, remitente, cfg.centro_normal);
-    await ev(null, `Automático: haciendo la guía de la remisión ${r.id} (estaba sin guía)${elegido.motivo ? ` por ${String(elegido.t.nombre).split('|')[0].trim()}: ${elegido.motivo}` : ''}…`, { enviado: guia });
+    await ev(null, `${ahora ? 'Ejecutar ahora' : 'Automático'}: haciendo la guía de la remisión ${r.id} (estaba sin guía)${elegido.motivo ? ` por ${String(elegido.t.nombre).split('|')[0].trim()}: ${elegido.motivo}` : ''}…`, { enviado: guia });
     const h = await hacerGuia(api, cuenta, cfg.reglas, guia, { ciudad: Number(r.ciudad_cliente), nombre: String(r.nombre_ciudad ?? '') }, ev);
     if (!h.ok) {
       await ev(false, `Effi no dejó crear la guía de la remisión ${r.id}: ${h.detalle}`, { enviado: h.guia, respuesta: h.g.respuesta, status: h.g.status });
@@ -430,10 +435,10 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   const resultado = (estado: 'creada' | 'error', motivo: string | null, datos: Json) =>
     rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_estado: estado, p_motivo: motivo, p_resultado: datos });
 
-  if (!PAISES_CREACION.includes(cuenta)) throw new Error('La creación solo está montada para Guatemala');
+  if (!PAISES_CREACION.includes(cuenta)) throw new Error('La creación no está montada para este país');
   const [fila] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id=eq.${id}&select=plan,plan_estado,decision`);
   const autorizada = automatico ? fila?.plan_estado === 'lista' : fila?.decision === 'ejecutar';
-  if (!fila || !autorizada || !fila.plan?.remision) {
+  if (!fila || !autorizada || !(fila.plan?.remision || (fila.plan?.remision_existente && fila.plan?.guia))) {
     await ev('fin', false, automatico ? 'Automático: la orden ya no estaba lista para crear' : 'La orden no está marcada para ejecutar o no tiene plan');
     return { creada: false };
   }
@@ -445,8 +450,25 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   if (!key) throw new Error('Sin API key');
   const api = new Effi(key);
 
-  // 1. Remisión (si un intento anterior ya la creó, se reutiliza y solo se reintenta la guía).
+  // 1. Remisión (si un intento anterior ya la creó, se reutiliza y solo se reintenta la guía). Si la remisión ya
+  // existía (la hizo una persona), se revisa que siga vigente y sin guía.
   let remision = previo.remision as Json | undefined;
+  const existente = plan.remision_existente as { sucursal: number; id: number } | undefined;
+  if (!remision?.id && existente) {
+    await ev('remision', null, `Revisando en Effi que la remisión ${existente.id} siga vigente y sin guía`);
+    const hoy = Date.now();
+    const desde = new Date(hoy - 30 * DAY_MS).toISOString().slice(0, 10), hasta = new Date(hoy + 2 * DAY_MS).toISOString().slice(0, 10);
+    const esta = (r: Json) => Number(r.id) === Number(existente.id) && Number(r.sucursal) === Number(existente.sucursal);
+    let rem = (await api.get('remision_v', { id: existente.id, sucursal: existente.sucursal, desde, hasta, por_pagina: 5, pagina: 1 })).data.find(esta);
+    if (!rem) rem = (await api.todas('remision_v', { desde: new Date(hoy - 3 * DAY_MS).toISOString().slice(0, 10), hasta, vigente: 1 }, PAGINAS_REGLAS)).find(esta);
+    if (!rem || rem.vigente === '0' || rem.id_guia_transporte) {
+      const motivo = rem?.id_guia_transporte ? `La remisión ${existente.id} ya tiene guía ${rem.guia ?? ''} (la hizo alguien más)` : `La remisión ${existente.id} ya no está vigente en Effi`;
+      await ev('remision', false, motivo);
+      await resultado('error', motivo, { paso: 'remision' });
+      return { creada: false, motivo };
+    }
+    remision = { id: Number(rem.id), sucursal: Number(rem.sucursal), id_transaccion: rem.id_transaccion };
+  }
   if (!remision?.id) {
     await ev('remision', null, 'Revisando en Effi que la orden siga vigente y sin remisión');
     const hoy = Date.now();
@@ -515,10 +537,11 @@ Deno.serve(async (req) => {
   }
   // Corrida del horario: una a la vez por país; responde de una vez y trabaja en segundo plano.
   if (!(await rpc('auto_candado', { p_cuenta: cuenta, p_segundos: 360 }))) return json(200, { ok: true, omitida: 'otra corrida en curso' });
+  const ahora = url.searchParams.get('ahora') === '1';
   const tarea = (async () => {
     try {
-      await convertir(cuenta);
-      await guiasPendientes(cuenta);
+      await convertir(cuenta, ahora);
+      await guiasPendientes(cuenta, ahora);
     } catch (e) {
       await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {});
     } finally {

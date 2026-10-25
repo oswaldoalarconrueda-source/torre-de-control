@@ -15,7 +15,10 @@ import { FlujoAgente } from "./flujo-agente";
 
 type Estado = "completa" | "revision" | "sin_guia" | "sin_remision" | "anulada";
 type Modo = "apagado" | "vigilar" | "simular" | "automatico";
-type Plan = { resumen?: Record<string, string | number | boolean>; remision?: Record<string, unknown>; guia?: Record<string, unknown>; articulos?: { id: number; nombre: string }[]; resultado?: Record<string, unknown> };
+type Plan = {
+  resumen?: Record<string, string | number | boolean>; remision?: Record<string, unknown>; guia?: Record<string, unknown>;
+  remision_existente?: { sucursal: number; id: number }; articulos?: { id: number; nombre: string }[]; resultado?: Record<string, unknown>;
+};
 export type OrdenAuto = {
   sucursal: number; id: number; fecha: string; cliente: string | null; ciudad: string | null; provincia: string | null;
   total: number | null; ecommerce: string | null; pedido: string | null; convenio: string | null; recuperado: boolean;
@@ -95,7 +98,14 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
     (o.estado === "sin_remision" && (o.plan_estado === "revision" || o.minutos >= alerta)) ||
     (o.estado === "sin_guia" && o.minutos >= alerta);
 
-  const lista = useMemo(() => datos.ordenes.filter(novedad),
+  // Listas para crear: el agente ya sabe qué hacer (remisión y guía, o solo la guía de una remisión hecha a mano). No
+  // son novedad aunque lleven rato esperando: salen con "Ejecutar ahora" o con "Ejecutar" en cada una.
+  const paraCrear = (o: OrdenAuto) =>
+    o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar";
+  const lista = useMemo(() => datos.ordenes.filter((o) => novedad(o) && !paraCrear(o)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [datos.ordenes]);
+  const listas = useMemo(() => datos.ordenes.filter(paraCrear),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [datos.ordenes]);
 
@@ -112,12 +122,14 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   // "Ejecutar ahora": la misma corrida del horario, disparada en el momento. Mientras corre, la pantalla se refresca
   // cada pocos segundos para ver en la bitácora lo que va creando.
   const [corriendo, setCorriendo] = useState<string | null>(null);
+  const [confirmarAhora, setConfirmarAhora] = useState(false);
   async function ejecutarAhora() {
+    setConfirmarAhora(false);
     setGuardando("ahora"); setError(null);
     const { data, error: e } = await createClient().rpc("auto_ejecutar_ahora", { p_cuenta: cuenta });
     setGuardando(null);
     if (e) return setError(e.message);
-    setCorriendo(data === "ocupado" ? "Ya hay una corrida en curso; la bitácora muestra lo que va haciendo." : "Corriendo ahora…");
+    setCorriendo(data === "ocupado" ? "Ya hay una corrida en curso; la bitácora muestra lo que va haciendo." : "Creando en Effi… mira la bitácora del agente.");
     router.refresh();
     let n = 0;
     const t = setInterval(() => {
@@ -132,9 +144,12 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
     setGuardando(null);
     if (e) setError(e.message); else { setEditando(false); router.refresh(); }
   }
-  // Solo Guatemala tiene montada la creación; la orden debe tener la remisión lista (o un error para reintentar).
+  // Guatemala y Ecuador tienen montada la creación; la orden debe tener la remisión lista, o la guía de una remisión ya
+  // hecha (o un error para reintentar).
+  const creaEnEffi = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
   const puedeEjecutar = (o: OrdenAuto) =>
-    datos.es_owner && cuenta === "TIENDA_GT" && (o.plan_estado === "lista" || o.plan_estado === "error") && !!o.plan?.remision;
+    datos.es_owner && creaEnEffi && (o.plan_estado === "lista" || o.plan_estado === "error") &&
+    (!!o.plan?.remision || (!!o.plan?.remision_existente && !!o.plan?.guia));
   async function ejecutar(o: OrdenAuto) {
     const clave = `${o.sucursal}-${o.id}`;
     setConfirmarOrden(null);
@@ -146,8 +161,9 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
 
   return (
     <div className="space-y-4">
-      {/* Modo: Automático (la Torre crea sola remisión y guía) o Manual (se ejecuta orden por orden). Solo Guatemala. */}
-      {automaticoPosible && (
+      {/* Modo: Automático (la Torre crea sola remisión y guía, solo Guatemala) o Manual (crea cuando el dueño pulsa
+          "Ejecutar ahora" o "Ejecutar" en una orden). */}
+      {cfg && (
         <div className={`card p-4 flex flex-wrap items-center justify-between gap-3 ${modo === "automatico" ? "border border-green/40" : ""}`}
           style={modo === "automatico" ? { background: "linear-gradient(90deg, rgb(47 210 143 / 0.12), transparent)" } : undefined}>
           <div className="flex items-center gap-3">
@@ -160,13 +176,30 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
               <div className="text-xs text-muted">
                 {modo === "automatico"
                   ? "La Torre crea sola en Effi la remisión y la guía de cada orden, según el horario."
-                  : "La Torre no crea nada sola en Effi: ejecuta orden por orden con el botón “Ejecutar”."}
+                  : creaEnEffi
+                    ? "La Torre no crea nada sola en Effi: crea cuando pulsas “Ejecutar ahora” o “Ejecutar” en una orden."
+                    : "La Torre solo revisa: la creación en Effi aún no está montada para este país."}
                 {datos.config?.ultima_corrida && <> · última revisión {haceCuanto(datos.config.ultima_corrida)}</>}
               </div>
               {datos.config?.ultimo_error && <div className="text-xs text-red mt-0.5">{datos.config.ultimo_error}</div>}
+              {corriendo && <div className="text-xs text-green mt-0.5">{corriendo}</div>}
             </div>
           </div>
-          {datos.es_owner && (confirmarModo ? (
+          <div className="flex flex-wrap items-center gap-2">
+          {/* Ejecutar ahora: crea ya en Effi lo que esté listo, sin esperar el horario. */}
+          {datos.es_owner && creaEnEffi && (confirmarAhora ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted">¿Crear ya en Effi lo que está listo ({entero(listas.length)})?</span>
+              <button onClick={ejecutarAhora} disabled={guardando === "ahora"} className="rounded-full bg-green px-4 py-2 text-sm font-bold text-black">Sí, ejecutar</button>
+              <button onClick={() => setConfirmarAhora(false)} className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-muted hover:text-text">No</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmarAhora(true)} disabled={guardando === "ahora" || !!corriendo}
+              className="inline-flex items-center gap-2 rounded-full bg-green px-5 py-2.5 text-sm font-bold text-black shadow-[0_0_24px_-6px_var(--green)] hover:brightness-110 disabled:opacity-60">
+              <Play size={16} /> {corriendo ? "Ejecutando…" : "Ejecutar ahora"}
+            </button>
+          ))}
+          {datos.es_owner && automaticoPosible && (confirmarModo ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted">{modo === "automatico" ? "¿Pasar a modo manual?" : "¿Activar el modo automático?"}</span>
               <button onClick={() => { setConfirmarModo(false); cambiarModo(modo === "automatico" ? "simular" : "automatico"); }}
@@ -187,6 +220,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
               <Play size={16} /> Activar automático
             </button>
           ))}
+          </div>
         </div>
       )}
 
@@ -211,21 +245,11 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                     <span className="text-muted">El agente no está corriendo.</span>
                   )}
                 </div>
-                {corriendo && <div className="text-xs text-green mt-1">{corriendo}</div>}
                 {cfg.error_conversion && <div className="text-xs text-red mt-1">{cfg.error_conversion}</div>}
               </div>
             </div>
             {datos.es_owner && !editando && (
-              <div className="flex flex-wrap items-center gap-2">
-                {(modo === "simular" || modo === "automatico") && (
-                  <button onClick={ejecutarAhora} disabled={guardando === "ahora" || !!corriendo}
-                    title={modo === "automatico" ? "Crea ya en Effi la remisión y la guía de las órdenes pendientes" : "Revisa ya las órdenes pendientes sin crear nada en Effi"}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-green/50 bg-green/15 px-4 py-1.5 text-xs font-bold text-green hover:bg-green/25 disabled:opacity-60">
-                    <Play size={14} /> {corriendo ? "Corriendo…" : modo === "automatico" ? "Ejecutar ahora" : "Revisar ahora"}
-                  </button>
-                )}
-                <button onClick={() => setEditando(true)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted hover:text-text">Cambiar horario</button>
-              </div>
+              <button onClick={() => setEditando(true)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted hover:text-text">Cambiar horario</button>
             )}
           </div>
           {editando && (
@@ -261,15 +285,23 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
         <Indicador titulo="Completadas hoy" valor={entero(r.hoy_completas ?? 0)} color="var(--green)" />
         <Indicador titulo="Requieren revisión" valor={entero(lista.length)} color="var(--amber)" />
         <Indicador titulo="Sin guía" valor={entero(r.sin_guia)} color="var(--blue)" />
-        <Indicador titulo="Listas para crear" valor={entero(r.listas ?? 0)} color="var(--green)" />
+        <Indicador titulo="Listas para crear" valor={entero(listas.length)} color="var(--green)" />
       </div>
 
-      <div className="flex flex-wrap items-baseline gap-2 pt-2">
-        <span className="font-display text-lg font-semibold">Novedad en la orden</span>
-        <span className="text-xs text-muted">Lo que el agente no pudo resolver solo. Se corrige a mano en Effi (por ejemplo, cambiar de proveedor) y sale de aquí al quedar con remisión y guía.</span>
-        <span className="text-xs text-muted ml-auto">{entero(lista.length)} {lista.length === 1 ? "orden" : "órdenes"}</span>
-      </div>
       {error && <p className="text-sm text-red">{error}</p>}
+
+      {[
+        { titulo: "Listas para crear", filas: listas, vacio: "No hay nada esperando: todo lo que el agente sabe hacer ya está creado.",
+          texto: "El agente ya sabe qué hacer con estas: salen con “Ejecutar ahora” o con “Ejecutar” en cada una." },
+        { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.",
+          texto: "Lo que el agente no pudo resolver solo. Se corrige a mano en Effi (por ejemplo, cambiar de proveedor) y sale de aquí al quedar con remisión y guía." },
+      ].map((s) => (
+      <Fragment key={s.titulo}>
+      <div className="flex flex-wrap items-baseline gap-2 pt-2">
+        <span className="font-display text-lg font-semibold">{s.titulo}</span>
+        <span className="text-xs text-muted">{s.texto}</span>
+        <span className="text-xs text-muted ml-auto">{entero(s.filas.length)} {s.filas.length === 1 ? "orden" : "órdenes"}</span>
+      </div>
 
       <div className="card overflow-x-auto p-0">
         <table className="w-full min-w-max text-sm">
@@ -288,7 +320,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {lista.map((o) => {
+            {s.filas.map((o) => {
               const est = ESTADOS[o.estado];
               const clave = `${o.sucursal}-${o.id}`;
               const abierto = abierta === clave;
@@ -313,7 +345,10 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                     <div className="text-muted">{o.provincia}</div>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap text-right num">{dinero(o.total, cuenta)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{o.convenio ?? <span className="text-red">Sin convenio</span>}</td>
+                  {/* Todo es dropshipping: importa que tenga convenio, no cuál. */}
+                  <td className="px-3 py-2 whitespace-nowrap text-xs">
+                    {o.convenio ? <span className="text-green">✓ Con convenio</span> : <span className="font-semibold text-red">Sin convenio</span>}
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap text-xs">
                     {o.id_remision ? (
                       <>
@@ -322,7 +357,6 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                           {o.rem_centro ?? "—"}
                           {o.rem_fecha ? ` · ${duracion((Date.parse(o.rem_fecha) - Date.parse(o.fecha)) / 60_000)}` : ""}
                         </div>
-                        {o.rem_convenio && <div className="text-muted">{o.rem_convenio}</div>}
                       </>
                     ) : (
                       <span className="text-muted">—</span>
@@ -375,7 +409,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                         ) : (
                           <button
                             disabled
-                            title={cuenta === "TIENDA_GT" ? "Necesita una simulación lista para crear" : "La creación solo está montada para Guatemala"}
+                            title={creaEnEffi ? "Necesita una simulación lista para crear" : "La creación en Effi aún no está montada para este país"}
                             className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted opacity-60 cursor-not-allowed"
                           >
                             <Play size={12} /> Ejecutar
@@ -404,16 +438,18 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                 </Fragment>
               );
             })}
-            {!lista.length && (
+            {!s.filas.length && (
               <tr>
                 <td colSpan={10} className="px-3 py-10 text-center text-sm text-muted">
-                  Sin novedades: todas las órdenes van bien.
+                  {s.vacio}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+      </Fragment>
+      ))}
     </div>
   );
 }
