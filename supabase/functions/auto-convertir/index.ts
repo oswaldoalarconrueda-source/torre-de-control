@@ -43,10 +43,9 @@ const TRANSPORTE_PAIS: Record<string, { oficina: number; domicilio: number; resp
 };
 // Transportadoras que en Effi piden además las medidas del paquete (alto, ancho, largo en cm): Servientrega,
 // Coordinadora, Laarcourier y CAEX. Sin medidas Effi responde HTTP 500 vacío, y sin volumen "Volumen total es
-// obligatorio": van las dos cosas. 10×10×10 cm da 0,2 kg volumétricos, por debajo del peso real (1 kg), así que no
-// cambia el flete.
+// obligatorio": van las dos cosas. Regla del dueño: las medidas siempre son 1×1×1.
 const MEDIDAS: Record<string, Record<number, { alto: number; ancho: number; largo: number }>> = {
-  TIENDA_EC: { 1: { alto: 10, ancho: 10, largo: 10 }, 3: { alto: 10, ancho: 10, largo: 10 } },   // 1 Servientrega · 3 Laarcourier
+  TIENDA_EC: { 1: { alto: 1, ancho: 1, largo: 1 }, 3: { alto: 1, ancho: 1, largo: 1 } },   // 1 Servientrega · 3 Laarcourier
 };
 const conMedidas = (cuenta: string, guia: Json) => {
   const m = MEDIDAS[cuenta]?.[Number(guia.transportadora)];
