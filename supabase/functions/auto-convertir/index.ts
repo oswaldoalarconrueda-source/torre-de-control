@@ -37,6 +37,7 @@ const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC'];
 const PAISES_REMISION = ['TIENDA_GT'];
 const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
+const MAX_GUIAS_AHORA = 10;   // "Ejecutar ahora": guías por corrida, de a 10 para no cargar el sistema (regla del dueño)
 const ESPERA_GUIA_MIN = 15;   // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía
 const PAGINAS_REGLAS = 30;    // guías y remisiones de 10 días (Ecuador hace unas 250 guías al día)
 const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIENDA_CO: 'COP', TIENDA_CR: 'CRC' };
@@ -125,8 +126,11 @@ const masComun = <T,>(xs: T[]) => {
 const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 // "3 * DRENAJE LINFATICO 59ML. 1 * OFTALMIEL. " → [{cant: 3, nombre: 'DRENAJE LINFATICO 59ML'}, ...]
 const lineas = (contenido: string) => [...contenido.matchAll(/(\d+)\s*\*\s*([^.]+)\./g)].map((m) => ({ cant: Number(m[1]), nombre: norm(m[2]) }));
-// Entrega en oficina de la transportadora: "Oficina Servientrega QUEVEDO…", "RETIRA EN CS TULCAN…", "Retiro en oficina…".
-const esOficina = (direccion: string) => /\bOFICINA\b|\bRETIR(A|O|AR)\b|\bCS\b/.test(norm(direccion ?? ''));
+// Entrega en oficina o punto de servicio de la transportadora (regla del dueño: todo eso va por Servientrega):
+// "Oficina Servientrega QUEVEDO…", "RETIRA EN CS TULCAN…", "RECLAMA EN SERVIENTREGA MACHALA…", "recoge en oficina",
+// "va a oficina", "punto de servicio".
+const esOficina = (direccion: string) =>
+  /\bOFICINA\b|\bPUNTO DE SERVICIO\b|\bRETIR(A|O|AR)\b|\bRECLAM(A|AR)\b|\bRECOG(E|ER)\b|\bEN SERVIENTREGA\b|\bCS\b/.test(norm(direccion ?? ''));
 // Regla del dueño para todos los países: 1 paquete, 1 kg y volumen 1. Contenido y valor declarado se copian del
 // documento de venta (contenido_check y valor_declarado_check en cada guía).
 const camposTransporte = (t: Json) => ({
@@ -178,6 +182,15 @@ async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, de
     p = primeraGuia(g);
   }
   return { g, p, guia, ok: !fallaGuia(g, p), detalle: detalleGuia(g, p) };
+}
+
+// Remisiones que ya fallaron porque ni la transportadora de respaldo tiene cobertura en esa ciudad: no se reintentan
+// cada minuto (Effi siempre dirá lo mismo); quedan en "Requieren revisión" para que una persona decida.
+async function sinCoberturaTotal(cuenta: string) {
+  const desde = new Date(Date.now() - 7 * DAY_MS).toISOString();
+  const filas: { mensaje: string }[] = await tabla(
+    `auto_eventos?cuenta=eq.${cuenta}&paso=eq.guia&ok=is.false&creado_en=gte.${desde}&mensaje=ilike.*No%20hay%20cobertura*Servientrega*&select=mensaje`);
+  return new Set(filas.map((f) => Number(f.mensaje.match(/remisión (\d+)/)?.[1])).filter(Boolean));
 }
 
 // Memoria de cobertura: ciudades donde la transportadora de domicilio no dejó hacer guías.
@@ -415,12 +428,14 @@ async function guiasPendientes(cuenta: string, ahora = false) {
   if (!key) return [];
   const api = new Effi(key);
   const memoria = await memoriaCobertura(cuenta);
+  const sinCobertura = await sinCoberturaTotal(cuenta);
   const hoy = Date.now();
   const desde = new Date(hoy - 3 * DAY_MS).toISOString().slice(0, 10), hasta = new Date(hoy + 2 * DAY_MS).toISOString().slice(0, 10);
   const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0)
     .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > espera)
-    .slice(0, MAX_CREAR);
+    .filter((r) => !sinCobertura.has(Number(r.id)))
+    .slice(0, ahora ? MAX_GUIAS_AHORA : MAX_CREAR);
   const hechas: Json[] = [];
   for (const r of rems) {
     if (!ahora && !(await sigueAutomatico(cuenta))) break;

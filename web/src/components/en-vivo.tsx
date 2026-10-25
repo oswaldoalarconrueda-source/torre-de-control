@@ -8,11 +8,14 @@ import { CUENTAS, infoCuenta } from "@/lib/paises";
 import { COLOR_ESTADO } from "./charts";
 import { RedNeuronal, type RedNeuronalApi } from "./red-neuronal";
 
-// ⚡ En vivo: la operación como un "segundo cerebro". Cada cambio de estado que llega de Effi viaja como un
-// impulso desde el hexágono del país hasta el de su estado. Effi se sincroniza cada minuto, así que los
-// cambios de cada lote se reproducen en orden, repartidos en el minuto siguiente.
+// ⚡ En vivo: la operación como un "segundo cerebro" con el proceso completo de la empresa. Alrededor de cada país:
+// orden de venta → remisión → guía generada → estados de la guía (en tránsito, en oficina, novedad, entregada,
+// devolución). Cada cambio de estado que llega de Effi viaja como un impulso desde "guía generada" hasta su estado, y
+// las órdenes, remisiones y guías nuevas recorren su tramo de la cadena. Effi se sincroniza cada minuto, así que los
+// cambios de cada lote se reproducen en orden, repartidos en el minuto siguiente. Al centro, el logo de Joalix.
 
 type Cat = "ENTREGADO" | "EN_TRANSITO" | "NOVEDAD" | "EN_OFICINA" | "DEVOLUCION";
+type Etapa = "ORDEN" | "REMISION" | "GENERADA";
 type Evento = {
   cuenta: string; guia: string | null; fecha_hist_est: string; estado_new_efficommerce: string | null; estado_new: string | null;
   nombre_transportadora_efficommerce: string | null; nombre_ciudad_destinatario: string | null; valor_recaudo: number | null;
@@ -20,7 +23,11 @@ type Evento = {
 };
 type Pulso = {
   ahora: string; minutos: number; hoy?: boolean;
-  cuentas: { cuenta: string; hoy: Record<string, number>; ventana: Record<string, number>; serie: number[]; recaudo_hoy: number; pagos_hoy: number; ultimo: string | null }[];
+  cuentas: {
+    cuenta: string; agente?: boolean; hoy: Record<string, number>; ventana: Record<string, number>;
+    proceso_hoy?: Record<string, number>; proceso_ventana?: Record<string, number>;
+    serie: number[]; recaudo_hoy: number; pagos_hoy: number; ultimo: string | null;
+  }[];
 };
 
 const TIENDAS = Object.keys(CUENTAS);
@@ -34,18 +41,29 @@ const minutosHoy = (cuentas: string[]) => Math.max(1, ...cuentas.map((c) => {
   return h * 60 + m + 1;
 }));
 const ESTADOS: { id: Cat; label: string }[] = [
-  { id: "ENTREGADO", label: "Entregada" },
   { id: "EN_TRANSITO", label: "En tránsito" },
-  { id: "NOVEDAD", label: "Novedad" },
   { id: "EN_OFICINA", label: "En oficina" },
+  { id: "NOVEDAD", label: "Novedad" },
+  { id: "ENTREGADO", label: "Entregada" },
   { id: "DEVOLUCION", label: "Devolución" },
 ];
+// El proceso en orden: cada etapa cuelga de la anterior (las órdenes del país; los estados de la guía generada).
+const ETAPAS: { id: Etapa; label: string; color: string }[] = [
+  { id: "ORDEN", label: "Órdenes", color: "#d4a64a" },
+  { id: "REMISION", label: "Remisiones", color: "#b48cff" },
+  { id: "GENERADA", label: "Guías generadas", color: "#c9d3ea" },
+];
+const NODOS = [
+  ...ETAPAS.map((e, i) => ({ id: e.id as string, label: e.label, color: e.color, padre: i ? ETAPAS[i - 1].id : undefined })),
+  ...ESTADOS.map((e) => ({ id: e.id as string, label: e.label, color: COLOR_ESTADO[e.id], padre: "GENERADA" })),
+];
+const esEtapa = (id: string): id is Etapa => ETAPAS.some((e) => e.id === id);
 const VENTANAS = [
   { min: 1, label: "1 min" }, { min: 5, label: "5 min" }, { min: 10, label: "10 min" }, { min: 30, label: "30 min" },
   { min: 60, label: "1 h" }, { min: 1440, label: "24 h" }, { min: HOY, label: "Hoy" },
 ];
 const CAT: Record<number, Cat> = { 4: "ENTREGADO", 5: "DEVOLUCION", 2: "EN_TRANSITO", 8: "EN_TRANSITO", 3: "NOVEDAD", 9: "EN_OFICINA" };
-const ANCHO = 1000, ALTO = 680, CX = 500, CY = 340;
+const ANCHO = 1000, ALTO = 760, CX = 500, CY = 380;
 const GUARDADO = "torre.envivo";
 const claveEv = (e: Evento) => `${e.cuenta}|${e.guia}|${e.fecha_hist_est}|${e.est_guia_new_efficommerce}`;
 const AZUL = "rgb(120 160 255)";
@@ -56,17 +74,23 @@ const q = (n: number) => Math.round(n * 100) / 100;
 // y Ecuador a la izquierda (no cambia al filtrar países).
 const ANGULO: Record<string, number> = { TIENDA_CO: -Math.PI / 2, TIENDA_GT: 0, TIENDA_CR: Math.PI / 2, TIENDA_EC: Math.PI };
 
-// Con una tienda: el país al centro y sus estados en pentágono. Con varias: la Torre al centro, los países en
-// cruz y los estados de cada país en abanico hacia afuera.
+// Con una tienda: el proceso de izquierda a derecha, como una línea (país → órdenes → remisiones → guías generadas →
+// estados en abanico). Con varias: el logo al centro, los países en cruz y su proceso en arco alrededor de cada uno.
 function geometria(cuentas: string[]) {
   const sola = cuentas.length === 1;
   const paises = cuentas.map((c, i) => {
     const a = ANGULO[c] ?? -Math.PI / 2 + (2 * Math.PI * i) / cuentas.length;
-    const x = sola ? CX : q(CX + Math.cos(a) * 265), y = sola ? CY : q(CY + Math.sin(a) * 200);
-    const estados = ESTADOS.map((e, j) => {
-      const b = sola ? -Math.PI / 2 + (2 * Math.PI * j) / ESTADOS.length : a + ((j - 2) * Math.PI) / 5.5;
-      const rx = sola ? 270 : 120, ry = sola ? 220 : 105;
-      return { ...e, x: q(x + Math.cos(b) * rx), y: q(y + Math.sin(b) * ry) };
+    if (sola) {
+      const linea = [250, 405, 560];
+      const estados = NODOS.map((n, j) => j < ETAPAS.length
+        ? { ...n, x: linea[j], y: CY }
+        : { ...n, x: 830, y: q(CY + (j - ETAPAS.length - 2) * 140) });
+      return { cuenta: c, x: 95, y: CY, estados };
+    }
+    const x = q(CX + Math.cos(a) * 300), y = q(CY + Math.sin(a) * 225);
+    const estados = NODOS.map((n, j) => {
+      const b = a + ((j - (NODOS.length - 1) / 2) * Math.PI) / 7.6;
+      return { ...n, x: q(x + Math.cos(b) * 132), y: q(y + Math.sin(b) * 112) };
     });
     return { cuenta: c, x, y, estados };
   });
@@ -83,6 +107,7 @@ export function EnVivo() {
   const [error, setError] = useState<string | null>(null);
   const [ahora, setAhora] = useState(() => Date.now());
   const colaRef = useRef<Evento[]>([]);
+  const procesoAntes = useRef<Record<string, number>>({});
   const vistos = useRef(new Set<string>());
   const red = useRef<RedNeuronalApi>(null);
 
@@ -105,14 +130,25 @@ export function EnVivo() {
     const supabase = createClient();
     let vivo = true, primera = true;
     vistos.current = new Set();
+    procesoAntes.current = {};
     colaRef.current = [];
     setStream([]);
     setPulso(null);
     const cargarPulso = async () => {
       const { data, error: e } = await supabase.rpc("envivo_pulso", { p_cuentas: sel, p_minutos: ventana });
       if (!vivo) return;
-      if (e) setError("Sin señal de la base de datos; se reintenta solo.");
-      else { setError(null); setPulso(data as Pulso); }
+      if (e) { setError("Sin señal de la base de datos; se reintenta solo."); return; }
+      setError(null);
+      const p = data as Pulso;
+      // Órdenes, remisiones y guías nuevas desde el pulso anterior: cada una recorre su tramo de la cadena,
+      // repartidas en los próximos segundos.
+      for (const c of p.cuentas) for (const et of ETAPAS) {
+        const k = `${c.cuenta}|${et.id}`, n = c.proceso_ventana?.[et.id] ?? 0, antes = procesoAntes.current[k];
+        procesoAntes.current[k] = n;
+        if (antes == null || n <= antes) continue;
+        for (let i = 0; i < Math.min(12, n - antes); i++) setTimeout(() => red.current?.disparar(c.cuenta, et.id), Math.random() * 14_000);
+      }
+      setPulso(p);
     };
     const cargarEventos = async () => {
       const { data, error: e } = await supabase
@@ -169,8 +205,16 @@ export function EnVivo() {
     const v = datos(c)?.ventana ?? {};
     return cat ? v[cat] ?? 0 : Object.values(v).reduce((a, n) => a + n, 0);
   };
+  const enProceso = (c: string, et: Etapa) => datos(c)?.proceso_ventana?.[et] ?? 0;
+  const nodo = (c: string, id: string) => esEtapa(id) ? enProceso(c, id) : enVentana(c, id as Cat);
   const suma = (cat?: Cat) => sel.reduce((a, c) => a + enVentana(c, cat), 0);
-  const maxNodo = Math.max(1, ...sel.flatMap((c) => ESTADOS.map((e) => enVentana(c, e.id))));
+  const sumaEtapa = (et: Etapa) => sel.reduce((a, c) => a + enProceso(c, et), 0);
+  // Órdenes y remisiones solo existen donde el Agente vigila; se dice de qué países salen.
+  const conAgente = sel.filter((c) => datos(c)?.agente).map((c) => infoCuenta(c).nombre);
+  const origenProceso = conAgente.length === 0 ? "sin agente aún"
+    : conAgente.length === sel.length ? (sel.length === 1 ? "" : conAgente.join(" y "))
+    : `solo ${conAgente.join(" y ")}`;
+  const maxNodo = Math.max(1, ...sel.flatMap((c) => NODOS.map((n) => nodo(c, n.id))));
   const ultimo = pulso?.cuentas.map((c) => c.ultimo).filter(Boolean).sort().pop() ?? null;
   const hace = ultimo ? Math.max(0, Math.round((ahora - Date.parse(ultimo)) / 1000)) : null;
   const serie = Array.from({ length: 60 }, (_, i) => sel.reduce((a, c) => a + (datos(c)?.serie?.[i] ?? 0), 0));
@@ -205,11 +249,15 @@ export function EnVivo() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Contador titulo={`Cambios · ${etiquetaVentana}`} valor={suma()} color={AZUL} sub={`${(suma() / minutos).toFixed(1).replace(".", ",")} por minuto`} />
-        {(["ENTREGADO", "EN_TRANSITO", "NOVEDAD", "DEVOLUCION"] as Cat[]).map((c) => (
-          <Contador key={c} titulo={ESTADOS.find((e) => e.id === c)!.label} valor={suma(c)} color={COLOR_ESTADO[c]}
-            sub={suma() ? `${Math.round((suma(c) / suma()) * 100)}% de los cambios` : "—"} />
+      {/* El proceso de punta a punta, en el mismo orden del cerebro. */}
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 xl:grid-cols-8">
+        {ETAPAS.map((e) => (
+          <Contador key={e.id} titulo={e.label} valor={sumaEtapa(e.id)} color={e.color}
+            sub={e.id === "GENERADA" || !origenProceso ? etiquetaVentana : `${etiquetaVentana} · ${origenProceso}`} />
+        ))}
+        {ESTADOS.map((e) => (
+          <Contador key={e.id} titulo={e.label} valor={suma(e.id)} color={COLOR_ESTADO[e.id]}
+            sub={suma() ? `${Math.round((suma(e.id) / suma()) * 100)}% de los cambios` : "—"} />
         ))}
       </div>
       {error && <p className="text-xs text-amber" role="status">{error}</p>}
@@ -219,11 +267,14 @@ export function EnVivo() {
           <RedNeuronal ref={red} ancho={ANCHO} alto={ALTO} centro={geo.sola ? null : { x: CX, y: CY }} total={suma()} maxNodo={maxNodo}
             paises={geo.paises.map((p) => ({
               cuenta: p.cuenta, bandera: infoCuenta(p.cuenta).bandera, x: p.x, y: p.y, total: enVentana(p.cuenta),
-              estados: p.estados.map((e) => ({ ...e, n: enVentana(p.cuenta, e.id), hoy: datos(p.cuenta)?.hoy[e.id] ?? 0, color: COLOR_ESTADO[e.id] })),
+              estados: p.estados.map((e) => ({
+                ...e, n: nodo(p.cuenta, e.id),
+                hoy: esEtapa(e.id) ? datos(p.cuenta)?.proceso_hoy?.[e.id] ?? 0 : datos(p.cuenta)?.hoy[e.id] ?? 0,
+              })),
             }))} />
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2">
           <div className="text-[11px] text-muted max-w-xl">
-            Número y tamaño de cada hexágono = cambios {enVentanaTxt}. Cada cambio viaja como señal; entregas y devoluciones lanzan una onda. Effi entrega cada minuto y aquí se reproducen en orden.
+            Proceso de cada país: órdenes → remisiones → guías generadas → estados. Número y tamaño de cada hexágono = movimientos {enVentanaTxt}. Cada movimiento viaja como señal por su tramo; entregas y devoluciones lanzan una onda.
           </div>
           <div className="flex items-center gap-2 text-[11px] font-mono text-muted">
             <span className="pulso size-2 rounded-full bg-red shadow-[0_0_10px_var(--red)]" />

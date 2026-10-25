@@ -7,8 +7,10 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 // de estado tira de las neuronas hacia ese país (más fuerte con entregas, oficina y devoluciones) y, sin
 // eventos, la red se recuesta suavemente hacia los países con más actividad. Cada cambio viaja como una señal
 // por el axón del país a su estado; al llegar, el estado palpita, y las entregas y devoluciones lanzan una onda.
+// Los nodos forman el proceso: cada uno cuelga de su "padre" (órdenes del país, remisiones de órdenes, guías de
+// remisiones y los estados de las guías generadas), y la señal recorre ese tramo. Al centro va el logo de Joalix.
 
-export type NodoEstado = { id: string; label: string; x: number; y: number; n: number; hoy: number; color: string };
+export type NodoEstado = { id: string; label: string; x: number; y: number; n: number; hoy: number; color: string; padre?: string };
 export type NodoPais = { cuenta: string; bandera: string; x: number; y: number; total: number; estados: NodoEstado[] };
 export type RedNeuronalApi = { disparar: (cuenta: string, estado: string | null) => void };
 
@@ -60,6 +62,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
     latido: new Map<string, number>(), // clave → momento del último latido (ms)
     torre: 0,
   });
+  const logo = useRef<HTMLImageElement | null>(null);
 
   useImperativeHandle(ref, () => ({
     disparar(cuenta, estadoId) {
@@ -67,6 +70,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       if (!p) return;
       const s = p.estados.find((e) => e.id === estadoId);
       const st = estado.current, ahora = performance.now();
+      const desde = (s?.padre && p.estados.find((e) => e.id === s.padre)) || p;
       st.latido.set(cuenta, ahora);
       st.torre = ahora;
       // La constelación se va hacia el país del movimiento; entregas, oficina y devoluciones tiran más.
@@ -79,7 +83,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         const c = datos.current.centro;
         st.senales.push({ de: c, a: { x: p.x, y: p.y }, ...xy(control(c, p, 0.12)), t: 0, color: AZUL, estado: "", key: cuenta });
       }
-      if (s) st.senales.push({ de: { x: p.x, y: p.y }, a: { x: s.x, y: s.y }, ...xy(control(p, s)), t: -0.25, color: hexRgb(s.color), estado: s.id, key: `${cuenta}|${s.id}` });
+      if (s) st.senales.push({ de: { x: desde.x, y: desde.y }, a: { x: s.x, y: s.y }, ...xy(control(desde, s)), t: -0.25, color: hexRgb(s.color), estado: s.id, key: `${cuenta}|${s.id}` });
     },
   }));
 
@@ -97,6 +101,9 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       cv.height = Math.round(datos.current.alto * escala * dpr);
       ctx.setTransform(dpr * escala, 0, 0, dpr * escala, 0, 0);
     };
+    const img = new Image();
+    img.src = "/logo-joalix.jpg";
+    img.onload = () => { logo.current = img; };
     const ro = new ResizeObserver(ajustar);
     ro.observe(cv);
     ajustar();
@@ -196,13 +203,14 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
           ctx.beginPath(); ctx.moveTo(centro.x, centro.y); ctx.quadraticCurveTo(c.x, c.y, p.x, p.y); ctx.stroke();
         }
         for (const s of p.estados) {
-          const k = s.n / maxNodo, c = control(p, s), rgb = hexRgb(s.color);
-          ctx.setLineDash([]); ctx.strokeStyle = `rgba(${rgb},${0.08 + 0.2 * k})`; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(c.x, c.y, s.x, s.y); ctx.stroke();
+          const o = (s.padre && p.estados.find((e) => e.id === s.padre)) || p;
+          const k = s.n / maxNodo, c = control(o, s, 0.1), rgb = hexRgb(s.color);
+          ctx.setLineDash([]); ctx.strokeStyle = `rgba(${rgb},${0.12 + 0.2 * k})`; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.quadraticCurveTo(c.x, c.y, s.x, s.y); ctx.stroke();
           if (s.n > 0) {
             ctx.setLineDash([2, 10]); ctx.lineDashOffset = flujo * (1 + k);
             ctx.strokeStyle = `rgba(${rgb},${0.45 + 0.5 * k})`; ctx.lineWidth = 1 + 2.5 * k;
-            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(c.x, c.y, s.x, s.y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.quadraticCurveTo(c.x, c.y, s.x, s.y); ctx.stroke();
           }
         }
       }
@@ -257,7 +265,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       for (const p of paises) {
         for (const s of p.estados) {
           const k = s.n / maxNodo, l = late(`${p.cuenta}|${s.id}`), rgb = hexRgb(s.color);
-          const r = (12 + 20 * Math.sqrt(k)) * (paises.length === 1 ? 1.6 : 1) * (1 + 0.25 * l) * (1 + 0.04 * respira(500 + 900 * (1 - k)));
+          const r = (paises.length === 1 ? 20 + 26 * Math.sqrt(k) : 9 + 15 * Math.sqrt(k)) * (1 + 0.25 * l) * (1 + 0.04 * respira(500 + 900 * (1 - k)));
           ctx.save();
           ctx.shadowColor = `rgba(${rgb},0.9)`; ctx.shadowBlur = 8 + 30 * l + 10 * k;
           hexagono(ctx, s.x, s.y, r, (ahora / 9000) * (k + 0.2));
@@ -265,12 +273,12 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
           ctx.strokeStyle = `rgba(${rgb},0.95)`; ctx.lineWidth = 1.4; ctx.stroke();
           ctx.restore();
           ctx.fillStyle = "#e8eefc"; ctx.textAlign = "center";
-          ctx.font = `600 ${paises.length === 1 ? 20 : 12}px ui-sans-serif, system-ui`;
-          ctx.fillText(s.n.toLocaleString("es-CO"), s.x, s.y + (paises.length === 1 ? 7 : 4));
-          ctx.fillStyle = "rgba(160,172,200,0.85)"; ctx.font = "600 9px ui-monospace, monospace";
-          ctx.fillText(s.label.toUpperCase(), s.x, s.y + r + 13);
+          ctx.font = `600 ${paises.length === 1 ? 18 : 11}px ui-sans-serif, system-ui`;
+          ctx.fillText(s.n.toLocaleString("es-CO"), s.x, s.y + (paises.length === 1 ? 6 : 4));
+          ctx.fillStyle = `rgba(${rgb},0.9)`; ctx.font = `600 ${paises.length === 1 ? 10 : 8}px ui-monospace, monospace`;
+          ctx.fillText(s.label.toUpperCase(), s.x, s.y + r + (paises.length === 1 ? 15 : 11));
         }
-        const l = late(p.cuenta), R = (paises.length === 1 ? 64 : 40) * (1 + 0.12 * l);
+        const l = late(p.cuenta), R = (paises.length === 1 ? 54 : 36) * (1 + 0.12 * l);
         ctx.save();
         ctx.shadowColor = `rgba(${AZUL},0.9)`; ctx.shadowBlur = 14 + 30 * l;
         hexagono(ctx, p.x, p.y, R, 0);
@@ -286,17 +294,27 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         ctx.fillText(p.total.toLocaleString("es-CO"), p.x, p.y + (paises.length === 1 ? 26 : 17));
       }
       if (centro) {
+        // Logo de Joalix en un círculo con halo dorado que late con cada movimiento.
         const l = st.torre ? Math.max(0, 1 - (ahora - st.torre) / 600) : 0;
+        const R = 66 * (1 + 0.05 * l);
         ctx.save();
-        ctx.shadowColor = `rgba(${AZUL},1)`; ctx.shadowBlur = 20 + 25 * l;
-        hexagono(ctx, cx, cy, 50 * (1 + 0.08 * l), ahora / 12000);
-        ctx.fillStyle = `rgba(47,123,255,${0.12 + 0.2 * l})`; ctx.fill();
-        ctx.strokeStyle = `rgba(${AZUL},0.85)`; ctx.lineWidth = 1.6; ctx.stroke();
+        ctx.shadowColor = `rgba(212,166,74,${0.7 + 0.3 * l})`; ctx.shadowBlur = 24 + 30 * l;
+        ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fillStyle = "#0a0a0c"; ctx.fill();
         ctx.restore();
-        ctx.fillStyle = "rgba(160,172,200,0.9)"; ctx.font = "600 9px ui-monospace, monospace"; ctx.textAlign = "center";
-        ctx.fillText("T O R R E", cx, cy - 8);
-        ctx.fillStyle = "#e8eefc"; ctx.font = "600 20px ui-sans-serif, system-ui";
-        ctx.fillText(total.toLocaleString("es-CO"), cx, cy + 15);
+        if (logo.current) {
+          ctx.save();
+          ctx.beginPath(); ctx.arc(cx, cy, R - 2, 0, Math.PI * 2); ctx.clip();
+          const z = R * 2.25; // el logo trae margen negro: se amplía un poco para que llene el círculo
+          ctx.drawImage(logo.current, cx - z / 2, cy - z / 2 + 4, z, z);
+          ctx.restore();
+        }
+        ctx.strokeStyle = `rgba(212,166,74,${0.75 + 0.25 * l})`; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([2, 8]); ctx.lineDashOffset = -(ahora / 40);
+        ctx.strokeStyle = "rgba(212,166,74,0.35)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy, R + 10, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = "#e8eefc"; ctx.font = "600 12px ui-sans-serif, system-ui"; ctx.textAlign = "center";
+        ctx.fillText(`${total.toLocaleString("es-CO")} movimientos`, cx, cy + R + 24);
       }
 
       // "+1 entregada" / "+1 devolución" que suben y se desvanecen.
