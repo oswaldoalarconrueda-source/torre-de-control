@@ -77,8 +77,9 @@ function Mes({ ym, hoy, inicio, fin, hover, onDia, onHover }: {
   );
 }
 
-export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar }: {
-  desde: string; hasta: string; rangos: Rango[]; hoy: string; onAplicar: (d: string, h: string) => void;
+// "inactivo": otro filtro manda (por ejemplo los minutos de En vivo); el botón se ve apagado y muestra "inactivo" como texto.
+export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar, inactivo }: {
+  desde: string; hasta: string; rangos: Rango[]; hoy: string; onAplicar: (d: string, h: string) => void; inactivo?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [ini, setIni] = useState(desde);
@@ -89,7 +90,7 @@ export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar }: {
   const caja = useRef<HTMLDivElement>(null);
 
   const activo = rangoActivo(rangos, desde, hasta);
-  const etiqueta = activo ? `${activo.label} · ${etiquetaRango(desde, hasta)}` : etiquetaRango(desde, hasta);
+  const etiqueta = inactivo ?? (activo ? `${activo.label} · ${etiquetaRango(desde, hasta)}` : etiquetaRango(desde, hasta));
   const borradorActivo = fin ? rangoActivo(rangos, ini, fin) : null;
 
   const abrir = () => {
@@ -145,7 +146,7 @@ export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar }: {
         onClick={() => (abierto ? cerrar() : abrir())}
         aria-expanded={abierto}
         aria-haspopup="dialog"
-        className={`flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs transition-colors ${abierto ? "border-blue/50 bg-blue/15 text-text" : "border-line text-text hover:border-white/20 hover:bg-white/[0.04]"}`}
+        className={`flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs transition-colors ${abierto ? "border-blue/50 bg-blue/15 text-text" : inactivo ? "border-line text-muted hover:text-text hover:bg-white/[0.04]" : "border-line text-text hover:border-white/20 hover:bg-white/[0.04]"}`}
       >
         <CalendarDays size={14} className="text-blue-2" />
         <span className="num">{etiqueta}</span>

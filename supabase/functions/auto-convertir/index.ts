@@ -185,12 +185,13 @@ async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, de
 }
 
 // Remisiones que ya fallaron porque ni la transportadora de respaldo tiene cobertura en esa ciudad: no se reintentan
-// cada minuto (Effi siempre dirá lo mismo); quedan en "Requieren revisión" para que una persona decida.
+// cada minuto (Effi siempre dirá lo mismo); quedan pendientes en "Novedad en la orden" para que una persona decida.
+// Devuelve remisión → lo que respondió Effi.
 async function sinCoberturaTotal(cuenta: string) {
   const desde = new Date(Date.now() - 7 * DAY_MS).toISOString();
   const filas: { mensaje: string }[] = await tabla(
     `auto_eventos?cuenta=eq.${cuenta}&paso=eq.guia&ok=is.false&creado_en=gte.${desde}&mensaje=ilike.*No%20hay%20cobertura*Servientrega*&select=mensaje`);
-  return new Set(filas.map((f) => Number(f.mensaje.match(/remisión (\d+)/)?.[1])).filter(Boolean));
+  return new Map(filas.map((f) => [Number(f.mensaje.match(/remisión (\d+)/)?.[1]), f.mensaje.replace(/^.*?: /, '')] as const).filter(([id]) => id));
 }
 
 // Memoria de cobertura: ciudades donde la transportadora de domicilio no dejó hacer guías.
@@ -277,7 +278,7 @@ async function convertir(cuenta: string, ahora = false) {
   const desde = new Date(hoy.getTime() - 3 * DAY_MS).toISOString().slice(0, 10);
   const hasta = new Date(hoy.getTime() + DAY_MS).toISOString().slice(0, 10);
   const pendientes = (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => !o.id_remision_v).slice(0, MAX_ORDENES);
-  const planesGuia = TRANSPORTE_PAIS[cuenta] ? await planearGuias(api, cuenta, reglas, memoria, desde, hasta) : [];
+  const planesGuia = TRANSPORTE_PAIS[cuenta] ? await planearGuias(api, cuenta, reglas, memoria, await sinCoberturaTotal(cuenta), desde, hasta) : [];
   if (!pendientes.length) {
     await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: planesGuia, p_reglas: reglasNuevas });
     return { pendientes: 0, guias: planesGuia.length };
@@ -390,7 +391,8 @@ const guiaDeRemision = (r: Json, t: Json, remitente: string | number, centro: nu
 
 // Plan de guía de las remisiones vigentes sin guía (en Ecuador las remisiones las hace una persona a mano): se guarda
 // en la orden de origen, con la transportadora que toca y el porqué. No crea nada.
-async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Set<number>, desde: string, hasta: string) {
+async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Set<number>, sinCobertura: Map<number, string>,
+  desde: string, hasta: string) {
   const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0);
   if (!rems.length) return [];
@@ -402,6 +404,11 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
     if (!o) continue;
     const base = { sucursal: Number(o.sucursal), id: Number(o.id) };
     const plan: Json = { remision_existente: { sucursal: Number(r.sucursal), id: Number(r.id) } };
+    const cobertura = sinCobertura.get(Number(r.id));
+    if (cobertura) {
+      planes.push({ ...base, estado: 'revision', motivo: `Pendiente: ninguna transportadora cubre ${r.nombre_ciudad ?? 'la ciudad'} (Effi: ${cobertura}). Una persona revisa y decide.`, plan });
+      continue;
+    }
     const remitente = reglas?.remitentes?.[r.convenio_dropshipping];
     if (!remitente) { planes.push({ ...base, estado: 'revision', motivo: `No hay guías anteriores con el convenio ${r.convenio_dropshipping} para saber el remitente`, plan }); continue; }
     const elegido = elegirTransporte(cuenta, reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));

@@ -9,6 +9,9 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 // por el axón del país a su estado; al llegar, el estado palpita, y las entregas y devoluciones lanzan una onda.
 // Los nodos forman el proceso: cada uno cuelga de su "padre" (órdenes del país, remisiones de órdenes, guías de
 // remisiones y los estados de las guías generadas), y la señal recorre ese tramo. Al centro va el logo de Joalix.
+// Lo más importante son las entregas: cada una estalla como una supernova (destello, rayos, ondas de choque, chispas
+// y una sacudida) y lanza un cometa que lleva la buena noticia hasta el logo. Varias seguidas en un país suman combo.
+// Las órdenes y remisiones nuevas también chispean, más pequeño.
 
 export type NodoEstado = { id: string; label: string; x: number; y: number; n: number; hoy: number; color: string; padre?: string };
 export type NodoPais = { cuenta: string; bandera: string; x: number; y: number; total: number; estados: NodoEstado[] };
@@ -19,8 +22,10 @@ type Props = { ancho: number; alto: number; centro: { x: number; y: number } | n
 type Neurona = { x: number; y: number; vx: number; vy: number; vida: number; max: number; brillo: number; color: string | null };
 type Senal = { de: { x: number; y: number }; a: { x: number; y: number }; cx: number; cy: number; t: number; color: string; estado: string; key: string };
 type Onda = { x: number; y: number; r: number; max: number; color: string; grosor: number };
-type Texto = { x: number; y: number; vida: number; txt: string; color: string };
+type Texto = { x: number; y: number; vida: number; txt: string; color: string; tam?: number; dur?: number };
 type Tiron = { x: number; y: number; t: number; fuerza: number };
+type Chispa = { x: number; y: number; px: number; py: number; vx: number; vy: number; vida: number; max: number; color: string; grosor: number };
+type Destello = { x: number; y: number; t: number; dur: number; R: number; color: string; giro: number };
 
 const AZUL = "120,160,255";
 const N_NEURONAS = 230;
@@ -29,6 +34,10 @@ const TIRON_MS = 2600; // cuánto dura el tirón de un evento hacia su país
 const TIRON = 0.00004; // aceleración del tirón (px/ms²)
 const RECOSTAR = 0.000007; // inclinación permanente hacia la actividad
 const VMAX = 0.2; // velocidad máxima de una neurona (px/ms)
+const MAX_CHISPAS = 1400;
+const ORO = "255,214,120";
+const BLANCO = "255,255,255";
+const COMBO_MS = 6000; // entregas del mismo país dentro de este tiempo suman combo
 
 const hexRgb = (hex: string) => {
   const h = hex.replace("#", "");
@@ -59,8 +68,10 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
   datos.current = props;
   const estado = useRef({
     neuronas: [] as Neurona[], senales: [] as Senal[], ondas: [] as Onda[], textos: [] as Texto[], tirones: [] as Tiron[],
+    chispas: [] as Chispa[], destellos: [] as Destello[],
     latido: new Map<string, number>(), // clave → momento del último latido (ms)
-    torre: 0,
+    combo: new Map<string, { n: number; t: number }>(), // país → entregas seguidas
+    torre: 0, torreEntrega: 0, sacudida: 0,
   });
   const logo = useRef<HTMLImageElement | null>(null);
 
@@ -114,12 +125,41 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       st.neuronas.push(n);
     }
 
+    function chispear(x: number, y: number, colores: string[], n: number, vel: number, grosor: number) {
+      for (let i = 0; i < n && st.chispas.length < MAX_CHISPAS; i++) {
+        const a = Math.random() * Math.PI * 2, v = vel * (0.35 + Math.random());
+        const col = colores[i % colores.length];
+        st.chispas.push({ x, y, px: x, py: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vida: 0, max: 700 + Math.random() * 900,
+          color: col.startsWith("#") ? hexRgb(col) : col, grosor: grosor * (0.6 + Math.random() * 0.8) });
+      }
+    }
+    // Una entrega: supernova en el hexágono, ondas de choque escalonadas, metralla, sacudida, combo y cometa al logo.
+    const entrega = (x: number, y: number, color: string, cuenta: string, ahora: number) => {
+      st.destellos.push({ x, y, t: ahora, dur: 1100, R: 150, color, giro: Math.random() * Math.PI });
+      if (st.destellos.length > 8) st.destellos.shift();
+      st.ondas.push({ x, y, r: 12, max: 420, color, grosor: 4.5 });
+      st.ondas.push({ x, y, r: -40, max: 300, color: BLANCO, grosor: 2.5 });
+      st.ondas.push({ x, y, r: -110, max: 520, color: ORO, grosor: 3 });
+      chispear(x, y, [color, BLANCO, ORO], 80, 0.55, 2.2);
+      for (let i = 0; i < 16; i++) st.neuronas.push({ ...nueva(x, y, color, 3), brillo: 1 });
+      st.sacudida = ahora;
+      const c = st.combo.get(cuenta), n = c && ahora - c.t < COMBO_MS ? c.n + 1 : 1;
+      st.combo.set(cuenta, { n, t: ahora });
+      st.textos.push({ x, y: y - 38, vida: 0, txt: n > 1 ? `¡×${n} ENTREGADAS!` : "¡+1 ENTREGADA!", color: n > 2 ? ORO : color, tam: Math.min(26, 16 + n * 2), dur: 2200 });
+      const centro = datos.current.centro;
+      if (centro) st.senales.push({ de: { x, y }, a: centro, ...xy(control({ x, y }, centro, 0.22)), t: 0, color: ORO, estado: "TORRE", key: "torre" });
+    };
+
     const cuadro = (ahora: number) => {
       const dt = Math.min(50, ahora - ultimo) * (reducir ? 0.3 : 1);
       ultimo = ahora;
       const { ancho: W, alto: H, centro, paises, maxNodo, total } = datos.current;
       const cx = centro?.x ?? W / 2, cy = centro?.y ?? H / 2;
       ctx.clearRect(0, 0, W, H);
+      // Sacudida corta con cada entrega (la pantalla "tiembla" como en una batalla espacial).
+      const sac = st.sacudida && !reducir ? Math.max(0, 1 - (ahora - st.sacudida) / 450) : 0;
+      ctx.save();
+      if (sac) ctx.translate((Math.random() - 0.5) * 9 * sac, (Math.random() - 0.5) * 9 * sac);
 
       // Fondo: resplandor central y anillos que se expanden de dentro hacia afuera.
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.55);
@@ -222,11 +262,22 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         s.t += dt / 950;
         if (s.t >= 1) {
           st.latido.set(s.key, ahora);
-          if (s.estado === "ENTREGADO" || s.estado === "DEVOLUCION") {
-            st.ondas.push({ x: s.a.x, y: s.a.y, r: 10, max: 260, color: s.color, grosor: 3 });
-            st.ondas.push({ x: s.a.x, y: s.a.y, r: 4, max: 120, color: s.color, grosor: 1.5 });
-            st.textos.push({ x: s.a.x, y: s.a.y - 30, vida: 0, txt: s.estado === "ENTREGADO" ? "+1 entregada" : "+1 devolución", color: s.color });
-            for (let i = 0; i < 10; i++) st.neuronas.push({ ...nueva(s.a.x, s.a.y, s.color, 2.2), brillo: 1 });
+          if (s.estado === "ENTREGADO") {
+            entrega(s.a.x, s.a.y, s.color, s.key.split("|")[0], ahora);
+          } else if (s.estado === "TORRE") {
+            // El cometa de una entrega llega al logo: el halo dorado se enciende y suelta polvo de oro.
+            st.torreEntrega = ahora;
+            st.ondas.push({ x: s.a.x, y: s.a.y, r: 66, max: 200, color: ORO, grosor: 3 });
+            chispear(s.a.x, s.a.y, [ORO, BLANCO], 24, 0.32, 1.6);
+          } else if (s.estado === "DEVOLUCION") {
+            st.ondas.push({ x: s.a.x, y: s.a.y, r: 10, max: 200, color: s.color, grosor: 2.5 });
+            st.textos.push({ x: s.a.x, y: s.a.y - 30, vida: 0, txt: "+1 devolución", color: s.color });
+            for (let i = 0; i < 8; i++) st.neuronas.push({ ...nueva(s.a.x, s.a.y, s.color, 2.2), brillo: 1 });
+          } else if (s.estado === "ORDEN" || s.estado === "REMISION") {
+            // Venta nueva o remisión hecha: un chispazo de su color.
+            st.ondas.push({ x: s.a.x, y: s.a.y, r: 6, max: 110, color: s.color, grosor: 2 });
+            chispear(s.a.x, s.a.y, [s.color, BLANCO], s.estado === "ORDEN" ? 22 : 16, 0.26, 1.4);
+            st.textos.push({ x: s.a.x, y: s.a.y - 24, vida: 0, txt: s.estado === "ORDEN" ? "+1 orden" : "+1 remisión", color: s.color });
           } else if (s.estado) {
             st.ondas.push({ x: s.a.x, y: s.a.y, r: 6, max: 70, color: s.color, grosor: 1.5 });
           }
@@ -249,15 +300,53 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       }
       st.senales = siguen;
 
-      // Ondas de choque.
+      // Ondas de choque (las que empiezan con radio negativo salen un instante después).
       st.ondas = st.ondas.filter((o) => {
         o.r += dt * 0.32;
         const k = 1 - o.r / o.max;
         if (k <= 0) return false;
+        if (o.r <= 0) return true;
         ctx.strokeStyle = `rgba(${o.color},${k * 0.8})`; ctx.lineWidth = o.grosor * k + 0.5;
         ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2); ctx.stroke();
         return true;
       });
+
+      // Supernovas de las entregas: núcleo blanco que se apaga, halo de color y rayos que giran hacia afuera.
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      st.destellos = st.destellos.filter((d) => {
+        const u = (ahora - d.t) / d.dur;
+        if (u >= 1) return false;
+        const k = 1 - u, R = d.R * (0.35 + 0.65 * Math.sqrt(u));
+        const gr = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, R);
+        gr.addColorStop(0, `rgba(${BLANCO},${0.95 * k})`);
+        gr.addColorStop(0.18, `rgba(${ORO},${0.7 * k})`);
+        gr.addColorStop(0.45, `rgba(${d.color},${0.45 * k})`);
+        gr.addColorStop(1, `rgba(${d.color},0)`);
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(d.x, d.y, R, 0, Math.PI * 2); ctx.fill();
+        for (let i = 0; i < 14; i++) {
+          const a = d.giro + (i * Math.PI * 2) / 14 + u * 0.6, largo = R * (i % 2 ? 1.25 : 1.9);
+          const lg = ctx.createLinearGradient(d.x, d.y, d.x + Math.cos(a) * largo, d.y + Math.sin(a) * largo);
+          lg.addColorStop(0, `rgba(${BLANCO},${0.8 * k})`); lg.addColorStop(1, `rgba(${d.color},0)`);
+          ctx.strokeStyle = lg; ctx.lineWidth = (i % 2 ? 1.2 : 2.4) * k + 0.3;
+          ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x + Math.cos(a) * largo, d.y + Math.sin(a) * largo); ctx.stroke();
+        }
+        return true;
+      });
+      // Chispas: metralla que sale disparada, se frena y deja estela.
+      st.chispas = st.chispas.filter((c) => {
+        c.vida += dt;
+        const k = 1 - c.vida / c.max;
+        if (k <= 0) return false;
+        c.px = c.x; c.py = c.y;
+        const fr = Math.pow(0.9965, dt);
+        c.vx *= fr; c.vy *= fr;
+        c.x += c.vx * dt; c.y += c.vy * dt;
+        ctx.strokeStyle = `rgba(${c.color},${k})`; ctx.lineWidth = c.grosor * k + 0.4;
+        ctx.beginPath(); ctx.moveTo(c.px - c.vx * 26, c.py - c.vy * 26); ctx.lineTo(c.x, c.y); ctx.stroke();
+        return true;
+      });
+      ctx.restore();
 
       // Hexágonos: estados (tamaño por volumen), países y la Torre. Laten al recibir una señal.
       const late = (key: string) => { const t = st.latido.get(key); return t ? Math.max(0, 1 - (ahora - t) / 700) : 0; };
@@ -265,7 +354,8 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       for (const p of paises) {
         for (const s of p.estados) {
           const k = s.n / maxNodo, l = late(`${p.cuenta}|${s.id}`), rgb = hexRgb(s.color);
-          const r = (paises.length === 1 ? 20 + 26 * Math.sqrt(k) : 9 + 15 * Math.sqrt(k)) * (1 + 0.25 * l) * (1 + 0.04 * respira(500 + 900 * (1 - k)));
+          const boom = s.id === "ENTREGADO" ? 0.7 : 0.25; // el hexágono de entregadas se infla más al estallar
+          const r = (paises.length === 1 ? 20 + 26 * Math.sqrt(k) : 9 + 15 * Math.sqrt(k)) * (1 + boom * l) * (1 + 0.04 * respira(500 + 900 * (1 - k)));
           ctx.save();
           ctx.shadowColor = `rgba(${rgb},0.9)`; ctx.shadowBlur = 8 + 30 * l + 10 * k;
           hexagono(ctx, s.x, s.y, r, (ahora / 9000) * (k + 0.2));
@@ -295,8 +385,9 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       }
       if (centro) {
         // Logo de Joalix en un círculo con halo dorado que late con cada movimiento.
-        const l = st.torre ? Math.max(0, 1 - (ahora - st.torre) / 600) : 0;
-        const R = 66 * (1 + 0.05 * l);
+        const l = Math.max(st.torre ? Math.max(0, 1 - (ahora - st.torre) / 600) : 0,
+          st.torreEntrega ? 1.8 * Math.max(0, 1 - (ahora - st.torreEntrega) / 1200) : 0);
+        const R = 66 * (1 + 0.05 * Math.min(l, 1.5));
         ctx.save();
         ctx.shadowColor = `rgba(212,166,74,${0.7 + 0.3 * l})`; ctx.shadowBlur = 24 + 30 * l;
         ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fillStyle = "#0a0a0c"; ctx.fill();
@@ -320,12 +411,16 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       // "+1 entregada" / "+1 devolución" que suben y se desvanecen.
       st.textos = st.textos.filter((t) => {
         t.vida += dt;
-        const k = 1 - t.vida / 1400;
+        const k = 1 - t.vida / (t.dur ?? 1400);
         if (k <= 0) return false;
-        ctx.fillStyle = `rgba(${t.color},${k})`; ctx.font = "700 12px ui-monospace, monospace"; ctx.textAlign = "center";
-        ctx.fillText(t.txt, t.x, t.y - (1 - k) * 30);
+        ctx.save();
+        if (t.tam) { ctx.shadowColor = `rgba(${t.color},0.9)`; ctx.shadowBlur = 14; }
+        ctx.fillStyle = `rgba(${t.color},${k})`; ctx.font = `800 ${t.tam ?? 12}px ui-monospace, monospace`; ctx.textAlign = "center";
+        ctx.fillText(t.txt, t.x, t.y - (1 - k) * (t.tam ? 46 : 30));
+        ctx.restore();
         return true;
       });
+      ctx.restore(); // fin de la sacudida
 
       raf = requestAnimationFrame(cuadro);
     };

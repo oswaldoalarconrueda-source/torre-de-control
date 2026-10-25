@@ -13,7 +13,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
   const cuenta = f.cuentas?.[0] ?? "TIENDA_GT";
   const supabase = await createClient();
   const [{ data: config }, { data, error }] = await Promise.all([
-    supabase.from("auto_config").select("cuenta").eq("cuenta", cuenta).maybeSingle(),
+    supabase.from("auto_config").select("cuenta,modo").eq("cuenta", cuenta).maybeSingle(),
     supabase.rpc("auto_lista", { p_cuenta: cuenta, p_dias: 3 }),
   ]);
   const pais = infoCuenta(cuenta);
@@ -26,7 +26,8 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
         f={f}
         conFechas={false}
       />
-      {!config ? (
+      {/* "vigilar" = solo se traen sus órdenes y remisiones (para En vivo); el agente de ese país sigue en prueba. */}
+      {!config || config.modo === "vigilar" ? (
         <div className="space-y-4">
           {/* Los mismos botones que en Guatemala y Ecuador, en prueba: aquí todavía no se ejecuta nada en Effi. */}
           <div className="card p-4 flex flex-wrap items-center justify-between gap-3">

@@ -97,7 +97,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   const novedad = (o: OrdenAuto) =>
     o.plan_estado === "error" || o.estado === "revision" ||
     (o.estado === "sin_remision" && (o.plan_estado === "revision" || o.minutos >= alerta)) ||
-    (o.estado === "sin_guia" && o.minutos >= alerta);
+    (o.estado === "sin_guia" && (o.plan_estado === "revision" || o.minutos >= alerta));
 
   // Listas para crear: el agente ya sabe qué hacer (remisión y guía, o solo la guía de una remisión hecha a mano). No
   // son novedad aunque lleven rato esperando: salen con "Ejecutar ahora" o con "Ejecutar" en cada una.
@@ -515,7 +515,7 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
   if (o.plan_estado === "revision") {
     return (
       <div className="text-xs">
-        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-amber bg-white/5">Necesita revisión</span>
+        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-amber bg-white/5">Pendiente de revisión</span>
         <div className="text-amber mt-1 whitespace-normal">{o.plan_motivo}</div>
       </div>
     );

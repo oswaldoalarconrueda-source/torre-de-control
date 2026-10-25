@@ -5,8 +5,10 @@ import { Copy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
 import { CUENTAS, infoCuenta } from "@/lib/paises";
+import { hoyBogota, rangosRapidos, sumarDias } from "@/lib/filtros";
 import { COLOR_ESTADO } from "./charts";
 import { RedNeuronal, type RedNeuronalApi } from "./red-neuronal";
+import { SelectorFechas, etiquetaRango } from "./selector-fechas";
 
 // ⚡ En vivo: la operación como un "segundo cerebro" con el proceso completo de la empresa. Alrededor de cada país:
 // orden de venta → remisión → guía generada → estados de la guía (en tránsito, en oficina, novedad, entregada,
@@ -22,7 +24,7 @@ type Evento = {
   est_guia_new_efficommerce: number | null; pagada: boolean | null;
 };
 type Pulso = {
-  ahora: string; minutos: number; hoy?: boolean;
+  ahora: string; minutos: number; hoy?: boolean; rango?: boolean;
   cuentas: {
     cuenta: string; agente?: boolean; hoy: Record<string, number>; ventana: Record<string, number>;
     proceso_hoy?: Record<string, number>; proceso_ventana?: Record<string, number>;
@@ -31,15 +33,9 @@ type Pulso = {
 };
 
 const TIENDAS = Object.keys(CUENTAS);
-// Ventana "Hoy": desde las 00:00 del día local de cada país.
-const HOY = 0;
 const ZONA: Record<string, string> = { TIENDA_CO: "America/Bogota", TIENDA_EC: "America/Guayaquil", TIENDA_GT: "America/Guatemala", TIENDA_CR: "America/Costa_Rica" };
 const diaLocal = (cuenta: string, ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: ZONA[cuenta] ?? "America/Bogota" }).format(new Date(ms));
-// Minutos desde la medianoche más temprana de los países elegidos (Colombia y Ecuador amanecen antes).
-const minutosHoy = (cuentas: string[]) => Math.max(1, ...cuentas.map((c) => {
-  const [h, m] = new Intl.DateTimeFormat("en-GB", { timeZone: ZONA[c] ?? "America/Bogota", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()).split(":").map(Number);
-  return h * 60 + m + 1;
-}));
+
 const ESTADOS: { id: Cat; label: string }[] = [
   { id: "EN_TRANSITO", label: "En tránsito" },
   { id: "EN_OFICINA", label: "En oficina" },
@@ -58,10 +54,11 @@ const NODOS = [
   ...ESTADOS.map((e) => ({ id: e.id as string, label: e.label, color: COLOR_ESTADO[e.id], padre: "GENERADA" })),
 ];
 const esEtapa = (id: string): id is Etapa => ETAPAS.some((e) => e.id === id);
-const VENTANAS = [
-  { min: 1, label: "1 min" }, { min: 5, label: "5 min" }, { min: 10, label: "10 min" }, { min: 30, label: "30 min" },
-  { min: 60, label: "1 h" }, { min: 1440, label: "24 h" }, { min: HOY, label: "Hoy" },
-];
+// Afuera, los últimos minutos; en el calendario, días completos (hoy, ayer o los que se elijan), cada uno contado
+// desde la medianoche de cada país.
+const VENTANAS = [{ min: 1, label: "1 min" }, { min: 10, label: "10 min" }, { min: 60, label: "1 h" }];
+type Dias = { d: string; h: string };
+const atajos = () => rangosRapidos().filter((r) => ["hoy", "ayer", "7d", "mes"].includes(r.id));
 const CAT: Record<number, Cat> = { 4: "ENTREGADO", 5: "DEVOLUCION", 2: "EN_TRANSITO", 8: "EN_TRANSITO", 3: "NOVEDAD", 9: "EN_OFICINA" };
 const ANCHO = 1000, ALTO = 760, CX = 500, CY = 380;
 const GUARDADO = "torre.envivo";
@@ -100,6 +97,7 @@ function geometria(cuentas: string[]) {
 export function EnVivo() {
   const [sel, setSel] = useState<string[]>(TIENDAS);
   const [ventana, setVentana] = useState(60);
+  const [dias, setDias] = useState<Dias | null>(null); // con calendario manda el rango de días
   const [pulso, setPulso] = useState<Pulso | null>(null);
   const [stream, setStream] = useState<Evento[]>([]);
   const [cola, setCola] = useState(0);
@@ -116,14 +114,26 @@ export function EnVivo() {
       const g = JSON.parse(localStorage.getItem(GUARDADO) ?? "null");
       if (Array.isArray(g?.sel) && g.sel.length && g.sel.every((c: string) => TIENDAS.includes(c))) setSel(g.sel);
       if (VENTANAS.some((v) => v.min === g?.ventana)) setVentana(g.ventana);
+      // "Hoy" y "Ayer" se guardan como atajo (al día siguiente siguen siendo hoy y ayer); otro rango, tal cual.
+      const a = atajos().find((r) => r.id === g?.atajo);
+      if (a) setDias({ d: a.d, h: a.h });
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(g?.dias?.d ?? "") && /^\d{4}-\d{2}-\d{2}$/.test(g?.dias?.h ?? "")) setDias(g.dias);
     } catch { /* sin almacenamiento: valores por defecto */ }
   }, []);
-  const guardar = (s: string[], v: number) => { try { localStorage.setItem(GUARDADO, JSON.stringify({ sel: s, ventana: v })); } catch { /* ignorar */ } };
-  const elegir = (cs: string[]) => { setSel(cs); guardar(cs, ventana); };
-  const elegirVentana = (v: number) => { setVentana(v); guardar(sel, v); };
+  const guardar = (s: string[], v: number, r: Dias | null) => {
+    const atajo = r ? atajos().find((x) => x.d === r.d && x.h === r.h)?.id ?? null : null;
+    try { localStorage.setItem(GUARDADO, JSON.stringify({ sel: s, ventana: v, dias: r, atajo })); } catch { /* ignorar */ }
+  };
+  const elegir = (cs: string[]) => { setSel(cs); guardar(cs, ventana, dias); };
+  const elegirVentana = (v: number) => { setVentana(v); setDias(null); guardar(sel, v, null); };
+  const elegirDias = (d: string, h: string) => { setDias({ d, h }); guardar(sel, ventana, { d, h }); };
+
+  const hoy = hoyBogota();
+  // En vivo de verdad solo si el periodo llega hasta ahora (minutos, hoy, este mes); un día pasado es una foto quieta.
+  const enVivo = !dias || dias.h >= hoy;
 
   const geo = useMemo(() => geometria(sel), [sel]);
-  const clave = `${sel.join(",")}|${ventana}`;
+  const clave = `${sel.join(",")}|${dias ? `${dias.d}~${dias.h}` : ventana}`;
 
   // Pulso (resumen por país) cada 15 s y eventos de la ventana cada 10 s.
   useEffect(() => {
@@ -135,7 +145,9 @@ export function EnVivo() {
     setStream([]);
     setPulso(null);
     const cargarPulso = async () => {
-      const { data, error: e } = await supabase.rpc("envivo_pulso", { p_cuentas: sel, p_minutos: ventana });
+      const { data, error: e } = await supabase.rpc("envivo_pulso", dias
+        ? { p_cuentas: sel, p_minutos: 0, p_desde: dias.d, p_hasta: dias.h }
+        : { p_cuentas: sel, p_minutos: ventana });
       if (!vivo) return;
       if (e) { setError("Sin señal de la base de datos; se reintenta solo."); return; }
       setError(null);
@@ -145,22 +157,28 @@ export function EnVivo() {
       for (const c of p.cuentas) for (const et of ETAPAS) {
         const k = `${c.cuenta}|${et.id}`, n = c.proceso_ventana?.[et.id] ?? 0, antes = procesoAntes.current[k];
         procesoAntes.current[k] = n;
-        if (antes == null || n <= antes) continue;
+        if (antes == null || n <= antes || !enVivo) continue;
         for (let i = 0; i < Math.min(12, n - antes); i++) setTimeout(() => red.current?.disparar(c.cuenta, et.id), Math.random() * 14_000);
       }
       setPulso(p);
     };
+    // Días del calendario: de la medianoche de Colombia/Ecuador (la más temprana) a la de Guatemala/Costa Rica del día
+    // siguiente; la lista luego se recorta al día local de cada país.
+    const desdeEv = dias ? `${dias.d}T05:00:00Z` : new Date(Date.now() - Math.max(ventana, 2) * 60_000).toISOString();
+    const hastaEv = dias ? `${sumarDias(dias.h, 1)}T06:00:00Z` : null;
     const cargarEventos = async () => {
-      const { data, error: e } = await supabase
+      let consulta = supabase
         .from("v_feed_estados")
         .select("cuenta,guia,fecha_hist_est,estado_new_efficommerce,estado_new,nombre_transportadora_efficommerce,nombre_ciudad_destinatario,valor_recaudo,est_guia_new_efficommerce,pagada")
         .in("cuenta", sel)
-        .gte("fecha_hist_est", new Date(Date.now() - Math.max(ventana === HOY ? minutosHoy(sel) : ventana, 2) * 60_000).toISOString())
-        .order("fecha_hist_est", { ascending: false })
-        .limit(500);
+        .gte("fecha_hist_est", desdeEv);
+      if (hastaEv) consulta = consulta.lt("fecha_hist_est", hastaEv);
+      const { data, error: e } = await consulta.order("fecha_hist_est", { ascending: false }).limit(500);
       if (!vivo || e || !data) return;
       const nuevos = (data as Evento[]).filter((x) => !vistos.current.has(claveEv(x)));
       nuevos.forEach((x) => vistos.current.add(claveEv(x)));
+      // Un día pasado no se reproduce: se muestra la lista completa de una vez.
+      if (hastaEv && Date.parse(hastaEv) < Date.now()) { setStream(nuevos.slice(0, 200)); primera = false; return; }
       // Al abrir, se reproducen los últimos 12 cambios reales para que se vea el pulso de inmediato.
       if (primera) setStream(nuevos.slice(12, 200));
       colaRef.current.push(...(primera ? nuevos.slice(0, 12) : nuevos).reverse());
@@ -209,25 +227,26 @@ export function EnVivo() {
   const nodo = (c: string, id: string) => esEtapa(id) ? enProceso(c, id) : enVentana(c, id as Cat);
   const suma = (cat?: Cat) => sel.reduce((a, c) => a + enVentana(c, cat), 0);
   const sumaEtapa = (et: Etapa) => sel.reduce((a, c) => a + enProceso(c, et), 0);
-  // Órdenes y remisiones solo existen donde el Agente vigila; se dice de qué países salen.
+  // Órdenes y remisiones salen de la vigilancia del Agente; si algún país elegido no la tiene, se dice de cuáles salen.
   const conAgente = sel.filter((c) => datos(c)?.agente).map((c) => infoCuenta(c).nombre);
-  const origenProceso = conAgente.length === 0 ? "sin agente aún"
-    : conAgente.length === sel.length ? (sel.length === 1 ? "" : conAgente.join(" y "))
-    : `solo ${conAgente.join(" y ")}`;
+  const origenProceso = !pulso || conAgente.length === sel.length ? "" : conAgente.length ? `solo ${conAgente.join(" y ")}` : "sin vigilancia aún";
   const maxNodo = Math.max(1, ...sel.flatMap((c) => NODOS.map((n) => nodo(c, n.id))));
   const ultimo = pulso?.cuentas.map((c) => c.ultimo).filter(Boolean).sort().pop() ?? null;
   const hace = ultimo ? Math.max(0, Math.round((ahora - Date.parse(ultimo)) / 1000)) : null;
   const serie = Array.from({ length: 60 }, (_, i) => sel.reduce((a, c) => a + (datos(c)?.serie?.[i] ?? 0), 0));
-  const esHoy = ventana === HOY;
-  const etiquetaVentana = VENTANAS.find((v) => v.min === ventana)?.label ?? "";
-  // Frases: "cambios en 30 min" / "cambios de hoy".
-  const enVentanaTxt = esHoy ? "de hoy" : `en ${etiquetaVentana}`;
-  const minutos = esHoy ? pulso?.minutos ?? minutosHoy(sel) : ventana;
+  const atajo = dias ? atajos().find((r) => r.d === dias.d && r.h === dias.h) : null;
+  const etiquetaVentana = !dias ? VENTANAS.find((v) => v.min === ventana)?.label ?? ""
+    : atajo ? atajo.label : etiquetaRango(dias.d, dias.h);
+  // Frases: "cambios en 10 min" / "cambios de hoy" / "cambios de ayer" / "cambios del 1–15 oct 2026".
+  const enVentanaTxt = !dias ? `en ${etiquetaVentana}` : atajo ? `de ${atajo.label.toLowerCase()}` : `del ${etiquetaVentana}`;
+  const minutos = dias ? pulso?.minutos ?? 60 : ventana;
   const corte = minutos; // 60 puntos en la ventana: cada punto dura (minutos × 60 s) / 60 = minutos segundos
   const corteTxt = corte < 60 ? `${corte} s` : corte < 3600 ? `${Math.round(corte / 60)} min` : `${Math.round(corte / 360) / 10} h`;
   const lista = stream.filter((e) => {
     const t = Date.parse(e.fecha_hist_est);
-    return esHoy ? diaLocal(e.cuenta, t) === diaLocal(e.cuenta, ahora) : t >= ahora - (ventana + 1) * 60_000;
+    if (!dias) return t >= ahora - (ventana + 1) * 60_000;
+    const dia = diaLocal(e.cuenta, t);
+    return dia >= dias.d && dia <= dias.h;
   });
 
   return (
@@ -239,13 +258,17 @@ export function EnVivo() {
             {infoCuenta(c).bandera} {infoCuenta(c).nombre}
           </button>
         ))}
-        <div className="ml-auto inline-flex rounded-xl border border-line bg-white/[0.02] p-0.5 font-mono text-[11px]">
-          {VENTANAS.map((v) => (
-            <button key={v.min} onClick={() => elegirVentana(v.min)}
-              className={`rounded-lg px-2.5 py-1 font-semibold uppercase tracking-wider transition-colors ${ventana === v.min ? "bg-blue/25 text-text shadow-[inset_0_0_0_1px_rgb(47_123_255_/_0.6)]" : "text-muted hover:text-text"}`}>
-              {v.label}
-            </button>
-          ))}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-xl border border-line bg-white/[0.02] p-0.5 font-mono text-[11px]">
+            {VENTANAS.map((v) => (
+              <button key={v.min} onClick={() => elegirVentana(v.min)}
+                className={`rounded-lg px-2.5 py-1 font-semibold uppercase tracking-wider transition-colors ${!dias && ventana === v.min ? "bg-blue/25 text-text shadow-[inset_0_0_0_1px_rgb(47_123_255_/_0.6)]" : "text-muted hover:text-text"}`}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+          <SelectorFechas desde={dias?.d ?? hoy} hasta={dias?.h ?? hoy} rangos={atajos()} hoy={hoy} onAplicar={elegirDias}
+            inactivo={dias ? undefined : "Calendario"} />
         </div>
       </div>
 
@@ -326,7 +349,7 @@ export function EnVivo() {
 
       <div className="card p-4">
         <div className="flex items-baseline justify-between mb-1">
-          <span className="text-[11px] uppercase tracking-widest font-mono text-muted">Latido · cambios cada {corteTxt}, {esHoy ? "desde las 00:00" : `últimos ${etiquetaVentana}`}</span>
+          <span className="text-[11px] uppercase tracking-widest font-mono text-muted">Latido · cambios cada {corteTxt}, {dias ? etiquetaVentana.toLowerCase() : `últimos ${etiquetaVentana}`}</span>
           <span className="text-[11px] text-muted num">{entero(serie.reduce((a, n) => a + n, 0))} cambios</span>
         </div>
         <Latido valores={serie} />
