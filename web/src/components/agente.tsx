@@ -52,7 +52,6 @@ const ESTADOS: Record<Estado, { label: string; color: string }> = {
 
 const hora = (iso: string) =>
   new Intl.DateTimeFormat("es-CO", { timeZone: "America/Guatemala", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-const ZONA: Record<string, string> = { TIENDA_CO: "America/Bogota", TIENDA_EC: "America/Guayaquil", TIENDA_GT: "America/Guatemala", TIENDA_CR: "America/Costa_Rica" };
 // Próxima corrida del agente en hora local: el siguiente minuto múltiplo de cada_min o `antes_min` antes de un corte.
 function proxima(zona: string, cadaMin: number, cortes: string[], antesMin: number) {
   const ahora = new Date();
@@ -77,7 +76,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   const alerta = datos.config?.minutos_alerta ?? 30;
   const r = datos.resumen;
   const cfg = datos.config;
-  const zona = ZONA[cuenta] ?? "America/Bogota";
+  const zona = infoCuenta(cuenta).zona;
   const [abierta, setAbierta] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [horario, setHorario] = useState({ cada: cfg?.cada_min ?? 10, cortes: (cfg?.cortes ?? []).join(", "), antes: cfg?.antes_min ?? 2 });

@@ -19,7 +19,6 @@ type Wallet = {
 type Respuesta = { ahora: string; cuentas: Wallet[] };
 
 const ORDEN = Object.keys(CUENTAS);
-const ZONA: Record<string, string> = { TIENDA_CO: "America/Bogota", TIENDA_EC: "America/Guayaquil", TIENDA_GT: "America/Guatemala", TIENDA_CR: "America/Costa_Rica" };
 const CADA_MS = 15_000;
 
 // Montos de wallet con 2 decimales, como los muestra Effi.
@@ -89,7 +88,7 @@ export function WalletEnVivo() {
           </div>
           <ul className="divide-y divide-line">
             {elegida.recientes.map((m, i) => {
-              const hora = new Intl.DateTimeFormat("es-CO", { timeZone: ZONA[elegida.cuenta], day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(m.fecha));
+              const hora = new Intl.DateTimeFormat("es-CO", { timeZone: infoCuenta(elegida.cuenta).zona, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(m.fecha));
               return (
                 <li key={`${m.fecha}-${i}`} className="flex items-center gap-3 py-2 text-sm">
                   <span className="w-36 shrink-0 whitespace-nowrap text-[11px] font-mono text-muted">{hora}</span>

@@ -5,6 +5,7 @@ import { Copy, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
 import { sumarDias } from "@/lib/filtros";
+import { infoCuenta } from "@/lib/paises";
 
 // 📞 Bandeja de novedades: una línea por novedad, para solucionar cientos sin salir de la Torre. En cada línea la
 // asesora marca Contacto 1, 2 y 3 (el mismo CRM de Disponible en oficina), escoge la solución de la transportadora y
@@ -29,8 +30,7 @@ const RESULTADOS: Record<Resultado, { label: string; color: string }> = {
   no_contesto: { label: "No contesta", color: "var(--red)" },
   telefono_malo: { label: "No aplica", color: "#b48cff" },
 };
-const ZONA: Record<string, string> = { TIENDA_CO: "America/Bogota", TIENDA_EC: "America/Guayaquil", TIENDA_GT: "America/Guatemala", TIENDA_CR: "America/Costa_Rica" };
-const hoyLocal = (cuenta: string) => new Intl.DateTimeFormat("en-CA", { timeZone: ZONA[cuenta] ?? "America/Bogota" }).format(new Date());
+const hoyLocal = (cuenta: string) => new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date());
 const hace = (iso: string, ahora: number) => {
   const m = Math.max(0, Math.round((ahora - Date.parse(iso)) / 60_000));
   return m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / 1440)} d`;
@@ -84,7 +84,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
   }, [soluciones]);
 
   const hoy = hoyLocal(cuenta);
-  const enviadaHoy = (f: FilaNovedad) => f.envio && f.envio.estado !== "error" && hoyLocal(cuenta) === new Intl.DateTimeFormat("en-CA", { timeZone: ZONA[cuenta] ?? "America/Bogota" }).format(new Date(f.envio.en));
+  const enviadaHoy = (f: FilaNovedad) => f.envio && f.envio.estado !== "error" && hoyLocal(cuenta) === new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date(f.envio.en));
   const transportadoras = [...new Set(filas.map((f) => f.transportadora ?? "—"))].sort();
   const tipos = [...new Set(filas.map((f) => f.novedad ?? "—"))].sort();
   const q = filtro.buscar.trim().toLowerCase();

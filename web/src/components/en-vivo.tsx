@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
-import { CUENTAS, infoCuenta } from "@/lib/paises";
+import { infoCuenta } from "@/lib/paises";
 import { hoyBogota, rangosRapidos, sumarDias } from "@/lib/filtros";
 import { COLOR_ESTADO } from "./charts";
 import { RedNeuronal, type RedNeuronalApi } from "./red-neuronal";
@@ -32,9 +32,7 @@ type Pulso = {
   }[];
 };
 
-const TIENDAS = Object.keys(CUENTAS);
-const ZONA: Record<string, string> = { TIENDA_CO: "America/Bogota", TIENDA_EC: "America/Guayaquil", TIENDA_GT: "America/Guatemala", TIENDA_CR: "America/Costa_Rica" };
-const diaLocal = (cuenta: string, ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: ZONA[cuenta] ?? "America/Bogota" }).format(new Date(ms));
+const diaLocal = (cuenta: string, ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date(ms));
 
 const ESTADOS: { id: Cat; label: string }[] = [
   { id: "EN_TRANSITO", label: "En tránsito" },
@@ -68,7 +66,8 @@ const AZUL = "rgb(120 160 255)";
 const q = (n: number) => Math.round(n * 100) / 100;
 
 // Cada país tiene su lugar fijo alrededor de la Torre: Colombia arriba, Guatemala a la derecha, Costa Rica abajo
-// y Ecuador a la izquierda (no cambia al filtrar países).
+// y Ecuador a la izquierda (no cambia al filtrar países). Con más de cuatro cuentas (otras sociedades) se reparten en
+// círculo en el orden de las banderas.
 const ANGULO: Record<string, number> = { TIENDA_CO: -Math.PI / 2, TIENDA_GT: 0, TIENDA_CR: Math.PI / 2, TIENDA_EC: Math.PI };
 
 // Con una tienda: el proceso de izquierda a derecha, como una línea (país → órdenes → remisiones → guías generadas →
@@ -76,7 +75,7 @@ const ANGULO: Record<string, number> = { TIENDA_CO: -Math.PI / 2, TIENDA_GT: 0, 
 function geometria(cuentas: string[]) {
   const sola = cuentas.length === 1;
   const paises = cuentas.map((c, i) => {
-    const a = ANGULO[c] ?? -Math.PI / 2 + (2 * Math.PI * i) / cuentas.length;
+    const a = cuentas.length <= 4 && ANGULO[c] != null ? ANGULO[c] : -Math.PI / 2 + (2 * Math.PI * i) / cuentas.length;
     if (sola) {
       const linea = [250, 405, 560];
       const estados = NODOS.map((n, j) => j < ETAPAS.length
@@ -94,7 +93,8 @@ function geometria(cuentas: string[]) {
   return { sola, paises };
 }
 
-export function EnVivo() {
+// cuentas: las tiendas activas que el usuario puede ver, en el orden de las banderas (de todas las sociedades).
+export function EnVivo({ cuentas: TIENDAS }: { cuentas: string[] }) {
   const [sel, setSel] = useState<string[]>(TIENDAS);
   const [ventana, setVentana] = useState(60);
   const [dias, setDias] = useState<Dias | null>(null); // con calendario manda el rango de días

@@ -6,6 +6,7 @@ import { Copy, MessageCircle, PhoneCall, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
 import { OBSERVACIONES, textoObservacion, type CodigoObs } from "@/lib/oficina";
+import { infoCuenta } from "@/lib/paises";
 
 // CRM de "Disponible en oficina" con el mismo formato que el equipo usaba en Drive: por guía, Contacto 1, 2 y 3
 // por llamada, cada uno Contactado / No contesta / No aplica, más una Observación de una lista cerrada (sin texto
@@ -42,8 +43,6 @@ const FILTROS = [
 ] as const;
 const POR_PAGINA = 60;
 // Hora local de cada tienda e indicativo para abrir WhatsApp.
-const ZONA: Record<string, string> = { TIENDA_CO: "America/Bogota", TIENDA_EC: "America/Guayaquil", TIENDA_GT: "America/Guatemala", TIENDA_CR: "America/Costa_Rica" };
-const INDICATIVO: Record<string, string> = { TIENDA_CO: "57", TIENDA_EC: "593", TIENDA_GT: "502", TIENDA_CR: "506" };
 
 const hace = (iso: string | null) => {
   if (!iso) return "—";
@@ -55,13 +54,13 @@ const hace = (iso: string | null) => {
 // Un campo puede traer varios teléfonos: "300 123 4567 / 311..." → cada uno con su botón (sin repetir).
 const telefonos = (t: string | null) => [...new Set((t ?? "").split(/[,;/|]| - /).map((x) => x.replace(/[^\d+]/g, "")).filter((x) => x.length >= 7))];
 const whatsapp = (tel: string, cuenta: string) => {
-  const d = tel.replace(/\D/g, ""), ind = INDICATIVO[cuenta] ?? "";
+  const d = tel.replace(/\D/g, ""), ind = infoCuenta(cuenta).indicativo;
   return `https://wa.me/${d.startsWith(ind) && d.length > 10 ? d : ind + d.replace(/^0+/, "")}`;
 };
 
 export function CrmOficina({ cuenta, guias }: { cuenta: string; guias: GuiaOficina[] }) {
   const router = useRouter();
-  const zona = ZONA[cuenta] ?? "America/Bogota";
+  const zona = infoCuenta(cuenta).zona;
   const hora = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
   const dia = (iso: string | Date) => new Intl.DateTimeFormat("en-CA", { timeZone: zona }).format(new Date(iso));
   const [filtro, setFiltro] = useState<(typeof FILTROS)[number]["id"]>("todas");

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, FileText, ShoppingCart, Truck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { entero } from "@/lib/formato";
+import { infoCuenta } from "@/lib/paises";
 
 // Flujo en vivo del Agente, en horizontal: órdenes por convertir → remisiones creadas → guías creadas (hoy, hora
 // local del país). Los paquetes corren por las conexiones; cuando el agente está creando algo, la etapa activa late
@@ -13,7 +14,6 @@ import { entero } from "@/lib/formato";
 type Evento = { id: number; id_orden: number | null; paso: string; ok: boolean | null; mensaje: string; datos: Record<string, unknown> | null; creado_en: string };
 type Resumen = { sin_remision: number; sin_guia: number; listas?: number; plan_revision?: number };
 
-const ZONA: Record<string, string> = { TIENDA_CO: "America/Bogota", TIENDA_EC: "America/Guayaquil", TIENDA_GT: "America/Guatemala", TIENDA_CR: "America/Costa_Rica" };
 
 export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
   cuenta: string; resumen: Resumen; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
@@ -22,7 +22,7 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [abierto, setAbierto] = useState<number | null>(null);
   const [ahora, setAhora] = useState(() => Date.now());
-  const zona = ZONA[cuenta] ?? "America/Bogota";
+  const zona = infoCuenta(cuenta).zona;
 
   useEffect(() => {
     const supabase = createClient();

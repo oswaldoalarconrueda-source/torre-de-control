@@ -1,5 +1,6 @@
 import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros, mismoDiaMesAnterior, type Filtros } from "@/lib/filtros";
+import { ordenCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { SelectorPlataforma, leerPlataforma } from "@/components/selector-plataforma";
 import { GlobalVista, type DatosGlobal, type FilaMes } from "@/components/global-vista";
@@ -24,8 +25,7 @@ export default async function GlobalPage({ searchParams }: PageProps<"/global">)
     supabase.rpc("kpi_global_meses", { p_cuentas: f.cuentas, p_plataforma: plataforma, p_dia: Number(hoy.slice(8, 10)) }),
     supabase.from("effi_accounts").select("slug").eq("activa", true).eq("tipo", "tienda"),
   ]);
-  const orden = ["TIENDA_CO", "TIENDA_EC", "TIENDA_GT", "TIENDA_CR"];
-  const visibles = (tiendas ?? []).map((t) => t.slug as string).sort((a, b) => orden.indexOf(a) - orden.indexOf(b));
+  const visibles = (tiendas ?? []).map((t) => t.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
   const cuentas = f.cuentas ? visibles.filter((c) => f.cuentas!.includes(c)) : visibles;
 
   return (
