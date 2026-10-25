@@ -58,6 +58,7 @@ La lista completa de eventos (unos 190, de todos los módulos) aparece en el sel
 | TIENDA_EC (NATURALFITT EC, ID 57380) | ✅ 13/13, el 2026-10-23 |
 | TIENDA_GT | pendiente |
 | TIENDA_CR | pendiente |
+| VALKA_GT (VALKA GT, ID 58130, sociedad Valka) | ✅ 13/13, el 2026-10-25 (nombre "Torre Control - <evento>": Effi quita el "·") |
 | Proveedurías | pendiente (todavía sin API key) |
 
 **Observación del 2026-10-23, unos 20 min después de crear los webhooks de CO y EC:**
