@@ -41,6 +41,18 @@ const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIE
 const TRANSPORTE_PAIS: Record<string, { oficina: number; domicilio: number; respaldo: number }> = {
   TIENDA_EC: { oficina: 1, domicilio: 5, respaldo: 1 },   // 1 Servientrega · 5 Gintracom
 };
+// Transportadoras que en Effi piden además las medidas del paquete (alto, ancho, largo en cm): Servientrega,
+// Coordinadora, Laarcourier y CAEX. Sin medidas Effi responde HTTP 500 vacío, y sin volumen "Volumen total es
+// obligatorio": van las dos cosas. 10×10×10 cm da 0,2 kg volumétricos, por debajo del peso real (1 kg), así que no
+// cambia el flete.
+const MEDIDAS: Record<string, Record<number, { alto: number; ancho: number; largo: number }>> = {
+  TIENDA_EC: { 1: { alto: 10, ancho: 10, largo: 10 }, 3: { alto: 10, ancho: 10, largo: 10 } },   // 1 Servientrega · 3 Laarcourier
+};
+const conMedidas = (cuenta: string, guia: Json) => {
+  const m = MEDIDAS[cuenta]?.[Number(guia.transportadora)];
+  if (!m || guia.alto) return guia;
+  return { ...guia, ...m, volumen_total: guia.volumen_total || 1, idempotency_key: `${guia.idempotency_key}-m` };
+};
 
 type Json = Record<string, any>;
 
@@ -148,6 +160,7 @@ const detalleGuia = (g: { status: number; respuesta: Json | null }, p: Json | un
 // cobertura y se repite con la de respaldo.
 async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, destino: { ciudad: number; nombre: string },
   ev: (ok: boolean | null, mensaje: string, datos?: Json | null) => Promise<unknown>) {
+  guia = conMedidas(cuenta, guia);
   let g = await api.post('guia_transporte', guia);
   let p = primeraGuia(g);
   const tp = TRANSPORTE_PAIS[cuenta];
@@ -156,7 +169,7 @@ async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, de
     const detalle = detalleGuia(g, p);
     await rpc('auto_sin_cobertura', { p_cuenta: cuenta, p_transportadora: tp.domicilio, p_ciudad: destino.ciudad, p_nombre_ciudad: destino.nombre, p_motivo: detalle });
     await ev(null, `Gintracom no dejó hacer la guía (${detalle}). Se hace con Servientrega y ${destino.nombre} queda en la memoria de cobertura`, { enviado: guia, respuesta: g.respuesta, status: g.status });
-    guia = { ...guia, ...camposTransporte(respaldo), idempotency_key: `${guia.idempotency_key}-resp` };
+    guia = conMedidas(cuenta, { ...guia, ...camposTransporte(respaldo), idempotency_key: `${guia.idempotency_key}-resp` });
     g = await api.post('guia_transporte', guia);
     p = primeraGuia(g);
   }
