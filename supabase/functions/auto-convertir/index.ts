@@ -125,9 +125,11 @@ const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').t
 const lineas = (contenido: string) => [...contenido.matchAll(/(\d+)\s*\*\s*([^.]+)\./g)].map((m) => ({ cant: Number(m[1]), nombre: norm(m[2]) }));
 // Entrega en oficina de la transportadora: "Oficina Servientrega QUEVEDO…", "RETIRA EN CS TULCAN…", "Retiro en oficina…".
 const esOficina = (direccion: string) => /\bOFICINA\b|\bRETIR(A|O|AR)\b|\bCS\b/.test(norm(direccion ?? ''));
+// Regla del dueño para todos los países: 1 paquete, 1 kg y volumen 1. Contenido y valor declarado se copian del
+// documento de venta (contenido_check y valor_declarado_check en cada guía).
 const camposTransporte = (t: Json) => ({
   transportadora: t.transportadora, t_servicio: t.t_servicio, t_forma_pago: t.t_forma_pago,
-  cant_paquetes: t.cant_paquetes || 1, peso_total: t.peso_total || 1, volumen_total: 1,
+  cant_paquetes: 1, peso_total: 1, volumen_total: 1,
 });
 
 // Transportadora para un destino. Guatemala: la de siempre. Ecuador: oficina → Servientrega; ciudad sin cobertura
