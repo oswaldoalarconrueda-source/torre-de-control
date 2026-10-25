@@ -29,9 +29,12 @@ const MIN_GAP_MS = 560;
 const DAY_MS = 86_400_000;
 const REGLAS_HORAS = 6;
 const MAX_ORDENES = 15;
-// Países donde la Torre crea en Effi (remisión y guía). Ecuador solo crea cuando el dueño pulsa "Ejecutar ahora" o
-// "Ejecutar" (el Automático sigue montado solo para Guatemala). Costa Rica y Colombia funcionan distinto.
+// Países donde la Torre crea en Effi, en Automático o cuando el dueño pulsa "Ejecutar ahora" o "Ejecutar". Costa Rica
+// y Colombia están en prueba: no crean nada.
 const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC'];
+// Países donde además se crea la remisión desde la orden. Ecuador no: la API de Effi falla al crearla (error 1452 dentro
+// de Effi; en la web sí se crea), así que allá la remisión la hace una persona en Effi y la Torre hace la guía.
+const PAISES_REMISION = ['TIENDA_GT'];
 const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const ESPERA_GUIA_MIN = 15;   // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía
@@ -351,7 +354,7 @@ async function convertir(cuenta: string, ahora = false) {
 
   const n = await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: [...planes, ...planesGuia], p_reglas: reglasNuevas });
   const salida: Json = { pendientes: pendientes.length, planes: planes.length, listas: planes.filter((p) => p.estado === 'lista').length, guardadas: n };
-  if ((cfg.modo === 'automatico' || ahora) && PAISES_CREACION.includes(cuenta)) {
+  if ((cfg.modo === 'automatico' || ahora) && PAISES_REMISION.includes(cuenta)) {
     salida.creadas = [];
     for (const p of planes.filter((x) => x.estado === 'lista').slice(0, MAX_CREAR)) {
       if (!ahora && !(await sigueAutomatico(cuenta))) break;
@@ -484,6 +487,12 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
       return { creada: false, motivo };
     }
     remision = { id: Number(rem.id), sucursal: Number(rem.sucursal), id_transaccion: rem.id_transaccion };
+  }
+  if (!remision?.id && !PAISES_REMISION.includes(cuenta)) {
+    const motivo = 'En este país Effi no deja crear la remisión por API (error 1452 dentro de Effi). Hazla en Effi y la Torre hace la guía.';
+    await ev('remision', false, motivo);
+    await resultado('error', motivo, { paso: 'remision' });
+    return { creada: false, motivo };
   }
   if (!remision?.id) {
     await ev('remision', null, 'Revisando en Effi que la orden siga vigente y sin remisión');

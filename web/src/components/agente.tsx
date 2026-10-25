@@ -117,9 +117,11 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   const listasRemision = listas.filter((o) => o.estado === "sin_remision");
   const listasGuia = listas.filter((o) => o.estado === "sin_guia");
 
-  // El automático solo está montado para Guatemala; activarlo y pasarlo a manual piden confirmación en pantalla
+  // El automático está montado para Guatemala y Ecuador; activarlo y pasarlo a manual piden confirmación en pantalla
   // (el navegador de la app bloquea las ventanas de confirmación). "Manual" = simular: arma lo que haría sin crear.
-  const automaticoPosible = cuenta === "TIENDA_GT";
+  const automaticoPosible = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
+  // En Ecuador la API de Effi falla al crear remisiones (error 1452 dentro de Effi): allá la Torre hace solo las guías.
+  const creaRemision = cuenta === "TIENDA_GT";
   async function cambiarModo(m: Modo) {
     if (m === modo || (m === "automatico" && !automaticoPosible)) return;
     setGuardando("modo"); setError(null);
@@ -157,7 +159,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   const creaEnEffi = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
   const puedeEjecutar = (o: OrdenAuto) =>
     datos.es_owner && creaEnEffi && (o.plan_estado === "lista" || o.plan_estado === "error") &&
-    (!!o.plan?.remision || (!!o.plan?.remision_existente && !!o.plan?.guia));
+    ((!!o.plan?.remision && creaRemision) || (!!o.plan?.remision_existente && !!o.plan?.guia));
   async function ejecutar(o: OrdenAuto) {
     const clave = `${o.sucursal}-${o.id}`;
     setConfirmarOrden(null);
@@ -183,7 +185,9 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
               <div className={`font-semibold ${modo === "automatico" ? "text-green" : ""}`}>Modo: {modo === "automatico" ? "Automático" : "Manual"}</div>
               <div className="text-xs text-muted">
                 {modo === "automatico"
-                  ? "La Torre crea sola en Effi la remisión y la guía de cada orden, según el horario."
+                  ? creaRemision
+                    ? "La Torre crea sola en Effi la remisión y la guía de cada orden, según el horario."
+                    : "La Torre crea sola en Effi la guía de cada remisión, según el horario (la remisión se hace en Effi)."
                   : creaEnEffi
                     ? "La Torre no crea nada sola en Effi: crea cuando pulsas “Ejecutar ahora” o “Ejecutar” en una orden."
                     : "La Torre solo revisa: la creación en Effi aún no está montada para este país."}
@@ -307,7 +311,9 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
 
       {[
         { titulo: "Listas: orden → remisión", filas: listasRemision, vacio: "Ninguna orden esperando remisión.",
-          texto: "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una." },
+          texto: creaRemision
+            ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una."
+            : "Por ahora la remisión se hace en Effi (la API de Effi falla al crearla); apenas exista, el agente hace la guía." },
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.",
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
         { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.",
