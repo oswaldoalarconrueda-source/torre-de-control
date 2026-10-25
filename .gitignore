@@ -16,3 +16,4 @@ supabase/seed/
 docs/effi/api-endpoints.json
 docs/effi/mcp-conector-manual.txt
 web/public/_ref/
+.vercel
