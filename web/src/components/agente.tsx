@@ -109,6 +109,22 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
     setGuardando(null);
     if (e) setError(e.message); else router.refresh();
   }
+  // "Ejecutar ahora": la misma corrida del horario, disparada en el momento. Mientras corre, la pantalla se refresca
+  // cada pocos segundos para ver en la bitácora lo que va creando.
+  const [corriendo, setCorriendo] = useState<string | null>(null);
+  async function ejecutarAhora() {
+    setGuardando("ahora"); setError(null);
+    const { data, error: e } = await createClient().rpc("auto_ejecutar_ahora", { p_cuenta: cuenta });
+    setGuardando(null);
+    if (e) return setError(e.message);
+    setCorriendo(data === "ocupado" ? "Ya hay una corrida en curso; la bitácora muestra lo que va haciendo." : "Corriendo ahora…");
+    router.refresh();
+    let n = 0;
+    const t = setInterval(() => {
+      router.refresh();
+      if (++n >= 15) { clearInterval(t); setCorriendo(null); }
+    }, 4000);
+  }
   async function guardarHorario() {
     setGuardando("horario"); setError(null);
     const cortes = horario.cortes.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean).map((x) => (x.length === 4 ? `0${x}` : x));
@@ -195,11 +211,21 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                     <span className="text-muted">El agente no está corriendo.</span>
                   )}
                 </div>
+                {corriendo && <div className="text-xs text-green mt-1">{corriendo}</div>}
                 {cfg.error_conversion && <div className="text-xs text-red mt-1">{cfg.error_conversion}</div>}
               </div>
             </div>
             {datos.es_owner && !editando && (
-              <button onClick={() => setEditando(true)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted hover:text-text">Cambiar horario</button>
+              <div className="flex flex-wrap items-center gap-2">
+                {(modo === "simular" || modo === "automatico") && (
+                  <button onClick={ejecutarAhora} disabled={guardando === "ahora" || !!corriendo}
+                    title={modo === "automatico" ? "Crea ya en Effi la remisión y la guía de las órdenes pendientes" : "Revisa ya las órdenes pendientes sin crear nada en Effi"}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-green/50 bg-green/15 px-4 py-1.5 text-xs font-bold text-green hover:bg-green/25 disabled:opacity-60">
+                    <Play size={14} /> {corriendo ? "Corriendo…" : modo === "automatico" ? "Ejecutar ahora" : "Revisar ahora"}
+                  </button>
+                )}
+                <button onClick={() => setEditando(true)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted hover:text-text">Cambiar horario</button>
+              </div>
             )}
           </div>
           {editando && (
