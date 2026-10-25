@@ -103,12 +103,16 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   // son novedad aunque lleven rato esperando: salen con "Ejecutar ahora" o con "Ejecutar" en cada una.
   const paraCrear = (o: OrdenAuto) =>
     o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar";
-  const lista = useMemo(() => datos.ordenes.filter((o) => novedad(o) && !paraCrear(o)),
+  // Una orden que ya tiene remisión y guía está resuelta: el error de un intento anterior (por ejemplo una guía que
+  // falló y se hizo después) ya no cuenta como novedad ni se muestra.
+  const ordenes = useMemo(() => datos.ordenes.map((o) =>
+    o.estado === "completa" && o.plan_estado === "error" ? { ...o, plan_estado: null, plan_motivo: null } : o), [datos.ordenes]);
+  const lista = useMemo(() => ordenes.filter((o) => novedad(o) && !paraCrear(o)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [datos.ordenes]);
-  const listas = useMemo(() => datos.ordenes.filter(paraCrear),
+    [ordenes]);
+  const listas = useMemo(() => ordenes.filter(paraCrear),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [datos.ordenes]);
+    [ordenes]);
   // Dos listas: órdenes que pasan a remisión (y luego a guía) y remisiones ya hechas que solo esperan la guía.
   const listasRemision = listas.filter((o) => o.estado === "sin_remision");
   const listasGuia = listas.filter((o) => o.estado === "sin_guia");
