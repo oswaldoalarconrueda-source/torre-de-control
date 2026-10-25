@@ -191,7 +191,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
               const asesora = env?.usuario ?? Object.values(f.llamadas).sort((a, z) => z.en.localeCompare(a.en))[0]?.u ?? null;
               return (
                 <tr key={`${f.empresa}-${f.id}`} className={`border-b border-line/60 align-middle hover:bg-white/[0.03] ${fondo}`}>
-                  <td className="px-2 py-1.5 whitespace-nowrap text-muted" title={new Date(f.llego).toLocaleString("es-CO")}>{hace(f.llego, ahora)}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap text-muted" title={new Date(f.llego).toLocaleString("es-CO")} suppressHydrationWarning>{hace(f.llego, ahora)}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{f.transportadora}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     {f.guia && (

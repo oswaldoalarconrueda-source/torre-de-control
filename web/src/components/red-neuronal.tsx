@@ -8,7 +8,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 // eventos, la red se recuesta suavemente hacia los países con más actividad. Cada cambio viaja como una señal
 // por el axón del país a su estado; al llegar, el estado palpita, y las entregas y devoluciones lanzan una onda.
 // Los nodos forman el proceso: cada uno cuelga de su "padre" (órdenes del país, remisiones de órdenes, guías de
-// remisiones y los estados de las guías generadas), y la señal recorre ese tramo. Al centro va el logo de Joalix.
+// remisiones y los estados de las guías generadas), y la señal recorre ese tramo. Al centro va el logo de la sociedad
+// que se está mirando (hoy solo Joalix tiene); sin logo, el centro queda vacío.
 // Lo más importante son las entregas: cada una estalla como una supernova (destello, rayos, ondas de choque, chispas
 // y una sacudida) y lanza un cometa que lleva la buena noticia hasta el logo. Varias seguidas en un país suman combo.
 // Las órdenes y remisiones nuevas también chispean, más pequeño.
@@ -17,7 +18,7 @@ export type NodoEstado = { id: string; label: string; x: number; y: number; n: n
 export type NodoPais = { cuenta: string; bandera: string; x: number; y: number; total: number; estados: NodoEstado[] };
 export type RedNeuronalApi = { disparar: (cuenta: string, estado: string | null) => void };
 
-type Props = { ancho: number; alto: number; centro: { x: number; y: number } | null; total: number; paises: NodoPais[]; maxNodo: number };
+type Props = { ancho: number; alto: number; centro: { x: number; y: number } | null; total: number; paises: NodoPais[]; maxNodo: number; logo: string | null };
 
 type Neurona = { x: number; y: number; vx: number; vy: number; vida: number; max: number; brillo: number; color: string | null };
 type Senal = { de: { x: number; y: number }; a: { x: number; y: number }; cx: number; cy: number; t: number; color: string; estado: string; key: string };
@@ -74,6 +75,14 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
     torre: 0, torreEntrega: 0, sacudida: 0,
   });
   const logo = useRef<HTMLImageElement | null>(null);
+  // El logo cambia con la sociedad elegida; sin logo se borra el anterior.
+  useEffect(() => {
+    logo.current = null;
+    if (!props.logo) return;
+    const img = new Image();
+    img.src = props.logo;
+    img.onload = () => { logo.current = img; };
+  }, [props.logo]);
 
   useImperativeHandle(ref, () => ({
     disparar(cuenta, estadoId) {
@@ -112,9 +121,6 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       cv.height = Math.round(datos.current.alto * escala * dpr);
       ctx.setTransform(dpr * escala, 0, 0, dpr * escala, 0, 0);
     };
-    const img = new Image();
-    img.src = "/logo-joalix.jpg";
-    img.onload = () => { logo.current = img; };
     const ro = new ResizeObserver(ajustar);
     ro.observe(cv);
     ajustar();

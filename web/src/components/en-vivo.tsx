@@ -94,7 +94,8 @@ function geometria(cuentas: string[]) {
 }
 
 // cuentas: las tiendas activas que el usuario puede ver, en el orden de las banderas (de todas las sociedades).
-export function EnVivo({ cuentas: TIENDAS }: { cuentas: string[] }) {
+// logo: el de la sociedad que se está mirando (null si no tiene o si se miran varias).
+export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: string | null }) {
   const [sel, setSel] = useState<string[]>(TIENDAS);
   const [ventana, setVentana] = useState(60);
   const [dias, setDias] = useState<Dias | null>(null); // con calendario manda el rango de días
@@ -252,7 +253,8 @@ export function EnVivo({ cuentas: TIENDAS }: { cuentas: string[] }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => elegir(TIENDAS)} className={chip(sel.length === TIENDAS.length)}>🌎 Todas</button>
+        {/* Con una sola cuenta (p. ej. Valka, solo Guatemala) no hay "Todas": se ve solo su bandera. */}
+        {TIENDAS.length > 1 && <button onClick={() => elegir(TIENDAS)} className={chip(sel.length === TIENDAS.length)}>🌎 Todas</button>}
         {TIENDAS.map((c) => (
           <button key={c} onClick={() => elegir([c])} className={chip(sel.length === 1 && sel[0] === c)}>
             {infoCuenta(c).bandera} {infoCuenta(c).nombre}
@@ -287,7 +289,7 @@ export function EnVivo({ cuentas: TIENDAS }: { cuentas: string[] }) {
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_23rem] items-start">
         <div className="card relative overflow-hidden p-0 min-w-0">
-          <RedNeuronal ref={red} ancho={ANCHO} alto={ALTO} centro={geo.sola ? null : { x: CX, y: CY }} total={suma()} maxNodo={maxNodo}
+          <RedNeuronal ref={red} ancho={ANCHO} alto={ALTO} centro={geo.sola ? null : { x: CX, y: CY }} total={suma()} maxNodo={maxNodo} logo={logo}
             paises={geo.paises.map((p) => ({
               cuenta: p.cuenta, bandera: infoCuenta(p.cuenta).bandera, x: p.x, y: p.y, total: enVentana(p.cuenta),
               estados: p.estados.map((e) => ({

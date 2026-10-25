@@ -39,7 +39,7 @@ export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conF
     `rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`;
   const paises = varios ? (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Países">
-      <button onClick={() => !todos && ir({ c: null })} aria-pressed={todos} className={chip(todos)}>🌎 Todos</button>
+      {cuentas.length > 1 && <button onClick={() => !todos && ir({ c: null })} aria-pressed={todos} className={chip(todos)}>🌎 Todos</button>}
       {cuentas.map((c) => {
         const i = infoCuenta(c);
         const on = marcados.includes(c);
