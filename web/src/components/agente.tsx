@@ -37,6 +37,7 @@ export type DatosAuto = {
     total: number; completa: number; revision: number; sin_guia: number; sin_remision: number; anulada: number; recuperado: number;
     min_remision: number | null; listas: number; plan_revision: number;
     mes_total?: number; mes_completas?: number; hoy_total?: number; hoy_completas?: number;
+    mes_anuladas?: number; mes_remisionadas?: number; mes_rem_anuladas?: number; hoy_remisiones?: number; hoy_guias?: number;
   };
   ordenes: OrdenAuto[];
 };
@@ -108,6 +109,9 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   const listas = useMemo(() => datos.ordenes.filter(paraCrear),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [datos.ordenes]);
+  // Dos listas: órdenes que pasan a remisión (y luego a guía) y remisiones ya hechas que solo esperan la guía.
+  const listasRemision = listas.filter((o) => o.estado === "sin_remision");
+  const listasGuia = listas.filter((o) => o.estado === "sin_guia");
 
   // El automático solo está montado para Guatemala; activarlo y pasarlo a manual piden confirmación en pantalla
   // (el navegador de la app bloquea las ventanas de confirmación). "Manual" = simular: arma lo que haría sin crear.
@@ -280,20 +284,28 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
         completas={datos.ordenes.filter((o) => o.estado === "completa").map((o) => o.id)} />
 
       <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
-        <Indicador titulo="Órdenes del mes" valor={entero(r.mes_total ?? 0)} color="var(--blue-2)" />
-        <Indicador titulo="Completadas del mes" valor={entero(r.mes_completas ?? 0)} color="var(--green)" />
+        {/* Mes como el listado de Effi; hoy: órdenes, cuántas ya tienen remisión y cuántas ya tienen guía. */}
+        <Indicador titulo="Órdenes del mes" valor={entero(r.mes_total ?? 0)} color="var(--blue-2)"
+          sub={r.mes_anuladas ? `${entero(r.mes_anuladas)} anuladas sin remisión` : undefined} />
+        <Indicador titulo="Remisionadas del mes" valor={entero(r.mes_remisionadas ?? 0)} color="var(--green)"
+          sub={r.mes_rem_anuladas ? `${entero(r.mes_rem_anuladas)} remisiones anuladas` : undefined} />
         <Indicador titulo="Órdenes de hoy" valor={entero(r.hoy_total ?? 0)} color="var(--blue-2)" />
-        <Indicador titulo="Completadas hoy" valor={entero(r.hoy_completas ?? 0)} color="var(--green)" />
+        <Indicador titulo="Remisiones hoy" valor={entero(r.hoy_remisiones ?? 0)} color="var(--green)"
+          sub={(r.hoy_total ?? 0) > (r.hoy_remisiones ?? 0) ? `${entero((r.hoy_total ?? 0) - (r.hoy_remisiones ?? 0))} sin remisionar` : undefined} />
+        <Indicador titulo="Guías hoy" valor={entero(r.hoy_guias ?? 0)} color="var(--green)"
+          sub={(r.hoy_remisiones ?? 0) > (r.hoy_guias ?? 0) ? `${entero((r.hoy_remisiones ?? 0) - (r.hoy_guias ?? 0))} sin guía` : undefined} />
         <Indicador titulo="Requieren revisión" valor={entero(lista.length)} color="var(--amber)" />
-        <Indicador titulo="Sin guía" valor={entero(r.sin_guia)} color="var(--blue)" />
-        <Indicador titulo="Listas para crear" valor={entero(listas.length)} color="var(--green)" />
+        <Indicador titulo="Listas para crear" valor={entero(listas.length)} color="var(--green)"
+          sub={`${entero(listasRemision.length)} a remisión · ${entero(listasGuia.length)} a guía`} />
       </div>
 
       {error && <p className="text-sm text-red">{error}</p>}
 
       {[
-        { titulo: "Listas para crear", filas: listas, vacio: "No hay nada esperando: todo lo que el agente sabe hacer ya está creado.",
-          texto: "El agente ya sabe qué hacer con estas: salen con “Ejecutar ahora” o con “Ejecutar” en cada una." },
+        { titulo: "Listas: orden → remisión", filas: listasRemision, vacio: "Ninguna orden esperando remisión.",
+          texto: "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una." },
+        { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.",
+          texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
         { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.",
           texto: "Lo que el agente no pudo resolver solo. Se corrige a mano en Effi (por ejemplo, cambiar de proveedor) y sale de aquí al quedar con remisión y guía." },
       ].map((s) => (
@@ -455,11 +467,12 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   );
 }
 
-function Indicador({ titulo, valor, color }: { titulo: string; valor: string; color: string }) {
+function Indicador({ titulo, valor, color, sub }: { titulo: string; valor: string; color: string; sub?: string }) {
   return (
     <div className="card p-4 border-t-2" style={{ borderTopColor: color }}>
       <div className="text-[11px] uppercase tracking-widest font-mono text-muted">{titulo}</div>
       <div className="num text-3xl font-semibold mt-1" style={{ color }}>{valor}</div>
+      {sub && <div className="text-[11px] text-muted mt-0.5">{sub}</div>}
     </div>
   );
 }

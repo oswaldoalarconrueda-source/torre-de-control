@@ -69,16 +69,28 @@ async function correr(mes: boolean) {
       // Fechas en la hora de la empresa (formato de los filtros de Effi). Effi toma "hasta=AAAA-MM-DD" como las
       // 00:00 de ese día, así que se pide hasta mañana para incluir las órdenes de hoy.
       const hoy = new Date(Date.now() + off * 60_000);
-      const desde = mes ? `${hoy.toISOString().slice(0, 8)}01` : new Date(hoy.getTime() - DIAS * DAY_MS).toISOString().slice(0, 10);
-      const hasta = new Date(hoy.getTime() + DAY_MS).toISOString().slice(0, 10);
-      const ordenes = await traer(key, 'orden_v', desde, hasta);
-      await sleep(MIN_GAP_MS);
-      const remisiones = await traer(key, 'remision_v', desde, hasta);
-      const n = await rpc(
-        'auto_ingest',
-        `{"p_cuenta":${JSON.stringify(cuenta)},"p_ordenes":[${ordenes.join(',')}],"p_remisiones":[${remisiones.join(',')}]}`,
-      );
-      resumen[cuenta] = { cambios: n };
+      const dia = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+      const manana = hoy.getTime() + DAY_MS;
+      // El mes va por semanas (Ecuador hace unas 8.000 órdenes al mes y cada tramo admite 40 páginas de 100); con cada
+      // semana se traen las remisiones de 3 días más, para cruzar las órdenes que se remisionaron al día siguiente.
+      const tramos: [number, number][] = [];
+      if (mes) {
+        for (let d = Date.parse(`${hoy.toISOString().slice(0, 8)}01`); d < manana; d += 7 * DAY_MS) tramos.push([d, Math.min(d + 7 * DAY_MS, manana)]);
+      } else {
+        tramos.push([hoy.getTime() - DIAS * DAY_MS, manana]);
+      }
+      let n = 0;
+      for (const [d, h] of tramos) {
+        const ordenes = await traer(key, 'orden_v', dia(d), dia(h));
+        await sleep(MIN_GAP_MS);
+        const remisiones = await traer(key, 'remision_v', dia(d), dia(Math.min(h + 3 * DAY_MS, manana)));
+        n += await rpc(
+          'auto_ingest',
+          `{"p_cuenta":${JSON.stringify(cuenta)},"p_ordenes":[${ordenes.join(',')}],"p_remisiones":[${remisiones.join(',')}]}`,
+        );
+        await sleep(MIN_GAP_MS);
+      }
+      resumen[cuenta] = { cambios: n, tramos: tramos.length };
     } catch (e) {
       resumen[cuenta] = { error: String(e) };
       await rpc('auto_error', JSON.stringify({ p_cuenta: cuenta, p_error: String(e) })).catch(() => {});
@@ -96,5 +108,11 @@ Deno.serve(async (req) => {
   if (!token || !(await rpc('effi_check_sync_token', JSON.stringify({ p_token: token })))) {
     return json(401, { ok: false, mensaje: 'Token inválido' });
   }
-  return json(200, { ok: true, resumen: await correr(new URL(req.url).searchParams.get('mes') === '1') });
+  // El mes completo tarda más que una petición normal: responde de una vez y trabaja en segundo plano.
+  if (new URL(req.url).searchParams.get('mes') === '1') {
+    // @ts-ignore EdgeRuntime existe en Supabase Edge Functions
+    EdgeRuntime.waitUntil(correr(true).catch(() => {}));
+    return json(202, { ok: true, mensaje: 'Mes en curso' });
+  }
+  return json(200, { ok: true, resumen: await correr(false) });
 });
