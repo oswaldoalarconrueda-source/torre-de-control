@@ -55,11 +55,18 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad }: { acceso: Acces
         </Link>}
       </div>
       <nav className="flex-1 overflow-y-auto px-2 space-y-5">
-        <div className="space-y-0.5">{MENU_JOALIX.map(item)}</div>
+        <div className="space-y-0.5">{MENU_JOALIX.filter((it) => !it.soloOwner).map(item)}</div>
         {MENU_EN_VIVO.some((it) => !it.modulo || tieneModulo(acceso, it.modulo)) && (
           <div>
             <div className="px-3 pb-1.5 text-[11px] uppercase tracking-wider text-muted/70">En vivo</div>
             <div className="space-y-0.5">{MENU_EN_VIVO.map(item)}</div>
+          </div>
+        )}
+        {/* Usuario maestro: lo que nadie más puede ver, sin importar la sociedad. */}
+        {esOwner && (
+          <div className="rounded-xl border border-amber/25 bg-amber/[0.04] py-1.5">
+            <div className="px-3 pb-1.5 pt-0.5 text-[11px] uppercase tracking-wider text-amber/90">👑 Solo para ti</div>
+            <div className="space-y-0.5">{MENU_JOALIX.filter((it) => it.soloOwner).map(item)}</div>
           </div>
         )}
       </nav>
