@@ -169,6 +169,11 @@ export function LoginForm() {
           Volver a entrar
         </button>
       )}
+      {hayOwner && modo === "entrar" && (
+        <a href="/registro" className="block w-full text-center text-xs text-muted hover:text-text transition-colors">
+          ¿No tienes cuenta? Solicita acceso
+        </a>
+      )}
       {!hayOwner && modo !== "recuperar" && (
         <button
           type="button"

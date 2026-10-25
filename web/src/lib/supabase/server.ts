@@ -1,4 +1,7 @@
 import "server-only";
+import { cache } from "react";
+import { redirect } from "next/navigation";
+import { primeraRuta, tieneModulo, type Acceso, type ModuloId, type Rol } from "@/lib/modulos";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -18,13 +21,30 @@ export async function createClient() {
   });
 }
 
-export type Usuario = { id: string; email: string; rol: "owner" | "socio" | "empleado" };
+export type Usuario = Acceso & { id: string; email: string; nombre: string | null; cuentas: string[] };
 
-export async function getUsuario(): Promise<Usuario | null> {
+// Quién es el usuario, su rol, si está activo y la unión de los módulos que tiene en sus cuentas.
+export const getUsuario = cache(async (): Promise<Usuario | null> => {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const sub = data?.claims?.sub;
   if (!sub) return null;
-  const { data: u } = await supabase.from("app_usuarios").select("rol,email").eq("user_id", sub).maybeSingle();
-  return { id: sub, email: u?.email ?? String(data.claims.email ?? ""), rol: (u?.rol ?? "empleado") as Usuario["rol"] };
+  const [{ data: u }, { data: permisos }] = await Promise.all([
+    supabase.from("app_usuarios").select("rol,email,nombre,activo").eq("user_id", sub).maybeSingle(),
+    supabase.from("app_permisos").select("cuenta,modulos").eq("user_id", sub),
+  ]);
+  return {
+    id: sub, email: u?.email ?? String(data.claims.email ?? ""), nombre: u?.nombre ?? null,
+    rol: (u?.rol ?? "pendiente") as Rol, activo: u?.activo ?? false,
+    modulos: [...new Set((permisos ?? []).flatMap((p) => p.modulos as string[]))],
+    cuentas: (permisos ?? []).map((p) => p.cuenta as string),
+  };
+});
+
+// Para las páginas: si el usuario no tiene el módulo, lo manda a la primera pantalla que sí puede ver.
+export async function exigirModulo(m: ModuloId) {
+  const u = await getUsuario();
+  if (!u) redirect("/login");
+  if (!tieneModulo(u, m)) redirect(primeraRuta(u));
+  return u;
 }

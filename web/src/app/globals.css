@@ -168,3 +168,25 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .radar, .gira, .flujo { animation: none; }
 }
+
+/* 🤖 Agente: paquetes que corren por el flujo orden → remisión → guía y anillos que laten en la etapa activa. */
+@keyframes corre {
+  0% { left: -3%; opacity: 0; }
+  15%, 85% { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+.corre { position: absolute; top: 50%; translate: 0 -50%; animation: corre 2.6s linear infinite; }
+.corre-rapido { animation-duration: 0.85s; }
+@keyframes onda {
+  from { transform: scale(1); opacity: 0.7; }
+  to { transform: scale(1.75); opacity: 0; }
+}
+.onda { animation: onda 1.6s ease-out infinite; }
+@keyframes sube {
+  from { transform: translateY(8px) scale(0.96); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.sube { animation: sube 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .corre, .onda, .sube { animation: none; }
+}

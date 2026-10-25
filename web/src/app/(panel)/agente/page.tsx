@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { createClient, getUsuario } from "@/lib/supabase/server";
+import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { leerFiltros } from "@/lib/filtros";
 import { infoCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
@@ -8,8 +7,7 @@ import { Agente, type DatosAuto } from "@/components/agente";
 // 🤖 Agente de órdenes de venta, país por país (empieza por Guatemala). Por ahora vigila: muestra cada orden con
 // su remisión y su guía, y marca lo que falta o no cumple las reglas. Crear en Effi se activa más adelante.
 export default async function AgentePage({ searchParams }: PageProps<"/agente">) {
-  const usuario = await getUsuario();
-  if (usuario?.rol !== "owner") redirect("/");
+  await exigirModulo("automatizacion");
   const sp = await searchParams;
   const f = leerFiltros({ ...sp, c: typeof sp.c === "string" ? sp.c : "TIENDA_GT" });
   const cuenta = f.cuentas?.[0] ?? "TIENDA_GT";

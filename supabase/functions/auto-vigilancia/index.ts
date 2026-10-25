@@ -1,6 +1,7 @@
 // auto-vigilancia: la Torre vigila las órdenes de venta (primero Guatemala). No crea nada en Effi.
 //
-// POST /functions/v1/auto-vigilancia   (cabecera x-sync-token, el mismo de effi-sync) → cron cada 2 minutos
+// POST /functions/v1/auto-vigilancia         (cabecera x-sync-token, el mismo de effi-sync) → cron cada 2 minutos
+// POST /functions/v1/auto-vigilancia?mes=1   → cron cada hora: trae todo el mes en curso (para los totales del mes)
 //
 // Por cada cuenta con modo distinto de "apagado" en auto_config: trae de Effi las órdenes de venta y las
 // remisiones de venta creadas en los últimos 3 días y las reenvía crudas a Postgres (rpc auto_ingest), que
@@ -37,7 +38,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Todas las páginas de un recurso en el rango, como respuestas crudas (sin parsear las filas).
 async function traer(key: string, recurso: string, desde: string, hasta: string): Promise<string[]> {
   const paginas: string[] = [];
-  for (let pagina = 1, total = 1; pagina <= total && pagina <= 10; pagina++) {
+  for (let pagina = 1, total = 1; pagina <= total && pagina <= 40; pagina++) {
     if (pagina > 1) await sleep(MIN_GAP_MS);
     const qs = new URLSearchParams({ desde, hasta, por_pagina: '100', pagina: String(pagina) });
     const res = await fetch(`${EFFI_API}/${recurso}?${qs}`, {
@@ -53,7 +54,7 @@ async function traer(key: string, recurso: string, desde: string, hasta: string)
   return paginas;
 }
 
-async function correr() {
+async function correr(mes: boolean) {
   const config: { cuenta: string; modo: string }[] = await tabla('auto_config?select=cuenta,modo&modo=neq.apagado');
   if (!config.length) return { cuentas: 0 };
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', '{}');
@@ -65,10 +66,11 @@ async function correr() {
       const key = keys.find((k) => k.slug === cuenta)?.api_key;
       if (!key) throw new Error('Sin API key');
       const off = cuentas.find((c) => c.slug === cuenta)?.tz_offset_min ?? 0;
-      // Fechas en la hora de la empresa (formato de los filtros de Effi).
+      // Fechas en la hora de la empresa (formato de los filtros de Effi). Effi toma "hasta=AAAA-MM-DD" como las
+      // 00:00 de ese día, así que se pide hasta mañana para incluir las órdenes de hoy.
       const hoy = new Date(Date.now() + off * 60_000);
-      const desde = new Date(hoy.getTime() - DIAS * DAY_MS).toISOString().slice(0, 10);
-      const hasta = hoy.toISOString().slice(0, 10);
+      const desde = mes ? `${hoy.toISOString().slice(0, 8)}01` : new Date(hoy.getTime() - DIAS * DAY_MS).toISOString().slice(0, 10);
+      const hasta = new Date(hoy.getTime() + DAY_MS).toISOString().slice(0, 10);
       const ordenes = await traer(key, 'orden_v', desde, hasta);
       await sleep(MIN_GAP_MS);
       const remisiones = await traer(key, 'remision_v', desde, hasta);
@@ -94,5 +96,5 @@ Deno.serve(async (req) => {
   if (!token || !(await rpc('effi_check_sync_token', JSON.stringify({ p_token: token })))) {
     return json(401, { ok: false, mensaje: 'Token inválido' });
   }
-  return json(200, { ok: true, resumen: await correr() });
+  return json(200, { ok: true, resumen: await correr(new URL(req.url).searchParams.get('mes') === '1') });
 });

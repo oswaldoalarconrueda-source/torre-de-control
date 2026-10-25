@@ -42,3 +42,10 @@ export function rangosRapidos(hoy = hoyBogota()): Rango[] {
 }
 
 export const rangoActivo = (rangos: Rango[], desde: string, hasta: string) => rangos.find((r) => r.d === desde && r.h === hasta) ?? null;
+
+// Mismo día, un mes atrás (1–23 oct → 1–23 sep); si ese mes es más corto, su último día.
+export function mismoDiaMesAnterior(iso: string) {
+  const a = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7)) - 1, d = Number(iso.slice(8, 10));
+  const ultimo = new Date(Date.UTC(a, m, 0)).getUTCDate();
+  return new Date(Date.UTC(a, m - 1, Math.min(d, ultimo))).toISOString().slice(0, 10);
+}

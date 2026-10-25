@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { leerFiltros, rpcArgs } from "@/lib/filtros";
 import { entero, pct } from "@/lib/formato";
 import { infoCuenta, type Semaforo } from "@/lib/paises";
@@ -25,6 +25,7 @@ const agrupar = (filas: Fila[], clave: (f: Fila) => string) => {
 const semRecuperacion = (v: number | null): Semaforo => (v == null ? "nada" : v >= 0.3 ? "verde" : v >= 0.15 ? "naranja" : "rojo");
 
 export default async function NovedadesPage({ searchParams }: PageProps<"/novedades">) {
+  await exigirModulo("novedades");
   const f = leerFiltros(await searchParams);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("kpi_novedades", rpcArgs(f));

@@ -1,7 +1,9 @@
+import { exigirModulo } from "@/lib/supabase/server";
 import { EnVivo } from "@/components/en-vivo";
 
 // ⚡ En vivo: la operación de todas las tiendas (o de una) latiendo con cada cambio de estado.
-export default function EnVivoPage() {
+export default async function EnVivoPage() {
+  await exigirModulo("guias");
   return (
     <div className="pt-8">
       <div className="mb-5">

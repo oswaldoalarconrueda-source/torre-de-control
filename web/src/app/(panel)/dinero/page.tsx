@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { leerFiltros, rpcArgs } from "@/lib/filtros";
 import { dias, dinero, entero, fechaHora } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
@@ -14,6 +14,7 @@ type Transp = { cuenta: string; transportadora: string; entregadas: number; reca
 const ORDEN = ["Recaudo de venta", "Indemnizaciones", "Crédito revertido", "Costo de mercancía", "Flete con recaudo", "Flete devolución", "Flete sin recaudo", "Fulfillment", "Otros (4xmil)", "Débito revertido", "Otros", "Retiros"];
 
 export default async function DineroPage({ searchParams }: PageProps<"/dinero">) {
+  await exigirModulo("dinero");
   const f = leerFiltros(await searchParams);
   const supabase = await createClient();
   const [{ data: w, error }, { data: wd }, { data: sl }, { data: tr }] = await Promise.all([

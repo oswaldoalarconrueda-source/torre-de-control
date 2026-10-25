@@ -7,7 +7,7 @@ const grotesk = Space_Grotesk({ variable: "--font-grotesk", subsets: ["latin"], 
 const mono = Space_Mono({ variable: "--font-space-mono", subsets: ["latin"], weight: ["400", "700"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Torre de Control · Joalix Group SAS",
+  title: "Torre de Control",
   description: "Guías, estados, novedades y dinero de Effi en vivo.",
 };
 

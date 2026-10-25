@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { leerFiltros, rpcArgs } from "@/lib/filtros";
 import { dias, dinero, entero, fechaHora, pct } from "@/lib/formato";
 import { infoCuenta, semaforoDevolucion, semaforoEfectividad } from "@/lib/paises";
@@ -14,6 +14,7 @@ type Ciudad = { cuenta: string; provincia: string | null; ciudad: string | null;
 type Estancada = { cuenta: string; guia: string | null; estado: string | null; transportadora: string | null; destino: string; ultimo_cambio: string; dias: number; valor_recaudo: number | null };
 
 export default async function GuiasPage({ searchParams }: PageProps<"/guias">) {
+  await exigirModulo("guias");
   const sp = await searchParams;
   const f = leerFiltros(sp);
   const orden = sp.orden === "mejores" ? "mejores" : "peores";

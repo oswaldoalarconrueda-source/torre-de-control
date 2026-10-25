@@ -4,7 +4,7 @@ import { hoyBogota, rangosRapidos, type Filtros } from "@/lib/filtros";
 import { FiltrosBar } from "./filtros-bar";
 
 // Título de la pantalla + filtros de país y calendario (solo muestra las cuentas que el usuario puede ver).
-export async function Encabezado({ titulo, subtitulo, f, conFechas = true }: { titulo: string; subtitulo: string; f: Filtros; conFechas?: boolean }) {
+export async function Encabezado({ titulo, subtitulo, f, conFechas = true, varios = false }: { titulo: string; subtitulo: string; f: Filtros; conFechas?: boolean; varios?: boolean }) {
   const supabase = await createClient();
   const { data } = await supabase.from("effi_accounts").select("slug").eq("activa", true).order("slug");
   const orden = ["TIENDA_CO", "TIENDA_EC", "TIENDA_GT", "TIENDA_CR"];
@@ -18,7 +18,7 @@ export async function Encabezado({ titulo, subtitulo, f, conFechas = true }: { t
         <p className="text-sm text-muted mt-1.5">{subtitulo}</p>
       </div>
       <Suspense>
-        <FiltrosBar cuentas={cuentas} rangos={rangosRapidos(hoy)} hoy={hoy} desde={f.desde} hasta={f.hasta} seleccion={f.cuentas} conFechas={conFechas} />
+        <FiltrosBar cuentas={cuentas} rangos={rangosRapidos(hoy)} hoy={hoy} desde={f.desde} hasta={f.hasta} seleccion={f.cuentas} conFechas={conFechas} varios={varios} />
       </Suspense>
     </div>
   );

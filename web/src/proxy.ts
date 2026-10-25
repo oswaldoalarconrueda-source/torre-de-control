@@ -25,7 +25,7 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/nueva-clave";
     return NextResponse.redirect(url);
   }
-  const enLogin = ruta.startsWith("/login");
+  const enLogin = ruta.startsWith("/login") || ruta.startsWith("/registro");
   if (!data?.claims && !enLogin) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

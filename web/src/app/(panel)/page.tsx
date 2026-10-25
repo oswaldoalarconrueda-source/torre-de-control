@@ -1,3 +1,4 @@
+import { exigirModulo } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros } from "@/lib/filtros";
 import { infoCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
@@ -11,6 +12,7 @@ import { SelectorPlataforma, leerPlataforma } from "@/components/selector-plataf
 
 // 🛒 Datos: un país a la vez (nunca se suman países), como en el Dashboard Joalix.
 export default async function DatosPage({ searchParams }: PageProps<"/">) {
+  await exigirModulo("resumen");
   const sp = await searchParams;
   const f = leerFiltros(sp);
   const cuenta = f.cuentas?.[0] ?? "";

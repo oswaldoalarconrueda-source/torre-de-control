@@ -5,10 +5,12 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, type ItemMenu } from "@/lib/menu";
+import { tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
 
-export function Sidebar({ esOwner, email, ultimoSync }: { esOwner: boolean; email: string; ultimoSync: string }) {
+export function Sidebar({ acceso, email, ultimoSync, sociedad }: { acceso: Acceso; email: string; ultimoSync: string; sociedad: string }) {
+  const esOwner = acceso.rol === "owner";
   const path = usePathname();
   const sp = useSearchParams();
   const [abierto, setAbierto] = useState(false);
@@ -18,6 +20,7 @@ export function Sidebar({ esOwner, email, ultimoSync }: { esOwner: boolean; emai
 
   const item = (it: ItemMenu) => {
     if (it.soloOwner && !esOwner) return null;
+    if (it.modulo && !tieneModulo(acceso, it.modulo)) return null;
     const activo = it.href === "/" ? path === "/" : path.startsWith(it.href);
     return (
       <Link
@@ -41,22 +44,24 @@ export function Sidebar({ esOwner, email, ultimoSync }: { esOwner: boolean; emai
         <Logo />
         <div className="min-w-0 flex-1">
           <div className="font-display font-semibold tracking-tight leading-tight">Torre de Control</div>
-          <div className="text-[11px] text-muted">Joalix Group SAS</div>
+          <div className="text-[11px] text-muted truncate">{sociedad}</div>
         </div>
-        <Link href="/en-vivo" title="Ver la operación en vivo"
+        {tieneModulo(acceso, "guias") && <Link href="/en-vivo" title="Ver la operación en vivo"
           className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
             path.startsWith("/en-vivo") ? "border-red/60 bg-red/15 text-text" : "border-red/40 text-red hover:bg-red/10"
           }`}>
           <span className="pulso size-1.5 rounded-full bg-red shadow-[0_0_8px_var(--red)]" />
           En vivo
-        </Link>
+        </Link>}
       </div>
       <nav className="flex-1 overflow-y-auto px-2 space-y-5">
         <div className="space-y-0.5">{MENU_JOALIX.map(item)}</div>
-        <div>
-          <div className="px-3 pb-1.5 text-[11px] uppercase tracking-wider text-muted/70">En vivo</div>
-          <div className="space-y-0.5">{MENU_EN_VIVO.map(item)}</div>
-        </div>
+        {MENU_EN_VIVO.some((it) => !it.modulo || tieneModulo(acceso, it.modulo)) && (
+          <div>
+            <div className="px-3 pb-1.5 text-[11px] uppercase tracking-wider text-muted/70">En vivo</div>
+            <div className="space-y-0.5">{MENU_EN_VIVO.map(item)}</div>
+          </div>
+        )}
       </nav>
       <div className="border-t border-line p-3 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xs text-muted" title="Última sincronización con Effi">

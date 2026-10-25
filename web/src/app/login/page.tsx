@@ -11,7 +11,7 @@ export default function LoginPage() {
         </div>
         <div className="card card-glow p-6 sm:p-7">
           <h1 className="font-display text-2xl font-semibold tracking-tight">Entrar</h1>
-          <p className="text-sm text-muted mt-1">Effi en vivo · Joalix Group SAS</p>
+          <p className="text-sm text-muted mt-1">Effi en vivo</p>
           <LoginForm />
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { leerFiltros, rpcArgs } from "@/lib/filtros";
 import { dinero, entero, fechaHora } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
@@ -8,6 +8,7 @@ import { Kpi, Panel, TablaScroll, Vacio } from "@/components/ui";
 type SinLiq = { cuenta: string; guia: string | null; transportadora: string | null; destino: string; fecha_entrega: string | null; dias: number | null; valor_recaudo: number | null };
 
 export default async function SinLiquidarPage({ searchParams }: PageProps<"/sin-liquidar">) {
+  await exigirModulo("dinero");
   const f = leerFiltros(await searchParams);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("kpi_sin_liquidar", rpcArgs(f));

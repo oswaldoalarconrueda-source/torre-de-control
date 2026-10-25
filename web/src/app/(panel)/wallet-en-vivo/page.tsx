@@ -1,7 +1,9 @@
+import { exigirModulo } from "@/lib/supabase/server";
 import { WalletEnVivo } from "@/components/wallet-en-vivo";
 
 // 🪙 Wallet en vivo: el saldo de la wallet Effi de cada país, en su moneda, subiendo con cada entrega pagada.
-export default function WalletEnVivoPage() {
+export default async function WalletEnVivoPage() {
+  await exigirModulo("dinero");
   return (
     <div className="pt-8">
       <div className="mb-5">

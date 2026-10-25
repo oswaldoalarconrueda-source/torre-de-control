@@ -2,8 +2,8 @@ import { entero } from "@/lib/formato";
 import { OBSERVACIONES, type CodigoObs } from "@/lib/oficina";
 import { Panel, TablaScroll } from "./ui";
 
-// Estadística del CRM de oficina: por día (lo que llegó, lo que se llamó y en qué terminó), por hora de la
-// llamada y por número de intento. Sirve para decidir a qué hora llamar y cuántas veces vale la pena insistir.
+// Estadística del CRM de oficina: qué dicen los clientes, por hora de la llamada y por número de intento (el
+// resultado por día de llegada está en cuadre-oficina). Sirve para decidir a qué hora llamar y cuántas veces vale la pena insistir.
 
 type Dia = {
   dia: string; llegaron: number; llamadas: number; guias_llamadas: number; contesto: number; no_contesto: number; telefono_malo: number;
@@ -13,46 +13,12 @@ type Grupo = { llamadas: number; contesto: number; entregadas: number; guias: nu
 type Obs = { codigo: CodigoObs; guias: number; entregadas: number; devueltas: number; en_oficina: number; con_fecha: number; cumplieron: number };
 export type Estadisticas = { dias: Dia[]; horas: (Grupo & { hora: number })[]; intentos: (Grupo & { intento: number })[]; observaciones: Obs[] };
 
-const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
-const fecha = (iso: string) => { const d = new Date(`${iso}T12:00:00Z`); return `${DIAS[d.getUTCDay()]} ${d.getUTCDate()}-${MESES[d.getUTCMonth()]}`; };
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
 
 export function EstadisticasOficina({ e }: { e: Estadisticas }) {
   const maxHora = Math.max(1, ...e.horas.map((h) => h.llamadas));
   return (
     <div className="space-y-3 mt-6">
-      <Panel titulo="Estadística por día" detalle="Guías que llegaron a oficina ese día, cuántos contactos se hicieron y en qué terminaron (estado actual)">
-        <TablaScroll>
-          <thead>
-            <tr>
-              <th>Día</th><th className="text-right">Llegaron</th><th className="text-right">Contactos</th><th className="text-right">Guías gestionadas</th>
-              <th className="text-right">Contactado</th><th className="text-right">No contesta</th><th className="text-right">No aplica</th>
-              <th className="text-right">Entregadas</th><th className="text-right">Devueltas</th><th className="text-right">Siguen en oficina</th>
-              <th className="text-right">% entrega gestionadas</th><th className="text-right">% entrega sin gestionar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {e.dias.map((d) => (
-              <tr key={d.dia}>
-                <td className="whitespace-nowrap">{fecha(d.dia)}</td>
-                <td className="text-right num">{entero(d.llegaron)}</td>
-                <td className="text-right num">{entero(d.llamadas)}</td>
-                <td className="text-right num">{entero(d.guias_llamadas)}</td>
-                <td className="text-right num text-green">{entero(d.contesto)}</td>
-                <td className="text-right num text-red">{entero(d.no_contesto)}</td>
-                <td className="text-right num" style={{ color: "#b48cff" }}>{entero(d.telefono_malo)}</td>
-                <td className="text-right num text-green">{entero(d.entregadas)}</td>
-                <td className="text-right num text-red">{entero(d.devueltas)}</td>
-                <td className="text-right num">{entero(d.en_oficina)}</td>
-                <td className="text-right num font-semibold">{pct(d.llamadas_entregadas, d.llamadas_total)}</td>
-                <td className="text-right num text-muted">{pct(d.sin_llamar_entregadas, d.sin_llamar_total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </TablaScroll>
-      </Panel>
-
       <Panel titulo="¿Qué dicen los clientes?" detalle="Observaciones de los últimos 14 días y en qué terminaron esas guías (estado actual)">
         {e.observaciones?.length ? (
           <TablaScroll>

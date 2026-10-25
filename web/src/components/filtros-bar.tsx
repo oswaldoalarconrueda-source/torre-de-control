@@ -1,13 +1,14 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import { infoCuenta } from "@/lib/paises";
 import type { Rango } from "@/lib/filtros";
 import { SelectorFechas } from "./selector-fechas";
 
-export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conFechas = true }: {
+export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conFechas = true, varios = false }: {
   cuentas: string[]; rangos: Rango[]; hoy: string; desde: string; hasta: string; seleccion: string[] | null; conFechas?: boolean;
+  varios?: boolean;
 }) {
   const router = useRouter();
   const path = usePathname();
@@ -20,9 +21,36 @@ export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conF
     start(() => router.push(`${path}?${p.toString()}`, { scroll: false }));
   };
 
-  // Un solo país a la vez: los países nunca se suman entre sí.
+  // Un solo país a la vez: los países nunca se suman entre sí. Solo Global (varios) deja elegir varios y juntarlos.
   const elegido = seleccion?.[0] ?? cuentas[0];
-  const paises = (
+  // Si el país de la dirección no está entre los que el usuario puede ver, se pasa al primero que sí.
+  useEffect(() => {
+    if (!varios && cuentas.length && elegido && !cuentas.includes(elegido)) ir({ c: cuentas[0] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elegido, cuentas.join(","), varios]);
+  const marcados = seleccion?.length ? seleccion : cuentas;
+  const todos = marcados.length === cuentas.length;
+  const alternar = (c: string) => {
+    const nuevos = marcados.includes(c) ? marcados.filter((x) => x !== c) : [...marcados, c];
+    if (!nuevos.length) return; // al menos un país
+    ir({ c: nuevos.length === cuentas.length ? null : cuentas.filter((x) => nuevos.includes(x)).join(",") });
+  };
+  const chip = (on: boolean) =>
+    `rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`;
+  const paises = varios ? (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Países">
+      <button onClick={() => !todos && ir({ c: null })} aria-pressed={todos} className={chip(todos)}>🌎 Todos</button>
+      {cuentas.map((c) => {
+        const i = infoCuenta(c);
+        const on = marcados.includes(c);
+        return (
+          <button key={c} onClick={() => alternar(c)} aria-pressed={on} className={chip(on)}>
+            {i.bandera} {i.nombre}
+          </button>
+        );
+      })}
+    </div>
+  ) : (
     <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="País">
       {cuentas.map((c) => {
         const i = infoCuenta(c);

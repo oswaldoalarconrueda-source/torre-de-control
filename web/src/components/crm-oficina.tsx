@@ -52,8 +52,8 @@ const hace = (iso: string | null) => {
   if (m < 1440) return `${Math.round(m / 60)} h`;
   return `${Math.floor(m / 1440)} d`;
 };
-// Un campo puede traer varios teléfonos: "300 123 4567 / 311..." → cada uno con su botón.
-const telefonos = (t: string | null) => (t ?? "").split(/[,;/|]| - /).map((x) => x.replace(/[^\d+]/g, "")).filter((x) => x.length >= 7);
+// Un campo puede traer varios teléfonos: "300 123 4567 / 311..." → cada uno con su botón (sin repetir).
+const telefonos = (t: string | null) => [...new Set((t ?? "").split(/[,;/|]| - /).map((x) => x.replace(/[^\d+]/g, "")).filter((x) => x.length >= 7))];
 const whatsapp = (tel: string, cuenta: string) => {
   const d = tel.replace(/\D/g, ""), ind = INDICATIVO[cuenta] ?? "";
   return `https://wa.me/${d.startsWith(ind) && d.length > 10 ? d : ind + d.replace(/^0+/, "")}`;
