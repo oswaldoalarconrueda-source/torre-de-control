@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Clock, Pause, Play } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, Pause, Play, Truck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
@@ -146,6 +146,23 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
       if (++n >= 15) { clearInterval(t); setCorriendo(null); }
     }, 4000);
   }
+  // "Pasar de remisión a guía": solo las guías de las remisiones ya hechas, en tandas de 10 hasta acabarlas. En Ecuador
+  // es el paso que sí se puede hacer (las remisiones las hace una persona porque la API de Effi falla al crearlas).
+  const [confirmarGuias, setConfirmarGuias] = useState(false);
+  async function pasarAGuia() {
+    setConfirmarGuias(false);
+    setGuardando("guias"); setError(null);
+    const { data, error: e } = await createClient().rpc("auto_pasar_a_guia", { p_cuenta: cuenta });
+    setGuardando(null);
+    if (e) return setError(e.message);
+    setCorriendo(data === "ocupado" ? "Ya hay una corrida en curso; la bitácora muestra lo que va haciendo." : "Haciendo las guías de a 10… mira la bitácora del agente.");
+    router.refresh();
+    let n = 0;
+    const t = setInterval(() => {
+      router.refresh();
+      if (++n >= 45) { clearInterval(t); setCorriendo(null); }
+    }, 4000);
+  }
   async function guardarHorario() {
     setGuardando("horario"); setError(null);
     const cortes = horario.cortes.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean).map((x) => (x.length === 4 ? `0${x}` : x));
@@ -208,6 +225,18 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
             <button onClick={() => setConfirmarAhora(true)} disabled={guardando === "ahora" || !!corriendo}
               className="inline-flex items-center gap-2 rounded-full bg-green px-5 py-2.5 text-sm font-bold text-black shadow-[0_0_24px_-6px_var(--green)] hover:brightness-110 disabled:opacity-60">
               <Play size={16} /> {corriendo ? "Ejecutando…" : "Ejecutar ahora"}
+            </button>
+          ))}
+          {datos.es_owner && creaEnEffi && (confirmarGuias ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted">¿Hacer ya en Effi las guías de las remisiones hechas ({entero(listasGuia.length)}), de a 10?</span>
+              <button onClick={pasarAGuia} disabled={guardando === "guias"} className="rounded-full bg-blue px-4 py-2 text-sm font-bold text-white">Sí, hacer guías</button>
+              <button onClick={() => setConfirmarGuias(false)} className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-muted hover:text-text">No</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmarGuias(true)} disabled={guardando === "guias" || !!corriendo}
+              className="inline-flex items-center gap-2 rounded-full bg-blue px-5 py-2.5 text-sm font-bold text-white shadow-[0_0_24px_-6px_var(--blue)] hover:brightness-110 disabled:opacity-60">
+              <Truck size={16} /> Pasar de remisión a guía{listasGuia.length ? ` (${entero(listasGuia.length)})` : ""}
             </button>
           ))}
           {datos.es_owner && automaticoPosible && (confirmarModo ? (

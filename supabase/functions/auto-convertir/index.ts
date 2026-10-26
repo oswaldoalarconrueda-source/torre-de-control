@@ -7,6 +7,8 @@
 //
 // POST /functions/v1/auto-convertir?cuenta=TIENDA_GT              (cabecera x-sync-token) ← auto_convertir_tick (cron)
 // POST /functions/v1/auto-convertir?cuenta=TIENDA_GT&crear=1-6957  ← auto_decidir('ejecutar')
+// POST /functions/v1/auto-convertir?cuenta=TIENDA_EC&ahora=1&solo=guias ← auto_pasar_a_guia ("Pasar de remisión a guía"):
+//   solo las guías de las remisiones ya hechas, en tandas de 10 hasta acabarlas (se encadena si no alcanza el tiempo).
 //
 // Reglas (Guatemala, pedidas por el dueño):
 // - Remisión desde la orden (action 3) con el convenio de dropshipping que trae la orden, sin cambiarlo.
@@ -83,12 +85,18 @@ class Effi {
   private ultimo = 0;
   constructor(private key: string) {}
   async get(recurso: string, params: Record<string, string | number>): Promise<{ data: Json[]; paginas: number; total: number }> {
-    const espera = this.ultimo + MIN_GAP_MS - Date.now();
-    if (espera > 0) await sleep(espera);
-    this.ultimo = Date.now();
     const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
-    const res = await fetch(`${EFFI_API}/${recurso}?${qs}`, { headers: { Authorization: `Bearer ${this.key}`, Accept: 'application/json' } });
-    const j = await res.json().catch(() => null);
+    let res: Response, j: Json | null;
+    // Si Effi responde "Demasiadas peticiones" (429), se espera lo que pida y se reintenta en vez de cortar la corrida.
+    for (let intento = 0; ; intento++) {
+      const espera = this.ultimo + MIN_GAP_MS - Date.now();
+      if (espera > 0) await sleep(espera);
+      this.ultimo = Date.now();
+      res = await fetch(`${EFFI_API}/${recurso}?${qs}`, { headers: { Authorization: `Bearer ${this.key}`, Accept: 'application/json' } });
+      if (res.status !== 429 || intento >= 4) break;
+      await sleep(1000 * Math.min(30, Number(res.headers.get('retry-after')) || 8));
+    }
+    j = await res.json().catch(() => null);
     if (!res.ok || !j?.ok) throw new Error(`${recurso} HTTP ${res.status}: ${j?.mensaje ?? 'sin respuesta'}`);
     return { data: j.data ?? [], paginas: Number(j.paginacion?.total_paginas ?? 1), total: Number(j.paginacion?.total ?? 0) };
   }
@@ -585,14 +593,36 @@ Deno.serve(async (req) => {
   // Corrida del horario: una a la vez por país; responde de una vez y trabaja en segundo plano.
   if (!(await rpc('auto_candado', { p_cuenta: cuenta, p_segundos: 360 }))) return json(200, { ok: true, omitida: 'otra corrida en curso' });
   const ahora = url.searchParams.get('ahora') === '1';
+  const soloGuias = url.searchParams.get('solo') === 'guias';
+  const salto = Number(url.searchParams.get('salto') ?? 0);
   const tarea = (async () => {
+    let seguir = false;
     try {
-      await convertir(cuenta, ahora);
-      await guiasPendientes(cuenta, ahora);
+      if (soloGuias) {
+        // Tandas de 10 (regla del dueño) con una pausa entre tandas, hasta acabar o hasta ~100 s; si quedan, se sigue
+        // en otra llamada. Una tanda sin ninguna guía creada detiene todo (para no insistir en algo que Effi rechaza).
+        const inicio = Date.now();
+        while (true) {
+          const hechas = await guiasPendientes(cuenta, true);
+          if (hechas.length < MAX_GUIAS_AHORA || !hechas.some((h) => h.ok)) break;
+          if (Date.now() - inicio > 100_000) { seguir = salto < 20; break; }
+          await sleep(3000);
+        }
+      } else {
+        // Si la parte de órdenes falla (p. ej. Effi pide esperar), las guías de las remisiones hechas se hacen igual.
+        try { await convertir(cuenta, ahora); }
+        catch (e) { await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {}); }
+        await guiasPendientes(cuenta, ahora);
+      }
     } catch (e) {
       await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {});
     } finally {
       await rpc('auto_soltar', { p_cuenta: cuenta }).catch(() => {});
+    }
+    if (seguir) {
+      await fetch(`${SUPABASE_URL}/functions/v1/auto-convertir?cuenta=${cuenta}&ahora=1&solo=guias&salto=${salto + 1}`, {
+        method: 'POST', headers: { 'x-sync-token': token, 'Content-Type': 'application/json' }, body: '{}',
+      }).catch(() => {});
     }
   })();
   // @ts-ignore EdgeRuntime existe en Supabase Edge Functions
