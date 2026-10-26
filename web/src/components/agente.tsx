@@ -93,10 +93,14 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   // Novedad en la orden: lo que el agente no pudo resolver y alguien debe revisar a mano (por ejemplo cambiar de
   // proveedor porque se le acabó la mercancía): error al crear, regla que no cumple, sin antecedentes, o una orden
   // que lleva más del tiempo de espera sin remisión o sin guía.
-  const novedad = (o: OrdenAuto) =>
+  // Un pendiente (sin cobertura o pedido repetido) se resuelve solo cuando la remisión se anula en Effi o ya tiene
+  // guía: sale de aquí sin que nadie lo borre.
+  const pendienteResuelto = (o: OrdenAuto) =>
+    !!o.plan_motivo?.startsWith("Pendiente:") && (o.estado === "completa" || o.motivos.some((m) => m.startsWith("La remisión está anulada")));
+  const novedad = (o: OrdenAuto) => !pendienteResuelto(o) && (
     o.plan_estado === "error" || o.estado === "revision" ||
     (o.estado === "sin_remision" && (o.plan_estado === "revision" || o.minutos >= alerta)) ||
-    (o.estado === "sin_guia" && (o.plan_estado === "revision" || o.minutos >= alerta));
+    (o.estado === "sin_guia" && (o.plan_estado === "revision" || o.minutos >= alerta)));
 
   // Listas para crear: el agente ya sabe qué hacer (remisión y guía, o solo la guía de una remisión hecha a mano). No
   // son novedad aunque lleven rato esperando: salen con "Ejecutar ahora" o con "Ejecutar" en cada una.
@@ -423,7 +427,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                       <div key={m} className="text-[11px] text-amber mt-0.5">{m}</div>
                     ))}
                     {o.plan_estado === "error" && o.plan_motivo && (
-                      <div className="mt-1 rounded-lg border border-red/40 bg-red/10 px-2 py-1 text-[11px] text-red whitespace-normal">
+                      <div className="mt-1 min-w-[26rem] max-w-[44rem] rounded-lg border border-red/40 bg-red/10 px-2 py-1 text-[11px] text-red whitespace-normal">
                         ⚠ {o.plan_motivo}
                         {o.plan?.resultado && (
                           <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
@@ -544,7 +548,7 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
     return (
       <div className="text-xs">
         <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-amber bg-white/5">Pendiente de revisión</span>
-        <div className="text-amber mt-1 whitespace-normal">{o.plan_motivo}</div>
+        <div className="text-amber mt-1 min-w-[26rem] max-w-[44rem] whitespace-normal">{o.plan_motivo}</div>
       </div>
     );
   }

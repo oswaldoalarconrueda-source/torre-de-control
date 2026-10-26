@@ -405,12 +405,12 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
   const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0);
   if (!rems.length) return [];
-  const ordenes: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id_remision=in.(${rems.map((r) => r.id).join(',')})&select=sucursal,id,sucursal_remision,id_remision`);
+  const ordenes: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id_remision=in.(${rems.map((r) => r.id).join(',')})&select=sucursal,id,sucursal_remision,id_remision,guia`);
   const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado`);
   const planes: Json[] = [];
   for (const r of rems) {
     const o = ordenes.find((x) => Number(x.id_remision) === Number(r.id) && Number(x.sucursal_remision) === Number(r.sucursal));
-    if (!o) continue;
+    if (!o || o.guia) continue;
     const base = { sucursal: Number(o.sucursal), id: Number(o.id) };
     const plan: Json = { remision_existente: { sucursal: Number(r.sucursal), id: Number(r.id) } };
     const cobertura = sinCobertura.get(Number(r.id));
@@ -458,7 +458,9 @@ async function guiasPendientes(cuenta: string, ahora = false) {
   const hechas: Json[] = [];
   for (const r of rems) {
     if (!ahora && !(await sigueAutomatico(cuenta))) break;
-    const [orden] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${r.sucursal}&id_remision=eq.${r.id}&select=sucursal,id`);
+    const [orden] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${r.sucursal}&id_remision=eq.${r.id}&select=sucursal,id,guia`);
+    // Effi a veces no marca la guía en la remisión aunque exista (hecha a mano): si la Torre ya la tiene, no se hace otra.
+    if (orden?.guia) continue;
     const ev = (ok: boolean | null, mensaje: string, datos: Json | null = null) =>
       rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: orden?.sucursal ?? null, p_id: orden?.id ?? null, p_paso: 'guia', p_ok: ok, p_mensaje: mensaje, p_datos: datos });
     const remitente = cfg.reglas.remitentes?.[r.convenio_dropshipping];
