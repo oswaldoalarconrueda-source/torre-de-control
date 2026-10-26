@@ -64,7 +64,13 @@ const whatsapp = (tel: string, cuenta: string) => {
   return `https://wa.me/${d.startsWith(ind) && d.length > 10 ? d : ind + d.replace(/^0+/, "")}`;
 };
 
-export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string; guias: GuiaOficina[]; esDueno?: boolean }) {
+// Efectividad del contacto medida por entregas (oficina_efectividad): de las guías contactadas en 14 días, cuántas se
+// entregaron, y cuántas de ellas se entregaron hoy.
+export type Efectividad = { contactadas: number; entregadas: number; entregadas_hoy: number };
+
+export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efectividad }: {
+  cuenta: string; guias: GuiaOficina[]; esDueno?: boolean; ingresaronHoy?: number; efectividad?: Efectividad | null;
+}) {
   const router = useRouter();
   // Cada minuto se vuelve a pedir la lista: las guías que Effi pasó a devolución o a entregada desaparecen sin que nadie
   // las llame.
@@ -164,9 +170,13 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Indicador titulo="En oficina ahora" valor={entero(guias.length)} color="var(--blue-2)" />
         <Indicador titulo="Sin contactar" valor={entero(sinContactar)} color="var(--amber)" />
-        <Indicador titulo="Contactos hoy" valor={entero(deHoy.length)} color="var(--blue)" />
-        <Indicador titulo="Contactados hoy" valor={entero(deHoy.filter((l) => l.resultado === "contesto").length)} color="var(--green)" />
-        <Indicador titulo="Efectividad hoy" valor={deHoy.length ? `${Math.round((deHoy.filter((l) => l.resultado === "contesto").length / deHoy.length) * 100)}%` : "—"} color="var(--green)" />
+        <Indicador titulo="Ingresaron a oficina hoy" valor={ingresaronHoy != null ? entero(ingresaronHoy) : "—"} color="var(--blue)" />
+        <Indicador titulo="Contactados hoy" valor={entero(deHoy.filter((l) => l.resultado === "contesto").length)} color="var(--green)"
+          sub={`de ${entero(deHoy.length)} contactos marcados hoy`} />
+        {/* Lo que importa: de lo que se contactó, cuánto se entregó. Sube con cada entrega. */}
+        <Indicador titulo="Efectividad del contacto" color="var(--green)" destacado
+          valor={efectividad?.contactadas ? `${Math.round((efectividad.entregadas / efectividad.contactadas) * 100)}%` : "—"}
+          sub={efectividad ? `${entero(efectividad.entregadas)} de ${entero(efectividad.contactadas)} contactadas ya entregadas · +${entero(efectividad.entregadas_hoy)} hoy` : undefined} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -336,11 +346,13 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
   );
 }
 
-function Indicador({ titulo, valor, color }: { titulo: string; valor: string; color: string }) {
+function Indicador({ titulo, valor, color, sub, destacado }: { titulo: string; valor: string; color: string; sub?: string; destacado?: boolean }) {
   return (
-    <div className="card p-4 border-t-2" style={{ borderTopColor: color }}>
-      <div className="text-[11px] uppercase tracking-widest font-mono text-muted">{titulo}</div>
-      <div className="num text-3xl font-semibold mt-1" style={{ color }}>{valor}</div>
+    <div className={`card p-4 border-t-2 ${destacado ? "border border-green/50" : ""}`}
+      style={{ borderTopColor: color, ...(destacado ? { background: "linear-gradient(160deg, rgb(47 210 143 / 0.16), transparent 70%)", boxShadow: "0 0 24px rgb(47 210 143 / 0.18)" } : {}) }}>
+      <div className={`text-[11px] uppercase tracking-widest font-mono ${destacado ? "text-green" : "text-muted"}`}>{titulo}</div>
+      <div className={`num font-semibold mt-1 ${destacado ? "text-4xl" : "text-3xl"}`} style={{ color, ...(destacado ? { textShadow: `0 0 16px ${color}` } : {}) }}>{valor}</div>
+      {sub && <div className="mt-1 text-[11px] text-muted">{sub}</div>}
     </div>
   );
 }

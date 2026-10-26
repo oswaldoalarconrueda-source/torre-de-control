@@ -17,6 +17,7 @@ export type FilaNovedad = {
   cuenta: string; empresa: number; id: number; guia: string | null; transportadora: string | null; transportadora_id: number;
   novedad: string | null; aclaracion: string | null; llego: string; est_novedad: number; estado_novedad: string | null;
   cliente: string | null; telefono: string | null; direccion: string | null; ciudad: string | null; provincia: string | null;
+  contenido: string | null; // lo que se vendió (contenido de la guía)
   recaudo: number | null; estado_guia: string | null;
   llamadas: Record<string, { r: Resultado; u: string | null; en: string }>;
   envio: { id: number; estado: "enviando" | "enviada" | "error"; mensaje: string | null; solucion: string | null; usuario: string | null; en: string } | null;
@@ -175,7 +176,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
         <table className="w-full min-w-max text-xs">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wider text-muted border-b border-line">
-              {["Llegó", "Transportadora", "Guía", "Novedad", "Cliente", "Teléfono", "Ciudad", "Dirección", "Recaudo", "Contacto 1", "Contacto 2", "Contacto 3", "Solución", "Nueva entrega", "Qué se habló", "", "Asesora"].map((h, i) => (
+              {["Llegó", "Transportadora", "Guía", "Novedad", "Contenido", "Cliente", "Teléfono", "Ciudad", "Dirección", "Recaudo", "Contacto 1", "Contacto 2", "Contacto 3", "Solución", "Nueva entrega", "Qué se habló", "", "Asesora"].map((h, i) => (
                 <th key={i} className="px-2 py-2 font-semibold whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -206,6 +207,9 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                   <td className="px-2 py-1.5 max-w-[15rem]">
                     <div className="font-semibold truncate" title={f.novedad ?? ""}>{f.novedad}</div>
                     <div className="text-muted truncate" title={f.aclaracion ?? ""}>{f.aclaracion}</div>
+                  </td>
+                  <td className="px-2 py-1.5 min-w-[10rem] max-w-[14rem] font-semibold text-blue-2" title={f.contenido ?? ""}>
+                    <div className="line-clamp-2">{f.contenido ?? "—"}</div>
                   </td>
                   <td className="px-2 py-1.5 max-w-[11rem] truncate" title={f.cliente ?? ""}>{f.cliente}</td>
                   <td className="px-2 py-1.5"><input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f.id, { tel: e.target.value })} className={`${inp} w-28`} /></td>
@@ -265,7 +269,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
               );
             })}
             {!vista.length && (
-              <tr><td colSpan={17} className="px-4 py-10 text-center text-sm text-muted">
+              <tr><td colSpan={18} className="px-4 py-10 text-center text-sm text-muted">
                 {filtro.estado === "pendientes" ? "Sin novedades por solucionar en este país. Las nuevas aparecen aquí solas." : "Nada con estos filtros."}
               </td></tr>
             )}
