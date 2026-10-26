@@ -12,11 +12,14 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 // que se está mirando (hoy solo Joalix tiene); sin logo, el centro queda vacío.
 // Lo más importante son las entregas: cada una estalla como una supernova (destello, rayos, ondas de choque, chispas
 // y una sacudida) y lanza un cometa que lleva la buena noticia hasta el logo. Varias seguidas en un país suman combo.
-// Las órdenes y remisiones nuevas también chispean, más pequeño.
+// Las órdenes y remisiones nuevas también chispean, más pequeño. Al abrir hay una "puesta al día" (alDia): lo que ya
+// pasó se enciende de una vez y desde ahí solo estalla lo nuevo.
 
 export type NodoEstado = { id: string; label: string; x: number; y: number; n: number; hoy: number; color: string; padre?: string };
 export type NodoPais = { cuenta: string; bandera: string; x: number; y: number; total: number; estados: NodoEstado[] };
-export type RedNeuronalApi = { disparar: (cuenta: string, estado: string | null) => void };
+// alDia: la "puesta al día" al abrir o al cambiar el filtro: todo lo que ya pasó se enciende de una vez, y desde ahí
+// solo estallan los cambios nuevos.
+export type RedNeuronalApi = { disparar: (cuenta: string, estado: string | null) => void; alDia: () => void };
 
 type Props = {
   ancho: number; alto: number; centro: { x: number; y: number } | null; total: number; paises: NodoPais[]; maxNodo: number; logo: string | null;
@@ -78,6 +81,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
     torre: 0, torreEntrega: 0, sacudida: 0, encima: null as string | null,
   });
   const logo = useRef<HTMLImageElement | null>(null);
+  const alDia = useRef<() => void>(() => {});
   // El logo cambia con la sociedad elegida; sin logo se borra el anterior.
   useEffect(() => {
     logo.current = null;
@@ -108,6 +112,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       }
       if (s) st.senales.push({ de: { x: desde.x, y: desde.y }, a: { x: s.x, y: s.y }, ...xy(control(desde, s)), t: -0.25, color: hexRgb(s.color), estado: s.id, key: `${cuenta}|${s.id}` });
     },
+    alDia() { alDia.current(); },
   }));
 
   useEffect(() => {
@@ -157,6 +162,25 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       st.textos.push({ x, y: y - 38, vida: 0, txt: n > 1 ? `¡×${n} ENTREGADAS!` : "¡+1 ENTREGADA!", color: n > 2 ? ORO : color, tam: Math.min(26, 16 + n * 2), dur: 2200 });
       const centro = datos.current.centro;
       if (centro) st.senales.push({ de: { x, y }, a: centro, ...xy(control({ x, y }, centro, 0.22)), t: 0, color: ORO, estado: "TORRE", key: "torre" });
+    };
+
+    // Puesta al día: supernova dorada en el centro, ondas que barren toda la red, "¡AL DÍA!" y cada tramo del proceso
+    // de cada país se enciende en cascada.
+    alDia.current = () => {
+      const ahora = performance.now(), { centro, paises, ancho, alto } = datos.current;
+      const c = centro ?? { x: ancho / 2, y: alto / 2 };
+      st.destellos.push({ x: c.x, y: c.y, t: ahora, dur: 1700, R: 330, color: ORO, giro: Math.random() * Math.PI });
+      [AZUL, BLANCO, ORO, AZUL].forEach((col, i) => st.ondas.push({ x: c.x, y: c.y, r: -i * 90, max: 900, color: col, grosor: 5 - i }));
+      chispear(c.x, c.y, [AZUL, BLANCO, ORO], 260, 0.75, 2.4);
+      st.sacudida = ahora; st.torre = ahora; st.torreEntrega = ahora;
+      st.textos.push({ x: c.x, y: c.y - 90, vida: 0, txt: "¡AL DÍA!", color: ORO, tam: 36, dur: 2800 });
+      for (const p of paises) {
+        st.senales.push({ de: c, a: { x: p.x, y: p.y }, ...xy(control(c, p, 0.12)), t: -0.2, color: AZUL, estado: "", key: p.cuenta });
+        p.estados.forEach((s, j) => {
+          const o = (s.padre && p.estados.find((e) => e.id === s.padre)) || p;
+          st.senales.push({ de: { x: o.x, y: o.y }, a: { x: s.x, y: s.y }, ...xy(control(o, s)), t: -0.45 - j * 0.12, color: hexRgb(s.color), estado: "ALDIA", key: `${p.cuenta}|${s.id}` });
+        });
+      }
     };
 
     const cuadro = (ahora: number) => {
@@ -282,6 +306,9 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
             st.ondas.push({ x: s.a.x, y: s.a.y, r: 10, max: 200, color: s.color, grosor: 2.5 });
             st.textos.push({ x: s.a.x, y: s.a.y - 30, vida: 0, txt: "+1 devolución", color: s.color });
             for (let i = 0; i < 8; i++) st.neuronas.push({ ...nueva(s.a.x, s.a.y, s.color, 2.2), brillo: 1 });
+          } else if (s.estado === "ALDIA") {
+            st.ondas.push({ x: s.a.x, y: s.a.y, r: 6, max: 130, color: s.color, grosor: 2.5 });
+            chispear(s.a.x, s.a.y, [s.color, BLANCO], 30, 0.35, 1.6);
           } else if (s.estado === "ORDEN" || s.estado === "REMISION") {
             // Venta nueva o remisión hecha: un chispazo de su color.
             st.ondas.push({ x: s.a.x, y: s.a.y, r: 6, max: 110, color: s.color, grosor: 2 });
@@ -324,7 +351,8 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       st.destellos = st.destellos.filter((d) => {
-        const u = (ahora - d.t) / d.dur;
+        // Un destello creado fuera del cuadro (la puesta al día) puede tener una hora apenas posterior a la del cuadro.
+        const u = Math.max(0, (ahora - d.t) / d.dur);
         if (u >= 1) return false;
         const k = 1 - u, R = d.R * (0.35 + 0.65 * Math.sqrt(u));
         const gr = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, R);

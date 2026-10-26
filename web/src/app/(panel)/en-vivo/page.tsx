@@ -10,7 +10,18 @@ export default async function EnVivoPage() {
     supabase.from("effi_accounts").select("slug,sociedad").eq("activa", true).eq("tipo", "tienda"),
     supabase.from("app_sociedades").select("nombre,logo"),
   ]);
-  const cuentas = (data ?? []).map((c) => c.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
+  // Un país sin movimiento (ni órdenes ni guías en 30 días, p. ej. Costa Rica conectada pero quieta) no sale hasta
+  // que tenga el primero.
+  const hace30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const conMovimiento = await Promise.all((data ?? []).map(async (c) => {
+    const [g, o] = await Promise.all([
+      supabase.from("effi_guias").select("id").eq("cuenta", c.slug).gte("fecha_trans", hace30).limit(1),
+      supabase.from("auto_ordenes").select("id").eq("cuenta", c.slug).gte("fecha_orden", hace30).limit(1),
+    ]);
+    return (g.data?.length ?? 0) + (o.data?.length ?? 0) > 0;
+  }));
+  const cuentas = (data ?? []).filter((_, i) => conMovimiento[i])
+    .map((c) => c.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
   // Logo al centro solo si todo lo que se ve es de una sola sociedad y esa sociedad tiene logo.
   const sociedades = [...new Set((data ?? []).map((c) => c.sociedad as string))];
   const logo = sociedades.length === 1 ? ((soc ?? []).find((x) => x.nombre === sociedades[0])?.logo as string | null) ?? null : null;

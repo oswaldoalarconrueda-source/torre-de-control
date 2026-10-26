@@ -14,8 +14,10 @@ import { SelectorFechas, etiquetaRango } from "./selector-fechas";
 // ⚡ En vivo: la operación como un "segundo cerebro" con el proceso completo de la empresa. Alrededor de cada país:
 // orden de venta → remisión → guía generada → estados de la guía (en tránsito, en oficina, novedad, entregada,
 // devolución). Cada cambio de estado que llega de Effi viaja como un impulso desde "guía generada" hasta su estado, y
-// las órdenes, remisiones y guías nuevas recorren su tramo de la cadena. Effi se sincroniza cada minuto, así que los
-// cambios de cada lote se reproducen en orden, repartidos en el minuto siguiente. Al centro, el logo de Joalix.
+// las órdenes, remisiones y guías nuevas recorren su tramo de la cadena. Effi se sincroniza cada minuto. Al abrir (o al
+// cambiar el filtro) hay una "puesta al día": los números suben de cero a lo que ya pasó en un solo estallido. Desde
+// ahí solo estalla lo nuevo, y cada número sube justo cuando su cambio llega a su hexágono (mientras espera su turno no
+// se cuenta). Al centro, el logo de la sociedad.
 
 type Cat = "ENTREGADO" | "EN_TRANSITO" | "NOVEDAD" | "EN_OFICINA" | "DEVOLUCION";
 type Etapa = "ORDEN" | "REMISION" | "GENERADA";
@@ -63,6 +65,10 @@ const CAT: Record<number, Cat> = { 4: "ENTREGADO", 5: "DEVOLUCION", 2: "EN_TRANS
 const ANCHO = 1000, ALTO = 760, CX = 500, CY = 380;
 const GUARDADO = "torre.envivo";
 const claveEv = (e: Evento) => `${e.cuenta}|${e.guia}|${e.fecha_hist_est}|${e.est_guia_new_efficommerce}`;
+// A qué número suma un cambio de estado (los que no son de ninguna tarjeta cuentan solo en el total del país).
+const claveNum = (e: Evento) => `${e.cuenta}|${CAT[e.est_guia_new_efficommerce ?? -1] ?? "OTRO"}`;
+const LLEGADA_MS = 1150; // lo que tarda una señal en llegar a su hexágono
+const SUBIDA_MS = 2400; // la puesta al día
 const AZUL = "rgb(120 160 255)";
 // Coordenadas redondeadas: el servidor y el navegador calculan los decimales distinto.
 const q = (n: number) => Math.round(n * 100) / 100;
@@ -110,6 +116,13 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
   const colaRef = useRef<Evento[]>([]);
   const procesoAntes = useRef<Record<string, number>>({});
   const vistos = useRef(new Set<string>());
+  // Cambios ya contados en la base que todavía no han estallado en pantalla (por "cuenta|estado"): se restan del número
+  // hasta que llegan a su hexágono.
+  const pendientes = useRef<Record<string, number>>({});
+  const generacion = useRef(0);
+  const [, setVer] = useState(0);
+  const [subida, setSubida] = useState(0); // 0 → 1 en la puesta al día
+  const subidaRaf = useRef(0);
   const red = useRef<RedNeuronalApi>(null);
   // Mapa de un país: se entra pulsando su bandera. "entrando" guarda desde dónde se hace el acercamiento.
   const [mapa, setMapa] = useState<string | null>(null);
@@ -145,60 +158,85 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
   const geo = useMemo(() => geometria(sel), [sel]);
   const clave = `${sel.join(",")}|${dias ? `${dias.d}~${dias.h}` : ventana}`;
 
-  // Pulso (resumen por país) cada 15 s y eventos de la ventana cada 10 s.
+  const pendiente = (k: string, n: number) => {
+    pendientes.current[k] = Math.max(0, (pendientes.current[k] ?? 0) + n);
+    setVer((v) => v + 1);
+  };
+  const megaReaccion = () => {
+    cancelAnimationFrame(subidaRaf.current);
+    const t0 = performance.now();
+    const paso = (t: number) => {
+      const k = Math.min(1, (t - t0) / SUBIDA_MS);
+      setSubida(1 - Math.pow(1 - k, 3));
+      if (k < 1) subidaRaf.current = requestAnimationFrame(paso);
+    };
+    subidaRaf.current = requestAnimationFrame(paso);
+    setTimeout(() => red.current?.alDia(), 60);
+  };
+  useEffect(() => () => cancelAnimationFrame(subidaRaf.current), []);
+
+  // Cada 12 s, una sola lectura trae el resumen y los cambios nuevos (envivo_vivo): todo cambio nuevo ya está en el
+  // número, así que se resta mientras espera su turno y se suma cuando estalla.
   useEffect(() => {
     const supabase = createClient();
-    let vivo = true, primera = true;
+    const gen = ++generacion.current;
+    let vivo = true, marca: string | null = null;
     vistos.current = new Set();
     procesoAntes.current = {};
+    pendientes.current = {};
     colaRef.current = [];
     setStream([]);
     setPulso(null);
-    const cargarPulso = async () => {
-      const { data, error: e } = await supabase.rpc("envivo_pulso", dias
-        ? { p_cuentas: sel, p_minutos: 0, p_desde: dias.d, p_hasta: dias.h }
-        : { p_cuentas: sel, p_minutos: ventana });
+    setCola(0);
+    setSubida(0);
+    // Un periodo que ya terminó es una foto quieta: se lee una vez.
+    const quieto = !!dias && dias.h < hoyBogota();
+    const cargar = async () => {
+      const { data, error: e } = await supabase.rpc("envivo_vivo", {
+        p_cuentas: sel, p_minutos: dias ? 0 : ventana, p_desde: dias?.d ?? null, p_hasta: dias?.h ?? null, p_marca: marca,
+      });
       if (!vivo) return;
-      if (e) { setError("Sin señal de la base de datos; se reintenta solo."); return; }
+      if (e || !data) { setError("Sin señal de la base de datos; se reintenta solo."); return; }
       setError(null);
-      const p = data as Pulso;
-      // Órdenes, remisiones y guías nuevas desde el pulso anterior: cada una recorre su tramo de la cadena,
-      // repartidas en los próximos segundos.
-      for (const c of p.cuentas) for (const et of ETAPAS) {
-        const k = `${c.cuenta}|${et.id}`, n = c.proceso_ventana?.[et.id] ?? 0, antes = procesoAntes.current[k];
-        procesoAntes.current[k] = n;
-        if (antes == null || n <= antes || !enVivo) continue;
-        for (let i = 0; i < Math.min(12, n - antes); i++) setTimeout(() => red.current?.disparar(c.cuenta, et.id), Math.random() * 14_000);
-      }
-      setPulso(p);
-    };
-    // Días del calendario: de la medianoche de Colombia/Ecuador (la más temprana) a la de Guatemala/Costa Rica del día
-    // siguiente; la lista luego se recorta al día local de cada país.
-    const desdeEv = dias ? `${dias.d}T05:00:00Z` : new Date(Date.now() - Math.max(ventana, 2) * 60_000).toISOString();
-    const hastaEv = dias ? `${sumarDias(dias.h, 1)}T06:00:00Z` : null;
-    const cargarEventos = async () => {
-      let consulta = supabase
-        .from("v_feed_estados")
-        .select("cuenta,guia,fecha_hist_est,estado_new_efficommerce,estado_new,nombre_transportadora_efficommerce,nombre_ciudad_destinatario,nombre_provincia_destinatario,valor_recaudo,est_guia_new_efficommerce,pagada")
-        .in("cuenta", sel)
-        .gte("fecha_hist_est", desdeEv);
-      if (hastaEv) consulta = consulta.lt("fecha_hist_est", hastaEv);
-      const { data, error: e } = await consulta.order("fecha_hist_est", { ascending: false }).limit(500);
-      if (!vivo || e || !data) return;
-      const nuevos = (data as Evento[]).filter((x) => !vistos.current.has(claveEv(x)));
+      const r = data as { pulso: Pulso; marca: string; eventos: Evento[] };
+      const primera = marca == null;
+      marca = r.marca;
+      const nuevos = r.eventos.filter((x) => !vistos.current.has(claveEv(x)));
       nuevos.forEach((x) => vistos.current.add(claveEv(x)));
-      // Un día pasado no se reproduce: se muestra la lista completa de una vez.
-      if (hastaEv && Date.parse(hastaEv) < Date.now()) { setStream(nuevos.slice(0, 200)); primera = false; return; }
-      // Al abrir, se reproducen los últimos 12 cambios reales para que se vea el pulso de inmediato.
-      if (primera) setStream(nuevos.slice(12, 200));
-      colaRef.current.push(...(primera ? nuevos.slice(0, 12) : nuevos).reverse());
-      primera = false;
+      if (primera) {
+        // Puesta al día: lo que ya pasó entra de una vez (lista completa, números de cero a su valor) y no se repite.
+        for (const c of r.pulso.cuentas) for (const et of ETAPAS) procesoAntes.current[`${c.cuenta}|${et.id}`] = c.proceso_ventana?.[et.id] ?? 0;
+        setStream(nuevos.slice(0, 200));
+        setPulso(r.pulso);
+        megaReaccion();
+        return;
+      }
+      // Órdenes, remisiones y guías nuevas desde la lectura anterior: cada una recorre su tramo en los próximos segundos
+      // y su número sube cuando llega.
+      for (const c of r.pulso.cuentas) for (const et of ETAPAS) {
+        const k = `${c.cuenta}|${et.id}`, n = c.proceso_ventana?.[et.id] ?? 0, antes = procesoAntes.current[k] ?? n;
+        procesoAntes.current[k] = n;
+        if (n <= antes) continue;
+        pendientes.current[k] = (pendientes.current[k] ?? 0) + (n - antes);
+        for (let i = 0; i < n - antes; i++) {
+          setTimeout(() => {
+            if (gen !== generacion.current) return;
+            if (i < 12) red.current?.disparar(c.cuenta, et.id);
+            setTimeout(() => gen === generacion.current && pendiente(k, -1), i < 12 ? LLEGADA_MS : 0);
+          }, Math.random() * 10_000);
+        }
+      }
+      // Cambios de estado nuevos: a la cola, del más viejo al más nuevo.
+      for (const x of [...nuevos].reverse()) {
+        colaRef.current.push(x);
+        pendientes.current[claveNum(x)] = (pendientes.current[claveNum(x)] ?? 0) + 1;
+      }
       setCola(colaRef.current.length);
+      setPulso(r.pulso);
     };
-    cargarPulso();
-    cargarEventos();
-    const t1 = setInterval(cargarPulso, 15_000), t2 = setInterval(cargarEventos, 10_000);
-    return () => { vivo = false; clearInterval(t1); clearInterval(t2); };
+    cargar();
+    const t = quieto ? undefined : setInterval(cargar, 12_000);
+    return () => { vivo = false; clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave]);
 
@@ -234,15 +272,20 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
     setTimeout(() => { setMapaDatos({}); setMapa(cuenta); setEntrando(null); }, 520);
   };
 
-  // Cada cambio reproducido dispara una señal en la red y entra a la lista.
+  // Cada cambio nuevo dispara una señal en la red, entra a la lista y suma a su número cuando llega.
   const disparar = useCallback((e: Evento) => {
-    const cat = CAT[e.est_guia_new_efficommerce ?? -1] ?? null;
+    const cat = CAT[e.est_guia_new_efficommerce ?? -1] ?? null, gen = generacion.current;
     red.current?.disparar(e.cuenta, cat);
     if (cat && e.cuenta === mapaCuenta.current) mapaRef.current?.disparar(e.nombre_provincia_destinatario, cat);
     setStream((s) => [e, ...s].slice(0, 200));
+    setTimeout(() => {
+      if (gen !== generacion.current) return;
+      pendientes.current[claveNum(e)] = Math.max(0, (pendientes.current[claveNum(e)] ?? 0) - 1);
+      setVer((v) => v + 1);
+    }, LLEGADA_MS);
   }, []);
 
-  // Reproductor: saca un cambio de la cola a un ritmo que reparte el lote en ~1 minuto.
+  // Reproductor: saca un cambio de la cola a un ritmo que reparte el lote antes de la siguiente lectura (12 s).
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
     const paso = () => {
@@ -250,7 +293,7 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
       if (e) disparar(e);
       setCola(colaRef.current.length);
       const n = colaRef.current.length;
-      t = setTimeout(paso, n ? Math.min(3000, Math.max(200, 55_000 / n)) : 800);
+      t = setTimeout(paso, n ? Math.min(2500, Math.max(220, 10_000 / n)) : 600);
     };
     t = setTimeout(paso, 600);
     return () => clearTimeout(t);
@@ -263,11 +306,13 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
   };
 
   const datos = (c: string) => pulso?.cuentas.find((x) => x.cuenta === c);
+  // Lo que se ve: lo de la base menos lo que aún no ha estallado, escalado por la puesta al día.
+  const visible = (c: string, id: string, n: number) => Math.round(Math.max(0, n - (pendientes.current[`${c}|${id}`] ?? 0)) * subida);
   const enVentana = (c: string, cat?: Cat) => {
     const v = datos(c)?.ventana ?? {};
-    return cat ? v[cat] ?? 0 : Object.values(v).reduce((a, n) => a + n, 0);
+    return cat ? visible(c, cat, v[cat] ?? 0) : Object.entries(v).reduce((a, [k, n]) => a + visible(c, k, n), 0);
   };
-  const enProceso = (c: string, et: Etapa) => datos(c)?.proceso_ventana?.[et] ?? 0;
+  const enProceso = (c: string, et: Etapa) => visible(c, et, datos(c)?.proceso_ventana?.[et] ?? 0);
   const nodo = (c: string, id: string) => esEtapa(id) ? enProceso(c, id) : enVentana(c, id as Cat);
   const suma = (cat?: Cat) => sel.reduce((a, c) => a + enVentana(c, cat), 0);
   const sumaEtapa = (et: Etapa) => sel.reduce((a, c) => a + enProceso(c, et), 0);
