@@ -192,13 +192,14 @@ async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, de
   return { g, p, guia, ok: !fallaGuia(g, p), detalle: detalleGuia(g, p) };
 }
 
-// Remisiones que ya fallaron porque ni la transportadora de respaldo tiene cobertura en esa ciudad: no se reintentan
-// cada minuto (Effi siempre dirá lo mismo); quedan pendientes en "Novedad en la orden" para que una persona decida.
-// Devuelve remisión → lo que respondió Effi.
+// Remisiones que Effi rechaza siempre igual y no se reintentan: ninguna transportadora tiene cobertura en la ciudad, o
+// el cliente ya tiene una guía vigente igual (posible pedido repetido). Quedan pendientes en "Novedad en la orden" para
+// que una persona decida. Devuelve remisión → lo que respondió Effi.
 async function sinCoberturaTotal(cuenta: string) {
   const desde = new Date(Date.now() - 7 * DAY_MS).toISOString();
   const filas: { mensaje: string }[] = await tabla(
-    `auto_eventos?cuenta=eq.${cuenta}&paso=eq.guia&ok=is.false&creado_en=gte.${desde}&mensaje=ilike.*No%20hay%20cobertura*Servientrega*&select=mensaje`);
+    `auto_eventos?cuenta=eq.${cuenta}&paso=eq.guia&ok=is.false&creado_en=gte.${desde}&select=mensaje` +
+    '&or=(mensaje.ilike.*No%20hay%20cobertura*Servientrega*,mensaje.ilike.*Ya%20existe%20una%20gu*a%20de%20transporte%20vigente*)');
   return new Map(filas.map((f) => [Number(f.mensaje.match(/remisión (\d+)/)?.[1]), f.mensaje.replace(/^.*?: /, '')] as const).filter(([id]) => id));
 }
 
@@ -414,7 +415,10 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
     const plan: Json = { remision_existente: { sucursal: Number(r.sucursal), id: Number(r.id) } };
     const cobertura = sinCobertura.get(Number(r.id));
     if (cobertura) {
-      planes.push({ ...base, estado: 'revision', motivo: `Pendiente: ninguna transportadora cubre ${r.nombre_ciudad ?? 'la ciudad'} (Effi: ${cobertura}). Una persona revisa y decide.`, plan });
+      const repetido = /Ya existe una gu.a de transporte vigente/.test(cobertura);
+      planes.push({ ...base, estado: 'revision', plan, motivo: repetido
+        ? `Pendiente: el cliente ya tiene una guía vigente igual, posible pedido repetido (Effi: ${cobertura}). Una persona revisa y decide.`
+        : `Pendiente: ninguna transportadora cubre ${r.nombre_ciudad ?? 'la ciudad'} (Effi: ${cobertura}). Una persona revisa y decide.` });
       continue;
     }
     const remitente = reglas?.remitentes?.[r.convenio_dropshipping];
