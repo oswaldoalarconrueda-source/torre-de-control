@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Copy, MessageCircle, PhoneCall, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
-import { OBSERVACIONES, textoObservacion, type CodigoObs } from "@/lib/oficina";
+import { OBSERVACIONES, PREFIJO_OTRO, textoObservacion, type CodigoObs } from "@/lib/oficina";
 import { infoCuenta } from "@/lib/paises";
 
 // CRM de "Disponible en oficina" con el mismo formato que el equipo usaba en Drive: por guía, Contacto 1, 2 y 3
@@ -78,7 +78,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
   const [guardando, setGuardando] = useState<string | null>(null);
   // Cambios guardados en esta sesión, para verlos al instante antes de que la página se refresque.
   const [locales, setLocales] = useState<Record<string, Llamada[]>>({});
-  const [obs, setObs] = useState<Record<string, { codigo: CodigoObs | ""; fecha: string | null }>>({});
+  const [obs, setObs] = useState<Record<string, { codigo: CodigoObs | ""; fecha: string | null; texto?: string }>>({});
   const [mostrar, setMostrar] = useState(POR_PAGINA);
   const [copiada, setCopiada] = useState<string | null>(null);
 
@@ -117,14 +117,16 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
     setLocales((x) => ({ ...x, [g.guia]: [...(x[g.guia] ?? []).filter((l) => l.intento !== data.intento), { ...data, usuario: data.usuario_email } as Llamada] }));
     router.refresh();
   }
-  // Guarda la observación elegida. "Retirará el…" espera a que se escoja la fecha en el calendario.
-  async function guardarObs(g: GuiaOficina, codigo: CodigoObs | "", fecha: string | null) {
-    setObs((o) => ({ ...o, [g.guia]: { codigo, fecha } }));
+  // Guarda la observación elegida. "Retirará el…" espera a que se escoja la fecha en el calendario y "Otro" a que se
+  // escriba lo que dijo el cliente.
+  async function guardarObs(g: GuiaOficina, codigo: CodigoObs | "", fecha: string | null, texto?: string) {
+    setObs((o) => ({ ...o, [g.guia]: { codigo, fecha, texto } }));
     if (codigo === "retira_fecha" && !fecha) return;
+    if (codigo === "otro" && !(texto ?? "").trim()) return;
     setGuardando(`${g.guia}|obs`); setError(null);
     const supabase = createClient();
     const fila: { cuenta: string; guia: string; codigo: CodigoObs | null; fecha_compromiso: string | null; observacion: string | null } = codigo
-      ? { cuenta, guia: g.guia, codigo, fecha_compromiso: codigo === "retira_fecha" ? fecha : null, observacion: textoObservacion(codigo, fecha) }
+      ? { cuenta, guia: g.guia, codigo, fecha_compromiso: codigo === "retira_fecha" ? fecha : null, observacion: textoObservacion(codigo, fecha, texto).slice(0, 1000) }
       : { cuenta, guia: g.guia, codigo: null, fecha_compromiso: null, observacion: null };
     const { error: e } = await supabase.from("oficina_observaciones").upsert(fila);
     setGuardando(null);
@@ -249,7 +251,11 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
                   })}
                   <td className="px-3 py-2">
                     {(() => {
-                      const actual = obs[g.guia] ?? { codigo: g.observacion?.codigo ?? "", fecha: g.observacion?.fecha ?? null };
+                      const actual = obs[g.guia] ?? {
+                        codigo: g.observacion?.codigo ?? "", fecha: g.observacion?.fecha ?? null,
+                        texto: g.observacion?.codigo === "otro" ? (g.observacion.texto ?? "").replace(PREFIJO_OTRO, "") : undefined,
+                      };
+                      const guardado = g.observacion?.codigo === "otro" ? (g.observacion.texto ?? "").replace(PREFIJO_OTRO, "") : "";
                       const col = actual.codigo ? OBSERVACIONES[actual.codigo].color : null;
                       return (
                         <div className="flex flex-wrap items-center gap-1.5"
@@ -266,6 +272,15 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
                               className={`rounded-lg border px-2 py-1 text-xs outline-none [color-scheme:dark] ${actual.fecha ? "border-green/50 text-green" : "border-amber/60 text-amber"}`} />
                           )}
                           {actual.codigo === "retira_fecha" && !actual.fecha && <span className="text-[10px] text-amber">Elige el día</span>}
+                          {/* "Otro": se escribe lo que dijo el cliente; se guarda al salir de la casilla o con Enter. */}
+                          {actual.codigo === "otro" && (
+                            <input autoFocus={!guardado} value={actual.texto ?? ""} maxLength={990} placeholder="¿Qué dijo el cliente?"
+                              onChange={(e) => setObs((o) => ({ ...o, [g.guia]: { codigo: "otro", fecha: null, texto: e.target.value } }))}
+                              onBlur={(e) => e.target.value.trim() !== guardado && guardarObs(g, "otro", null, e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                              className={`basis-full min-w-[16rem] rounded-lg border bg-white/[0.03] px-2 py-1 text-xs outline-none ${(actual.texto ?? "").trim() ? "border-line text-text" : "border-amber/60"}`} />
+                          )}
+                          {actual.codigo === "otro" && !(actual.texto ?? "").trim() && <span className="text-[10px] text-amber">Escribe lo que dijo el cliente</span>}
                           {guardando === `${g.guia}|obs` && <span className="text-[10px] text-muted">Guardando…</span>}
                           {esDueno && g.observacion?.usuario && <span className="basis-full text-[10px] text-muted">{quien(g.observacion.usuario)} · {hora(g.observacion.actualizado_en)}</span>}
                         </div>
