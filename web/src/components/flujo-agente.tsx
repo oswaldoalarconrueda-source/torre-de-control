@@ -8,8 +8,10 @@ import { infoCuenta } from "@/lib/paises";
 
 // Flujo en vivo del Agente, en horizontal: órdenes por convertir → remisiones creadas → guías creadas (hoy, hora
 // local del país). Los paquetes corren por las conexiones; cuando el agente está creando algo, la etapa activa late
-// y una etiqueta muestra la orden y el paso. Abajo, los errores de hoy con sus variables (lo enviado y lo respondido
-// por Effi), o el aviso verde de que no hubo errores. Consulta auto_eventos cada 3 segundos.
+// y una etiqueta muestra la orden y el paso. Abajo, los errores de hoy: una línea por documento, diciendo si el error
+// es de la remisión (no se pudo hacer la guía) o de la orden (no se pudo hacer la remisión) y por qué, con sus
+// variables (lo enviado y lo respondido por Effi), o el aviso verde de que no hubo errores. Consulta auto_eventos cada
+// 3 segundos.
 
 type Evento = { id: number; id_orden: number | null; paso: string; ok: boolean | null; mensaje: string; datos: Record<string, unknown> | null; creado_en: string };
 type Resumen = { sin_remision: number; sin_guia: number; listas?: number; plan_revision?: number };
@@ -51,9 +53,23 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
   const guias = hoy.filter((e) => e.paso === "guia" && e.ok === true).length;
   // Errores que siguen pendientes: no cuenta el de una orden que después quedó completa (la creó la Torre en un
   // intento siguiente o alguien a mano).
-  const errores = hoy.filter((e) => e.ok === false && !(e.id_orden != null && (
+  const pendientes = hoy.filter((e) => e.ok === false && !(e.id_orden != null && (
     completas?.includes(e.id_orden) ||
     hoy.some((x) => x.id_orden === e.id_orden && x.id > e.id && x.ok === true && (x.paso === "fin" || x.paso === "guia")))));
+  // Una línea por documento (el último error y cuántos intentos fallaron hoy). El error de la guía es de la remisión; el
+  // de la remisión es de la orden de venta.
+  const errores = useMemo(() => {
+    const m = new Map<string, Evento & { intentos: number; doc: string; motivo: string }>();
+    for (const e of pendientes) {
+      const rem = e.mensaje.match(/remisi[oó]n (?:RV )?(\d+)/i)?.[1];
+      const doc = e.paso === "guia" && rem ? `Remisión ${rem}` : e.id_orden != null ? `Orden de venta ${e.id_orden}` : "Agente";
+      const motivo = e.mensaje.replace(/^.*?(no dej[oó] crear la (gu[ií]a|remisi[oó]n)( de la remisi[oó]n \d+)?|Remisi[oó]n \d+): /i, "");
+      const ya = m.get(doc);
+      if (ya) ya.intentos++;
+      else m.set(doc, { ...e, intentos: 1, doc, motivo });
+    }
+    return [...m.values()];
+  }, [pendientes]);
 
   // ¿Está creando algo ahora? El último paso en curso de una orden que todavía no terminó (menos de 2 minutos).
   const activo = useMemo(() => {
@@ -121,29 +137,31 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-widest font-mono text-muted">
           Errores de hoy
           <span className={`rounded-full px-2 py-0.5 text-[10px] ${errores.length ? "bg-red/15 text-red" : "bg-green/15 text-green"}`}>{errores.length}</span>
+          {errores.length > 0 && <span className="normal-case tracking-normal font-sans">· una línea por remisión u orden; desaparece cuando queda resuelta</span>}
         </div>
         {errores.length ? (
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="rounded-xl border border-red/40 overflow-hidden">
             {errores.map((e) => (
-              <div key={e.id} className="sube rounded-xl border border-red/40 bg-red/[0.08] p-3 text-xs">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-semibold text-red">OV {e.id_orden} · {e.paso === "guia" ? "guía" : e.paso === "remision" ? "remisión" : e.paso}</span>
-                      <span className="font-mono text-[10px] text-muted">{hora(e.creado_en)}</span>
-                    </div>
-                    <div className="mt-1 text-text/90">{e.mensaje}</div>
-                    {e.datos && (
-                      <button onClick={() => setAbierto(abierto === e.id ? null : e.id)} className="mt-1 text-blue-2 underline">
-                        {abierto === e.id ? "ocultar variables" : "ver variables"}
-                      </button>
-                    )}
-                    {abierto === e.id && e.datos && (
-                      <pre className="sube mt-2 max-h-72 overflow-auto rounded-lg border border-line bg-black/30 p-2 text-[11px] whitespace-pre-wrap break-all font-mono">{JSON.stringify(e.datos, null, 2)}</pre>
-                    )}
-                  </div>
+              <div key={e.doc} className="sube border-b border-red/20 bg-red/[0.06] px-3 py-2 text-xs last:border-b-0">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0 text-red" />
+                  <span className="mt-0.5 shrink-0 font-mono text-[10px] text-muted">{hora(e.creado_en)}</span>
+                  <span className="whitespace-nowrap rounded-full bg-red/15 px-2.5 py-0.5 font-semibold text-red">{e.doc}</span>
+                  <span className="whitespace-nowrap text-muted">
+                    {e.paso === "guia" ? "no se hizo la guía porque:" : e.paso === "remision" ? "no se hizo la remisión porque:" : "no se completó porque:"}
+                  </span>
+                  <span className="min-w-[16rem] flex-1 text-text/90">{e.motivo}</span>
+                  {e.intentos > 1 && <span className="whitespace-nowrap text-[10px] text-muted">{e.intentos} intentos hoy</span>}
+                  <span className="whitespace-nowrap rounded-full border border-amber/50 bg-amber/10 px-2 py-0.5 text-[10px] font-semibold text-amber">Requiere verificación humana</span>
+                  {e.datos && (
+                    <button onClick={() => setAbierto(abierto === e.id ? null : e.id)} className="whitespace-nowrap text-blue-2 underline">
+                      {abierto === e.id ? "ocultar variables" : "ver variables"}
+                    </button>
+                  )}
                 </div>
+                {abierto === e.id && e.datos && (
+                  <pre className="sube mt-2 max-h-72 overflow-auto rounded-lg border border-line bg-black/30 p-2 text-[11px] whitespace-pre-wrap break-all font-mono">{JSON.stringify(e.datos, null, 2)}</pre>
+                )}
               </div>
             ))}
           </div>

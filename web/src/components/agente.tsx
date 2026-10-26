@@ -321,7 +321,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
       )}
 
       <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()}
-        completas={datos.ordenes.filter((o) => o.estado === "completa").map((o) => o.id)} />
+        completas={ordenes.filter((o) => o.estado === "completa" || pendienteResuelto(o)).map((o) => o.id)} />
 
       <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         {/* Mes como el listado de Effi; hoy: órdenes, cuántas ya tienen remisión y cuántas ya tienen guía. */}
