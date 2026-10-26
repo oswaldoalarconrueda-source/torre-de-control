@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy } from "lucide-react";
+import { Copy, Maximize2, Minimize2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
@@ -129,6 +129,27 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
   const [entrando, setEntrando] = useState<{ cuenta: string; x: number; y: number } | null>(null);
   const [mapaDatos, setMapaDatos] = useState<Record<string, Record<string, number>>>({});
   const mapaRef = useRef<MapaApi>(null);
+  // Pantalla completa: solo el metaverso (la red o el mapa de un país), sin la lista de cambios. Se sale con el mismo
+  // botón o con Escape. Si el navegador no deja usar la pantalla completa, el metaverso igual llena toda la ventana.
+  const escenario = useRef<HTMLDivElement>(null);
+  const [completa, setCompleta] = useState<"no" | "pantalla" | "ventana">("no");
+  useEffect(() => {
+    const cambio = () => setCompleta((c) => document.fullscreenElement === escenario.current && escenario.current ? "pantalla" : c === "pantalla" ? "no" : c);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setCompleta((c) => (c === "ventana" ? "no" : c));
+    document.addEventListener("fullscreenchange", cambio);
+    window.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("fullscreenchange", cambio); window.removeEventListener("keydown", esc); };
+  }, []);
+  const pantallaCompleta = () => {
+    if (completa === "pantalla") document.exitFullscreen().catch(() => setCompleta("no"));
+    else if (completa === "ventana") setCompleta("no");
+    else if (escenario.current?.requestFullscreen) {
+      // Algunos navegadores ni aceptan ni rechazan: si en medio segundo no entró, se llena la ventana.
+      const t = setTimeout(() => { if (!document.fullscreenElement) setCompleta("ventana"); }, 500);
+      escenario.current.requestFullscreen().then(() => clearTimeout(t)).catch(() => { clearTimeout(t); setCompleta("ventana"); });
+    } else setCompleta("ventana");
+  };
+  const grande = completa !== "no";
   const mapaCuenta = useRef<string | null>(null);
   mapaCuenta.current = mapa;
 
@@ -376,10 +397,18 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
       {error && <p className="text-xs text-amber" role="status">{error}</p>}
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_23rem] items-start">
-        <div className="card relative overflow-hidden p-0 min-w-0">
+        <div ref={escenario} className={`card p-0 min-w-0 ${completa === "ventana" ? "fixed inset-0 z-[60]" : "relative"} ${grande ? "flex flex-col justify-center overflow-auto" : "overflow-hidden"}`}
+          style={grande ? { background: "var(--bg)", borderRadius: 0 } : undefined}>
+          <button onClick={pantallaCompleta} title={grande ? "Salir de pantalla completa (Esc)" : "Ver el metaverso en pantalla completa"}
+            aria-label={grande ? "Salir de pantalla completa" : "Pantalla completa"}
+            className="absolute right-2 top-2 z-20 rounded-lg border border-line bg-bg/70 p-1.5 text-muted backdrop-blur hover:text-text hover:border-blue/50">
+            {grande ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+          {/* En pantalla completa el lienzo toma el ancho que quepa sin pasarse del alto de la pantalla. */}
+          <div style={grande ? { width: `min(100vw, calc((100vh - 6.5rem) * ${ANCHO} / ${ALTO}))`, margin: "0 auto" } : undefined}>
           {mapa ? (
             <div className="metaverso">
-              <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
+              <div className="flex flex-wrap items-center gap-3 border-b border-line py-2 pl-4 pr-12">
                 <button onClick={() => setMapa(null)} className="rounded-full border border-line px-3 py-1 text-xs text-muted hover:text-text">← Volver</button>
                 <span className="font-display text-lg font-semibold">{infoCuenta(mapa).bandera} {infoCuenta(mapa).nombre}</span>
                 <span className="text-xs text-muted">por departamento · {etiquetaVentana}</span>
@@ -406,6 +435,7 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
             }))} />
           </div>
           )}
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2">
           <div className="text-[11px] text-muted max-w-xl">
             Proceso de cada país: órdenes → remisiones → guías generadas → estados. Número y tamaño de cada hexágono = movimientos {enVentanaTxt}. Cada movimiento viaja como señal por su tramo; entregas y devoluciones lanzan una onda.
