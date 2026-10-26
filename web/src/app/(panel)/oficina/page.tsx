@@ -38,7 +38,7 @@ export default async function OficinaPage({ searchParams }: PageProps<"/oficina"
         ingresaronHoy={(cuadre as Cuadre | null)?.cuadre[0]?.llegaron} efectividad={efectividad as Efectividad | null} />
       {esDueno && porUsuario && <div className="mt-6"><QuienHizoQue filas={porUsuario as PorUsuario[]} dias={14} /></div>}
       {cuadre && <CuadreTablas c={cuadre as Cuadre} />}
-      {est && <EstadisticasOficina e={est as Estadisticas} />}
+      {est && <EstadisticasOficina key={cuenta} e={est as Estadisticas} cuenta={cuenta} />}
     </>
   );
 }

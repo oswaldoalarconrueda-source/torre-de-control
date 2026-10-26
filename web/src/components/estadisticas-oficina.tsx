@@ -1,9 +1,18 @@
+"use client";
+
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { entero } from "@/lib/formato";
 import { OBSERVACIONES, type CodigoObs } from "@/lib/oficina";
+import { infoCuenta } from "@/lib/paises";
+import { rangosRapidos, sumarDias } from "@/lib/filtros";
+import { SelectorFechas, etiquetaRango } from "./selector-fechas";
 import { Panel, TablaScroll } from "./ui";
 
 // Estadística del CRM de oficina: qué dicen los clientes, por hora de la llamada y por número de intento (el
 // resultado por día de llegada está en cuadre-oficina). Sirve para decidir a qué hora llamar y cuántas veces vale la pena insistir.
+// Con calendario tipo Shopify (hoy, ayer, 7 días, el mes o cualquier rango), en el día local del país; arranca en los
+// últimos 14 días.
 
 type Dia = {
   dia: string; llegaron: number; llamadas: number; guias_llamadas: number; contesto: number; no_contesto: number; telefono_malo: number;
@@ -11,15 +20,39 @@ type Dia = {
 };
 type Grupo = { llamadas: number; contesto: number; entregadas: number; guias: number };
 type Obs = { codigo: CodigoObs; guias: number; entregadas: number; devueltas: number; en_oficina: number; con_fecha: number; cumplieron: number };
-export type Estadisticas = { dias: Dia[]; horas: (Grupo & { hora: number })[]; intentos: (Grupo & { intento: number })[]; observaciones: Obs[] };
+export type Estadisticas = { desde?: string; hasta?: string; dias: Dia[]; horas: (Grupo & { hora: number })[]; intentos: (Grupo & { intento: number })[]; observaciones: Obs[] };
 
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
 
-export function EstadisticasOficina({ e }: { e: Estadisticas }) {
+export function EstadisticasOficina({ e: inicial, cuenta }: { e: Estadisticas; cuenta: string }) {
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date());
+  const rangos = [
+    ...rangosRapidos(hoy).filter((r) => ["hoy", "ayer", "7d"].includes(r.id)),
+    { id: "14d", label: "Últimos 14 días", d: sumarDias(hoy, -13), h: hoy },
+    ...rangosRapidos(hoy).filter((r) => ["mes", "mes-ant"].includes(r.id)),
+  ];
+  const [e, setE] = useState(inicial);
+  const [rango, setRango] = useState({ d: inicial.desde ?? sumarDias(hoy, -13), h: inicial.hasta ?? hoy });
+  const [cargando, setCargando] = useState(false);
+  async function aplicar(d: string, h: string) {
+    setRango({ d, h }); setCargando(true);
+    const { data } = await createClient().rpc("oficina_estadisticas", { p_cuenta: cuenta, p_desde: d, p_hasta: h });
+    setCargando(false);
+    if (data) setE(data as Estadisticas);
+  }
+  const atajo = rangos.find((r) => r.d === rango.d && r.h === rango.h);
+  const periodo = atajo ? atajo.label.toLowerCase() : etiquetaRango(rango.d, rango.h);
   const maxHora = Math.max(1, ...e.horas.map((h) => h.llamadas));
   return (
-    <div className="space-y-3 mt-6">
-      <Panel titulo="¿Qué dicen los clientes?" detalle="Observaciones de los últimos 14 días y en qué terminaron esas guías (estado actual)">
+    <div className={`space-y-3 mt-6 transition-opacity ${cargando ? "opacity-60" : ""}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-lg font-semibold">Estadística de llamadas y observaciones</h2>
+        <div className="flex items-center gap-2">
+          {cargando && <span className="text-xs text-muted">Actualizando…</span>}
+          <SelectorFechas desde={rango.d} hasta={rango.h} rangos={rangos} hoy={hoy} onAplicar={aplicar} />
+        </div>
+      </div>
+      <Panel titulo="¿Qué dicen los clientes?" detalle={`Observaciones puestas ${atajo?.id === "hoy" || atajo?.id === "ayer" ? periodo : `en ${periodo}`} y en qué terminaron esas guías (estado actual)`}>
         {e.observaciones?.length ? (
           <TablaScroll>
             <thead>
@@ -46,11 +79,11 @@ export function EstadisticasOficina({ e }: { e: Estadisticas }) {
               ))}
             </tbody>
           </TablaScroll>
-        ) : <p className="text-sm text-muted">Aún no hay observaciones registradas.</p>}
+        ) : <p className="text-sm text-muted">No hay observaciones en este periodo.</p>}
       </Panel>
 
       <div className="grid gap-3 xl:grid-cols-2">
-        <Panel titulo="Mejor hora para contactar" detalle="Contactos por hora local, % contactado y % de esas guías que terminó entregada">
+        <Panel titulo="Mejor hora para contactar" detalle={`Contactos por hora local (${periodo}), % contactado y % de esas guías que terminó entregada`}>
           {e.horas.length ? (
             <div className="space-y-1.5">
               {e.horas.map((h) => (
@@ -64,9 +97,9 @@ export function EstadisticasOficina({ e }: { e: Estadisticas }) {
                 </div>
               ))}
             </div>
-          ) : <p className="text-sm text-muted">Aún no hay contactos registrados.</p>}
+          ) : <p className="text-sm text-muted">No hay contactos en este periodo.</p>}
         </Panel>
-        <Panel titulo="¿Cuántas veces insistir?" detalle="Resultado de cada llamada: contacto 1, 2 y 3">
+        <Panel titulo="¿Cuántas veces insistir?" detalle={`Resultado de cada llamada (${periodo}): contacto 1, 2 y 3`}>
           {e.intentos.length ? (
             <TablaScroll>
               <thead><tr><th>Contacto</th><th className="text-right">Contactos</th><th className="text-right">% contactado</th><th className="text-right">% entregadas</th></tr></thead>
@@ -81,7 +114,7 @@ export function EstadisticasOficina({ e }: { e: Estadisticas }) {
                 ))}
               </tbody>
             </TablaScroll>
-          ) : <p className="text-sm text-muted">Aún no hay contactos registrados.</p>}
+          ) : <p className="text-sm text-muted">No hay contactos en este periodo.</p>}
         </Panel>
       </div>
     </div>
