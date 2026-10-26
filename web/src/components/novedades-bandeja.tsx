@@ -5,6 +5,7 @@ import { Copy, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
 import { sumarDias } from "@/lib/filtros";
+import { BarraHorizontal } from "./barra-horizontal";
 import { infoCuenta } from "@/lib/paises";
 
 // 📞 Bandeja de novedades: una línea por novedad, para solucionar cientos sin salir de la Torre. En cada línea la
@@ -170,7 +171,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
         <span className="ml-auto text-xs text-muted">{entero(vista.length)} {vista.length === 1 ? "novedad" : "novedades"} · llegan solas cada minuto</span>
       </div>
 
-      <div className="card overflow-x-auto p-0">
+      <BarraHorizontal>
         <table className="w-full min-w-max text-xs">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wider text-muted border-b border-line">
@@ -270,7 +271,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
             )}
           </tbody>
         </table>
-      </div>
+      </BarraHorizontal>
       <p className="text-[11px] text-muted">Tab pasa de casilla en casilla dentro de la línea; Enter en “Qué se habló” envía la línea a Effi. Lo enviado no se puede deshacer en Effi.</p>
 
       <div className="space-y-2">

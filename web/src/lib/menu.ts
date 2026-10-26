@@ -19,6 +19,7 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
   { href: "/flujo-caja", label: "Flujo de Caja", emoji: "💵", estado: "pronto", modulo: "dinero" },
   { href: "/oficina", label: "Disp. en Oficina", emoji: "🏤", estado: "vivo", modulo: "oficina" },
+  { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades" },
   { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "pronto", modulo: "resumen" },
   { href: "/pagos-publicidad", label: "Pagos de publicidad", emoji: "💳", estado: "pronto", modulo: "dinero" },
   { href: "/sin-liquidar", label: "Guías sin liquidar", emoji: "⏳", estado: "vivo", modulo: "dinero" },
@@ -32,7 +33,6 @@ export const MENU_JOALIX: ItemMenu[] = [
 
 export const MENU_EN_VIVO: ItemMenu[] = [
   { href: "/guias", label: "Transportadoras y ciudades", emoji: "🚚", estado: "vivo", modulo: "guias" },
-  { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades" },
   { href: "/wallet-en-vivo", label: "Wallet en vivo", emoji: "🪙", estado: "vivo", modulo: "dinero" },
   { href: "/dinero", label: "Wallet y PyG Effi", emoji: "💰", estado: "vivo", modulo: "dinero" },
 ];
