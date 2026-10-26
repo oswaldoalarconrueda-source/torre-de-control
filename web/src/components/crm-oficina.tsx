@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Copy, MessageCircle, PhoneCall, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
-import { OBSERVACIONES, PREFIJO_OTRO, textoObservacion, type CodigoObs } from "@/lib/oficina";
+import { CON_FECHA, OBSERVACIONES, PREFIJO_OTRO, textoObservacion, type CodigoObs } from "@/lib/oficina";
 import { infoCuenta } from "@/lib/paises";
 import { BarraHorizontal } from "./barra-horizontal";
 
@@ -15,6 +15,8 @@ import { BarraHorizontal } from "./barra-horizontal";
 // Cada contacto queda guardado con hora y usuario, así se puede medir la efectividad; quién llenó cada casilla solo lo
 // ve el dueño. La lista se actualiza sola cada minuto: lo que pasa a devolución o a entregada sale de aquí (la medición
 // de qué pasó con lo que llegó a oficina está en el cuadre).
+// "Hacer seguimiento" guarda el día en que el cliente pidió que lo llamen: desde ese día la guía va siempre arriba de la
+// lista, resaltada, hasta que alguien cambie la observación (o la guía se entregue o se devuelva y salga sola).
 
 type Resultado = "contesto" | "no_contesto" | "telefono_malo";
 export type Llamada = { id: number; intento: number; resultado: Resultado; canal: "llamada" | "whatsapp"; nota: string | null; usuario: string | null; creado_en: string };
@@ -39,6 +41,7 @@ const CONTACTOS = [
 ] as const;
 const FILTROS = [
   { id: "todas", label: "Todas" },
+  { id: "seguimiento", label: "📌 Seguimiento hoy" },
   { id: "sin_llamar", label: "Sin contactar" },
   { id: "contesto", label: "Contactado" },
   { id: "no_contesto", label: "No contesta" },
@@ -88,18 +91,28 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
     (locales[g.guia] ?? []).forEach((l) => m.set(l.intento, l));
     return [...m.values()].sort((a, b) => a.intento - b.intento);
   };
+  const hoy = dia(new Date());
+  // Seguimiento que ya toca (su día es hoy o ya pasó): con lo recién guardado en esta sesión.
+  const seguimiento = (g: GuiaOficina) => {
+    const o = obs[g.guia] ?? { codigo: g.observacion?.codigo ?? "", fecha: g.observacion?.fecha ?? null };
+    return o.codigo === "seguimiento" && !!o.fecha && o.fecha <= hoy ? o.fecha : null;
+  };
   const lista = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return guias.filter((g) => {
       const ult = llamadasDe(g).at(-1);
+      if (filtro === "seguimiento" && !seguimiento(g)) return false;
       if (filtro === "sin_llamar" && ult) return false;
-      if (filtro !== "todas" && filtro !== "sin_llamar" && ult?.resultado !== filtro) return false;
+      if (filtro !== "todas" && filtro !== "sin_llamar" && filtro !== "seguimiento" && ult?.resultado !== filtro) return false;
       return !q || [g.guia, g.destinatario, g.telefono, g.ciudad, g.contenido, g.transportadora, g.observacion?.texto].some((x) => (x ?? "").toLowerCase().includes(q));
-    });
+    // Los seguimientos que ya tocan van siempre arriba (el más atrasado primero); el resto sigue en su orden.
+    }).map((g, i) => ({ g, i, s: seguimiento(g) }))
+      .sort((a, b) => (a.s ? 0 : 1) - (b.s ? 0 : 1) || (a.s && b.s ? a.s.localeCompare(b.s) : 0) || a.i - b.i)
+      .map((x) => x.g);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guias, filtro, buscar, locales]);
+  }, [guias, filtro, buscar, locales, obs, hoy]);
+  const porSeguir = guias.filter((g) => seguimiento(g)).length;
 
-  const hoy = dia(new Date());
   const todas = guias.flatMap((g) => llamadasDe(g));
   const deHoy = todas.filter((l) => dia(l.creado_en) === hoy);
   const sinContactar = guias.filter((g) => !llamadasDe(g).length).length;
@@ -122,12 +135,12 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
   // escriba lo que dijo el cliente.
   async function guardarObs(g: GuiaOficina, codigo: CodigoObs | "", fecha: string | null, texto?: string) {
     setObs((o) => ({ ...o, [g.guia]: { codigo, fecha, texto } }));
-    if (codigo === "retira_fecha" && !fecha) return;
+    if (CON_FECHA.includes(codigo as CodigoObs) && !fecha) return;
     if (codigo === "otro" && !(texto ?? "").trim()) return;
     setGuardando(`${g.guia}|obs`); setError(null);
     const supabase = createClient();
     const fila: { cuenta: string; guia: string; codigo: CodigoObs | null; fecha_compromiso: string | null; observacion: string | null } = codigo
-      ? { cuenta, guia: g.guia, codigo, fecha_compromiso: codigo === "retira_fecha" ? fecha : null, observacion: textoObservacion(codigo, fecha, texto).slice(0, 1000) }
+      ? { cuenta, guia: g.guia, codigo, fecha_compromiso: CON_FECHA.includes(codigo) ? fecha : null, observacion: textoObservacion(codigo, fecha, texto).slice(0, 1000) }
       : { cuenta, guia: g.guia, codigo: null, fecha_compromiso: null, observacion: null };
     const { error: e } = await supabase.from("oficina_observaciones").upsert(fila);
     setGuardando(null);
@@ -137,6 +150,17 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
 
   return (
     <div className="space-y-3">
+      {/* Clientes que pidieron que los llamen hoy (o antes y siguen pendientes): siempre a la vista. */}
+      {porSeguir > 0 && (
+        <button onClick={() => { setFiltro("seguimiento"); setMostrar(POR_PAGINA); }}
+          className="w-full flex flex-wrap items-center gap-3 rounded-2xl border border-[#ffb347]/50 bg-[#ffb347]/10 px-4 py-3 text-left hover:bg-[#ffb347]/15">
+          <span className="text-2xl">📌</span>
+          <span className="font-display text-lg font-semibold text-[#ffb347]">
+            {porSeguir === 1 ? "1 cliente para hacer seguimiento hoy" : `${entero(porSeguir)} clientes para hacer seguimiento hoy`}
+          </span>
+          <span className="text-xs text-muted">Pidieron que los llamaran hoy o antes y la guía sigue en oficina. Van de primeras en la lista.</span>
+        </button>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Indicador titulo="En oficina ahora" valor={entero(guias.length)} color="var(--blue-2)" />
         <Indicador titulo="Sin contactar" valor={entero(sinContactar)} color="var(--amber)" />
@@ -149,7 +173,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
         {FILTROS.map((f) => (
           <button key={f.id} onClick={() => { setFiltro(f.id); setMostrar(POR_PAGINA); }}
             className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filtro === f.id ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
-            {f.label}
+            {f.label}{f.id === "seguimiento" ? ` (${entero(porSeguir)})` : ""}
           </button>
         ))}
         <label className="ml-auto flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-sm">
@@ -190,10 +214,16 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
               const ls = llamadasDe(g);
               const dias = g.llegada ? (Date.now() - Date.parse(g.llegada)) / 86_400_000 : 0;
               const tels = telefonos(g.telefono);
+              const seg = seguimiento(g);
               return (
-                <tr key={g.guia} className="align-middle hover:bg-white/[0.02]">
-                  <td className={`sticky left-0 z-10 bg-panel px-3 py-2 whitespace-nowrap text-xs font-mono ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`} title={g.llegada ? hora(g.llegada) : ""}>
-                    {g.llegada ? hora(g.llegada) : "—"}
+                <tr key={g.guia} className={`align-middle ${seg ? "bg-[#ffb347]/[0.07] hover:bg-[#ffb347]/[0.11]" : "hover:bg-white/[0.02]"}`}>
+                  <td className={`sticky left-0 z-10 px-3 py-2 whitespace-nowrap text-xs font-mono ${seg ? "bg-[#2a2216] shadow-[inset_3px_0_0_#ffb347]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`} title={g.llegada ? hora(g.llegada) : ""}>
+                    {seg && (
+                      <div className="mb-1 inline-block rounded-full bg-[#ffb347] px-2 py-0.5 font-sans text-[10px] font-bold text-black">
+                        📌 {seg === hoy ? "Llamar hoy" : `Seguimiento del ${seg.slice(8, 10)}/${seg.slice(5, 7)}`}
+                      </div>
+                    )}
+                    <div>{g.llegada ? hora(g.llegada) : "—"}</div>
                     <div className="text-[10px] opacity-80">hace {hace(g.llegada)}</div>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{g.centro_costos ?? "—"}</td>
@@ -267,12 +297,14 @@ export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string;
                             <option value="" className="bg-bg text-text">— Seleccionar observación —</option>
                             {(Object.keys(OBSERVACIONES) as CodigoObs[]).map((c) => <option key={c} value={c} className="bg-bg text-text">{OBSERVACIONES[c].label}</option>)}
                           </select>
-                          {/* Solo "realizará el retiro" despliega el calendario: de hoy en adelante. */}
-                          {actual.codigo === "retira_fecha" && (
-                            <input type="date" min={hoy} value={actual.fecha ?? ""} onChange={(e) => guardarObs(g, "retira_fecha", e.target.value || null)}
+                          {/* "Realizará el retiro" y "Hacer seguimiento" despliegan el calendario: de hoy en adelante. */}
+                          {actual.codigo && CON_FECHA.includes(actual.codigo) && (
+                            <input type="date" min={hoy} value={actual.fecha ?? ""} onChange={(e) => guardarObs(g, actual.codigo as CodigoObs, e.target.value || null)}
                               className={`rounded-lg border px-2 py-1 text-xs outline-none [color-scheme:dark] ${actual.fecha ? "border-green/50 text-green" : "border-amber/60 text-amber"}`} />
                           )}
-                          {actual.codigo === "retira_fecha" && !actual.fecha && <span className="text-[10px] text-amber">Elige el día</span>}
+                          {actual.codigo && CON_FECHA.includes(actual.codigo) && !actual.fecha && (
+                            <span className="text-[10px] text-amber">{actual.codigo === "seguimiento" ? "¿Qué día lo llamamos?" : "Elige el día"}</span>
+                          )}
                           {/* "Otro": se escribe lo que dijo el cliente; se guarda al salir de la casilla o con Enter. */}
                           {actual.codigo === "otro" && (
                             <input autoFocus={!guardado} value={actual.texto ?? ""} maxLength={990} placeholder="¿Qué dijo el cliente?"
