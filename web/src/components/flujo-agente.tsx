@@ -10,8 +10,10 @@ import { infoCuenta } from "@/lib/paises";
 // local del país). Los paquetes corren por las conexiones; cuando el agente está creando algo, la etapa activa late
 // y una etiqueta muestra la orden y el paso. Abajo, los errores de hoy: una línea por documento, diciendo si el error
 // es de la remisión (no se pudo hacer la guía) o de la orden (no se pudo hacer la remisión) y por qué, con sus
-// variables (lo enviado y lo respondido por Effi), o el aviso verde de que no hubo errores. Consulta auto_eventos cada
-// 3 segundos.
+// variables (lo enviado y lo respondido por Effi), o el aviso verde de que no hubo errores. Consulta los últimos
+// movimientos cada 3 segundos (para ver qué está haciendo) y los aciertos y errores del día completo cada 15 s: los
+// conteos de hoy no pueden salir solo de los últimos movimientos (un día con mucho trabajo pasa de 300 y el número se
+// quedaba quieto).
 
 type Evento = { id: number; id_orden: number | null; paso: string; ok: boolean | null; mensaje: string; datos: Record<string, unknown> | null; creado_en: string };
 type Resumen = { sin_remision: number; sin_guia: number; listas?: number; plan_revision?: number };
@@ -22,6 +24,7 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
   completas?: number[]; // órdenes que ya tienen remisión y guía
 }) {
   const [eventos, setEventos] = useState<Evento[]>([]);
+  const [delDia, setDelDia] = useState<Evento[]>([]); // aciertos y errores de las últimas 30 h, sin tope
   const [abierto, setAbierto] = useState<number | null>(null);
   const [ahora, setAhora] = useState(() => Date.now());
   const zona = infoCuenta(cuenta).zona;
@@ -40,15 +43,33 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
       setEventos(data as Evento[]);
       setAhora(Date.now());
     };
+    // Aciertos sin "datos" (no se necesitan y pesan); errores con sus variables.
+    const cargarDia = async () => {
+      const desde = new Date(Date.now() - 30 * 3600_000).toISOString();
+      const [ok, mal] = await Promise.all([
+        supabase.from("auto_eventos").select("id,id_orden,paso,ok,mensaje,creado_en")
+          .eq("cuenta", cuenta).eq("ok", true).in("paso", ["remision", "guia", "fin"]).gte("creado_en", desde).limit(5000),
+        supabase.from("auto_eventos").select("id,id_orden,paso,ok,mensaje,datos,creado_en")
+          .eq("cuenta", cuenta).eq("ok", false).gte("creado_en", desde).order("id", { ascending: false }).limit(1000),
+      ]);
+      if (!vivo || ok.error || mal.error) return;
+      setDelDia([...(ok.data as Evento[]).map((e) => ({ ...e, datos: null })), ...(mal.data as Evento[])].sort((a, b) => b.id - a.id));
+    };
     cargar();
-    const t = setInterval(cargar, 3000);
-    return () => { vivo = false; clearInterval(t); };
+    cargarDia();
+    const t = setInterval(cargar, 3000), t2 = setInterval(cargarDia, 15_000);
+    return () => { vivo = false; clearInterval(t); clearInterval(t2); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuenta]);
 
   const dia = (ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: zona }).format(new Date(ms));
   const hora = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(iso));
-  const hoy = useMemo(() => eventos.filter((e) => dia(Date.parse(e.creado_en)) === dia(ahora)), [eventos, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Lo del día: aciertos y errores completos, más los últimos movimientos (para que lo recién hecho cuente al instante).
+  const hoy = useMemo(() => {
+    const m = new Map<number, Evento>();
+    for (const e of [...delDia, ...eventos]) if (e.ok !== null && dia(Date.parse(e.creado_en)) === dia(ahora)) m.set(e.id, e);
+    return [...m.values()].sort((a, b) => b.id - a.id);
+  }, [delDia, eventos, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
   const remisiones = hoy.filter((e) => e.paso === "remision" && e.ok === true).length;
   const guias = hoy.filter((e) => e.paso === "guia" && e.ok === true).length;
   // Errores que siguen pendientes: no cuenta el de una orden que después quedó completa (la creó la Torre en un
