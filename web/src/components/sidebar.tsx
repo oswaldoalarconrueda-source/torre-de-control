@@ -5,13 +5,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Menu, X } from "lucide-react";
-import { MENU_EN_VIVO, MENU_JOALIX, type ItemMenu } from "@/lib/menu";
+import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
 import { tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
 
-export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista }: {
+export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, porAceptar = 0 }: {
   acceso: Acceso; email: string; ultimoSync: string; sociedad: string; sociedades: string[] | null; vista: string | null;
+  porAceptar?: number; // registros nuevos esperando que el dueño los acepte
 }) {
   const esOwner = acceso.rol === "owner";
   const path = usePathname();
@@ -46,6 +47,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         <span className="w-5 text-center text-base leading-none" aria-hidden>{it.emoji}</span>
         <span className="flex-1 truncate">{it.label}</span>
         {it.estado === "pronto" && <span className="text-[10px] rounded-full border border-line px-1.5 py-0.5 text-muted">pronto</span>}
+        {it.href === "/usuarios" && porAceptar > 0 && <span className="text-[10px] font-bold rounded-full bg-amber px-1.5 py-0.5 text-black">{porAceptar}</span>}
       </Link>
     );
   };
@@ -83,10 +85,18 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
             <div className="space-y-0.5">{MENU_EN_VIVO.map(item)}</div>
           </div>
         )}
+        <div className="space-y-0.5">{MENU_PRONTO.map(item)}</div>
         {/* Usuario maestro: lo que nadie más puede ver, sin importar la sociedad. */}
         {esOwner && (
           <div className="rounded-xl border border-amber/25 bg-amber/[0.04] py-1.5">
             <div className="px-3 pb-1.5 pt-0.5 text-[11px] uppercase tracking-wider text-amber/90">👑 Solo para ti</div>
+            {/* Alguien se registró y espera que el dueño le diga qué puede ver. */}
+            {porAceptar > 0 && (
+              <Link href="/usuarios" className="mx-2 mb-1.5 flex items-center gap-2 rounded-lg border border-amber/40 bg-amber/15 px-2.5 py-2 text-xs font-semibold text-amber hover:bg-amber/25">
+                <span className="pulso size-1.5 rounded-full bg-amber shadow-[0_0_8px_var(--amber)]" />
+                {porAceptar === 1 ? "1 registro por aceptar" : `${porAceptar} registros por aceptar`}
+              </Link>
+            )}
             <div className="space-y-0.5">{MENU_JOALIX.filter((it) => it.soloOwner).map(item)}</div>
           </div>
         )}

@@ -4,6 +4,8 @@ import { createClient, getUsuario } from "@/lib/supabase/server";
 import { haceCuanto } from "@/lib/formato";
 import { Sidebar } from "@/components/sidebar";
 import { SinAcceso } from "@/components/sin-acceso";
+import { AgenteFlotante } from "@/components/agente-flotante";
+import { tieneModulo } from "@/lib/modulos";
 
 export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
@@ -23,15 +25,22 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const sociedad = sociedades.join(" · ") || "Sin tiendas asignadas";
   // El dueño escoge qué Torre mira (todas o una sociedad); los demás ven solo la suya.
   const esOwner = usuario.rol === "owner";
-  const { data: yo } = esOwner ? await supabase.from("app_usuarios").select("sociedad_vista").eq("user_id", usuario.id).maybeSingle() : { data: null };
+  const [{ data: yo }, { count: porAceptar }] = esOwner
+    ? await Promise.all([
+      supabase.from("app_usuarios").select("sociedad_vista").eq("user_id", usuario.id).maybeSingle(),
+      // Registros nuevos que esperan que el dueño los acepte (se avisan en "Solo para ti").
+      supabase.from("app_usuarios").select("user_id", { count: "exact", head: true }).eq("rol", "pendiente"),
+    ])
+    : [{ data: null }, { count: 0 }];
   const opciones = esOwner ? (lista ?? []).map((x) => x.nombre as string) : null;
 
   return (
     <div className="lg:flex">
       <Suspense>
         <Sidebar acceso={usuario} email={usuario.email} sociedad={sociedad} ultimoSync={haceCuanto(ultimo as string | null)}
-          sociedades={opciones} vista={(yo?.sociedad_vista as string | null) ?? null} />
+          sociedades={opciones} vista={(yo?.sociedad_vista as string | null) ?? null} porAceptar={porAceptar ?? 0} />
       </Suspense>
+      {tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} />}
       <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-16 max-w-[1400px]">{children}</main>
     </div>
   );
