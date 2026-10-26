@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, MessageCircle, PhoneCall, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -11,7 +11,9 @@ import { infoCuenta } from "@/lib/paises";
 // CRM de "Disponible en oficina" con el mismo formato que el equipo usaba en Drive: por guía, Contacto 1, 2 y 3
 // por llamada, cada uno Contactado / No contesta / No aplica, más una Observación de una lista cerrada (sin texto
 // libre, para poder medirla). El WhatsApp lo envía el bot.
-// Cada contacto queda guardado con hora y usuario, así se puede medir la efectividad.
+// Cada contacto queda guardado con hora y usuario, así se puede medir la efectividad; quién llenó cada casilla solo lo
+// ve el dueño. La lista se actualiza sola cada minuto: lo que pasa a devolución o a entregada sale de aquí (la medición
+// de qué pasó con lo que llegó a oficina está en el cuadre).
 
 type Resultado = "contesto" | "no_contesto" | "telefono_malo";
 export type Llamada = { id: number; intento: number; resultado: Resultado; canal: "llamada" | "whatsapp"; nota: string | null; usuario: string | null; creado_en: string };
@@ -58,8 +60,15 @@ const whatsapp = (tel: string, cuenta: string) => {
   return `https://wa.me/${d.startsWith(ind) && d.length > 10 ? d : ind + d.replace(/^0+/, "")}`;
 };
 
-export function CrmOficina({ cuenta, guias }: { cuenta: string; guias: GuiaOficina[] }) {
+export function CrmOficina({ cuenta, guias, esDueno = false }: { cuenta: string; guias: GuiaOficina[]; esDueno?: boolean }) {
   const router = useRouter();
+  // Cada minuto se vuelve a pedir la lista: las guías que Effi pasó a devolución o a entregada desaparecen sin que nadie
+  // las llame.
+  useEffect(() => {
+    const t = setInterval(() => router.refresh(), 60_000);
+    return () => clearInterval(t);
+  }, [router]);
+  const quien = (email: string | null) => (email ? email.split("@")[0] : "");
   const zona = infoCuenta(cuenta).zona;
   const hora = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
   const dia = (iso: string | Date) => new Intl.DateTimeFormat("en-CA", { timeZone: zona }).format(new Date(iso));
@@ -148,7 +157,7 @@ export function CrmOficina({ cuenta, guias }: { cuenta: string; guias: GuiaOfici
       </div>
       {error && <p className="text-sm text-red">{error}</p>}
 
-      <div className="card overflow-x-auto p-0">
+      <BarraHorizontal>
         <table className="w-full min-w-max text-sm">
           <thead>
             <tr className="bg-green/15 text-left text-[11px] uppercase tracking-wider font-semibold whitespace-nowrap">
@@ -234,6 +243,7 @@ export function CrmOficina({ cuenta, guias }: { cuenta: string; guias: GuiaOfici
                           <option value="" className="bg-bg text-text">—</option>
                           {(Object.keys(RESULTADOS) as Resultado[]).map((r) => <option key={r} value={r} className="bg-bg text-text">{RESULTADOS[r].label}</option>)}
                         </select>
+                        {esDueno && l?.usuario && <div className="mt-0.5 text-center text-[10px] text-muted">{quien(l.usuario)} · {hora(l.creado_en)}</div>}
                       </td>
                     );
                   })}
@@ -257,6 +267,7 @@ export function CrmOficina({ cuenta, guias }: { cuenta: string; guias: GuiaOfici
                           )}
                           {actual.codigo === "retira_fecha" && !actual.fecha && <span className="text-[10px] text-amber">Elige el día</span>}
                           {guardando === `${g.guia}|obs` && <span className="text-[10px] text-muted">Guardando…</span>}
+                          {esDueno && g.observacion?.usuario && <span className="basis-full text-[10px] text-muted">{quien(g.observacion.usuario)} · {hora(g.observacion.actualizado_en)}</span>}
                         </div>
                       );
                     })()}
@@ -267,11 +278,37 @@ export function CrmOficina({ cuenta, guias }: { cuenta: string; guias: GuiaOfici
           </tbody>
         </table>
         {!lista.length && <p className="text-sm text-muted text-center py-6">Nada con ese filtro.</p>}
-      </div>
+      </BarraHorizontal>
       {lista.length > mostrar && (
         <button onClick={() => setMostrar((m) => m + POR_PAGINA)} className="w-full rounded-xl border border-line py-2 text-sm text-muted hover:text-text">
           Ver {entero(Math.min(POR_PAGINA, lista.length - mostrar))} más ({entero(lista.length - mostrar)} restantes)
         </button>
+      )}
+    </div>
+  );
+}
+
+// Tabla ancha con una barra para correrla a la derecha siempre a la vista, pegada abajo de la pantalla (para quien
+// trabaja con mouse en computador de mesa), además de la barra normal al final de la tabla.
+function BarraHorizontal({ children }: { children: React.ReactNode }) {
+  const tabla = useRef<HTMLDivElement>(null), barra = useRef<HTMLDivElement>(null);
+  const [ancho, setAncho] = useState(0);
+  useEffect(() => {
+    const t = tabla.current!;
+    const medir = () => setAncho(t.scrollWidth > t.clientWidth + 2 ? t.scrollWidth : 0);
+    const ro = new ResizeObserver(medir); ro.observe(t); if (t.firstElementChild) ro.observe(t.firstElementChild);
+    medir();
+    return () => ro.disconnect();
+  }, []);
+  const sincronizar = (de: HTMLDivElement | null, a: HTMLDivElement | null) => { if (de && a && Math.abs(a.scrollLeft - de.scrollLeft) > 1) a.scrollLeft = de.scrollLeft; };
+  return (
+    <div>
+      <div ref={tabla} onScroll={() => sincronizar(tabla.current, barra.current)} className="card overflow-x-auto p-0 barra-x">{children}</div>
+      {ancho > 0 && (
+        <div ref={barra} onScroll={() => sincronizar(barra.current, tabla.current)} aria-label="Correr la tabla a los lados"
+          className="barra-x sticky bottom-0 z-20 overflow-x-auto overflow-y-hidden rounded-b-xl border border-t-0 border-line bg-bg/90 backdrop-blur">
+          <div style={{ width: ancho, height: 1 }} />
+        </div>
       )}
     </div>
   );

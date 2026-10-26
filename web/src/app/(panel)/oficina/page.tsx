@@ -4,19 +4,21 @@ import { infoCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { CrmOficina, type GuiaOficina } from "@/components/crm-oficina";
 import { EstadisticasOficina, type Estadisticas } from "@/components/estadisticas-oficina";
-import { CuadreHoy, CuadreTablas, type Cuadre } from "@/components/cuadre-oficina";
+import { CuadreHoy, CuadreTablas, QuienHizoQue, ResumenOficina, type Cuadre, type PorUsuario } from "@/components/cuadre-oficina";
 
 // 🏤 Disponible en oficina como CRM: cuadre de hoy arriba, lista para llamar (lo más nuevo arriba) y, al final,
 // el cuadre diario, el resultado por día de llegada y la estadística de llamadas.
 export default async function OficinaPage({ searchParams }: PageProps<"/oficina">) {
-  await exigirModulo("oficina");
+  const u = await exigirModulo("oficina");
+  const esDueno = u.rol === "owner";
   const f = leerFiltros(await searchParams);
   const cuenta = f.cuentas?.[0] ?? "TIENDA_CO";
   const supabase = await createClient();
-  const [{ data: lista, error }, { data: est }, { data: cuadre }] = await Promise.all([
+  const [{ data: lista, error }, { data: est }, { data: cuadre }, { data: porUsuario }] = await Promise.all([
     supabase.rpc("oficina_lista", { p_cuenta: cuenta }),
     supabase.rpc("oficina_estadisticas", { p_cuenta: cuenta, p_dias: 14 }),
     supabase.rpc("oficina_cuadre", { p_cuenta: cuenta, p_dias: 14 }),
+    esDueno ? supabase.rpc("oficina_por_usuario", { p_cuenta: cuenta, p_dias: 14 }) : Promise.resolve({ data: null }),
   ]);
   const pais = infoCuenta(cuenta);
 
@@ -30,7 +32,9 @@ export default async function OficinaPage({ searchParams }: PageProps<"/oficina"
       />
       {error && <p className="text-sm text-red mb-4">{error.message}</p>}
       {cuadre && <CuadreHoy c={cuadre as Cuadre} />}
-      <CrmOficina key={cuenta} cuenta={cuenta} guias={(lista ?? []) as GuiaOficina[]} />
+      {cuadre && <ResumenOficina c={cuadre as Cuadre} dias={14} />}
+      <CrmOficina key={cuenta} cuenta={cuenta} guias={(lista ?? []) as GuiaOficina[]} esDueno={esDueno} />
+      {esDueno && porUsuario && <div className="mt-6"><QuienHizoQue filas={porUsuario as PorUsuario[]} dias={14} /></div>}
       {cuadre && <CuadreTablas c={cuadre as Cuadre} />}
       {est && <EstadisticasOficina e={est as Estadisticas} />}
     </>

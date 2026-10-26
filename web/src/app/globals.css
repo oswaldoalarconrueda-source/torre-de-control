@@ -201,3 +201,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .corre, .onda, .sube { animation: none; }
 }
+
+/* Barra para correr a la derecha las tablas anchas (Disponible en oficina): gruesa y visible para el mouse. */
+.barra-x { scrollbar-width: auto; scrollbar-color: rgb(120 160 255 / 0.55) rgb(255 255 255 / 0.04); }
+.barra-x::-webkit-scrollbar { height: 14px; }
+.barra-x::-webkit-scrollbar-track { background: rgb(255 255 255 / 0.04); }
+.barra-x::-webkit-scrollbar-thumb { background: rgb(120 160 255 / 0.5); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+.barra-x::-webkit-scrollbar-thumb:hover { background-color: rgb(120 160 255 / 0.8); }

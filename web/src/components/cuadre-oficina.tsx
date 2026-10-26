@@ -53,6 +53,78 @@ export function CuadreHoy({ c }: { c: Cuadre }) {
   );
 }
 
+// Lo que pasó por la oficina en el periodo: de todas las guías que llegaron, cuántas se entregaron, cuántas se fueron a
+// devolución y cuántas siguen allí. Es lo que sale de la lista de llamadas (la lista solo muestra las que siguen).
+export function ResumenOficina({ c, dias }: { c: Cuadre; dias: number }) {
+  const t = c.llegadas.reduce((a, d) => ({
+    llegaron: a.llegaron + d.llegaron, retiradas: a.retiradas + d.retiradas, devueltas: a.devueltas + d.devueltas,
+    otro: a.otro + d.otro, en_oficina: a.en_oficina + d.en_oficina,
+  }), { llegaron: 0, retiradas: 0, devueltas: 0, otro: 0, en_oficina: 0 });
+  const items = [
+    { titulo: "Llegaron a oficina", valor: t.llegaron, color: "var(--blue-2)", sub: `últimos ${dias} días` },
+    { titulo: "Entregadas", valor: t.retiradas, color: "var(--green)", sub: pct(t.retiradas, t.llegaron) },
+    { titulo: "A devolución", valor: t.devueltas, color: "var(--red)", sub: pct(t.devueltas, t.llegaron) },
+    { titulo: "Volvieron a tránsito", valor: t.otro, color: "var(--amber)", sub: pct(t.otro, t.llegaron) },
+    { titulo: "Siguen en oficina", valor: t.en_oficina, color: "var(--text)", sub: pct(t.en_oficina, t.llegaron) },
+  ];
+  return (
+    <div className="card p-4 mb-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <span className="font-display font-semibold">Qué pasó con lo que llegó a oficina</span>
+        <span className="text-xs text-muted">Las entregadas y las de devolución ya no aparecen en la lista para llamar</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {items.map((i) => (
+          <div key={i.titulo} className="rounded-xl bg-white/[0.02] px-3 py-2.5">
+            <div className="text-[11px] uppercase tracking-wider font-mono text-muted">{i.titulo}</div>
+            <div className="num text-2xl font-semibold mt-0.5" style={{ color: i.color }}>{entero(i.valor)}</div>
+            <div className="text-[11px] text-muted">{i.sub}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export type PorUsuario = {
+  email: string; nombre: string; contactos: number; contactos_hoy: number; contactados: number; no_contesta: number; no_aplica: number;
+  guias: number; gestiones: number; gestiones_hoy: number;
+};
+// Solo el dueño: quién marcó los contactos y las observaciones (gestiones), para repartir el trabajo y medirlo.
+export function QuienHizoQue({ filas, dias }: { filas: PorUsuario[]; dias: number }) {
+  const tot = filas.reduce((a, f) => ({ contactos: a.contactos + f.contactos, gestiones: a.gestiones + f.gestiones }), { contactos: 0, gestiones: 0 });
+  return (
+    <Panel titulo="👑 Quién hizo qué" detalle={`Solo lo ves tú · últimos ${dias} días: ${entero(tot.contactos)} contactos y ${entero(tot.gestiones)} gestiones`}>
+      <TablaScroll>
+        <thead>
+          <tr>
+            <th>Usuario</th><th className="text-right">Contactos</th><th className="text-right">Hoy</th><th className="text-right">Contactados</th>
+            <th className="text-right">No contesta</th><th className="text-right">No aplica</th><th className="text-right">Guías trabajadas</th>
+            <th className="text-right">Gestiones</th><th className="text-right">Gestiones hoy</th><th className="text-right">% de los contactos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f) => (
+            <tr key={f.email}>
+              <td className="font-semibold" title={f.email}>{f.nombre}</td>
+              <td className="text-right num">{entero(f.contactos)}</td>
+              <td className="text-right num text-blue-2">{entero(f.contactos_hoy)}</td>
+              <td className="text-right num text-green">{entero(f.contactados)} <span className="text-muted text-xs">{pct(f.contactados, f.contactos)}</span></td>
+              <td className="text-right num text-red">{entero(f.no_contesta)}</td>
+              <td className="text-right num">{entero(f.no_aplica)}</td>
+              <td className="text-right num">{entero(f.guias)}</td>
+              <td className="text-right num">{entero(f.gestiones)}</td>
+              <td className="text-right num text-blue-2">{entero(f.gestiones_hoy)}</td>
+              <td className="text-right num font-semibold">{pct(f.contactos, tot.contactos)}</td>
+            </tr>
+          ))}
+          {!filas.length && <tr><td colSpan={10} className="text-center text-muted py-4">Nadie ha marcado contactos en este periodo.</td></tr>}
+        </tbody>
+      </TablaScroll>
+    </Panel>
+  );
+}
+
 // Tablas de abajo: cuadre de los últimos días y resultado por día de llegada (con el efecto del contacto).
 export function CuadreTablas({ c }: { c: Cuadre }) {
   return (
