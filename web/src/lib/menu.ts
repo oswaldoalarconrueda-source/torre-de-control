@@ -11,6 +11,7 @@ export type ItemMenu = {
   estado: "vivo" | "pronto";
   soloOwner?: boolean;
   soloProveeduria?: boolean; // solo si el usuario ve alguna empresa de proveeduría
+  noProveeduria?: boolean; // oculto para socios y trabajadores que solo ven proveeduría (el dueño lo ve igual)
   modulo?: ModuloId;
 };
 
@@ -18,8 +19,8 @@ export type ItemMenu = {
 // que todavía no está ("pronto"). Las de solo dueño van en "Solo para ti".
 export const MENU_JOALIX: ItemMenu[] = [
   { href: "/", label: "Datos", emoji: "🛒", estado: "vivo", modulo: "resumen" },
-  { href: "/oficina", label: "Disp. en Oficina", emoji: "🏤", estado: "vivo", modulo: "oficina" },
-  { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades" },
+  { href: "/oficina", label: "Disp. en Oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
+  { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades", noProveeduria: true },
   { href: "/agente", label: "Agente", emoji: "🤖", estado: "vivo", modulo: "automatizacion" },
   { href: "/proveeduria", label: "Proveeduría", emoji: "🏭", estado: "vivo", modulo: "proveeduria", soloProveeduria: true },
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
@@ -30,9 +31,9 @@ export const MENU_JOALIX: ItemMenu[] = [
 ];
 
 export const MENU_EN_VIVO: ItemMenu[] = [
-  { href: "/guias", label: "Transportadoras y ciudades", emoji: "🚚", estado: "vivo", modulo: "guias" },
+  { href: "/guias", label: "Transportadoras y ciudades", emoji: "🚚", estado: "vivo", modulo: "guias", noProveeduria: true },
   { href: "/wallet-en-vivo", label: "Wallet en vivo", emoji: "🪙", estado: "vivo", modulo: "dinero" },
-  { href: "/dinero", label: "Wallet y PyG Effi", emoji: "💰", estado: "vivo", modulo: "dinero" },
+  { href: "/dinero", label: "Wallet y PyG Effi", emoji: "💰", estado: "vivo", modulo: "dinero", noProveeduria: true },
 ];
 
 export const MENU_PRONTO: ItemMenu[] = [
