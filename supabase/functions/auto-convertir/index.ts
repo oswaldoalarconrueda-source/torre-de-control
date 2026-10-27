@@ -54,7 +54,55 @@ const TRANSPORTE_PAIS: Record<string, { oficina: number; domicilio: number; resp
 // obligatorio": van las dos cosas. Regla del dueño: las medidas siempre son 1×1×1.
 const MEDIDAS: Record<string, Record<number, { alto: number; ancho: number; largo: number }>> = {
   TIENDA_EC: { 1: { alto: 1, ancho: 1, largo: 1 }, 3: { alto: 1, ancho: 1, largo: 1 } },   // 1 Servientrega · 3 Laarcourier
+  TIENDA_CO: { 6: { alto: 1, ancho: 1, largo: 1 }, 10: { alto: 1, ancho: 1, largo: 1 } }, // 6 Servientrega · 10 Coordinadora
 };
+
+// Cliente con "**" al inicio: pedido con abono. El agente no lo toca (ni remisión ni guía): lo hace una persona en Effi.
+const conAbono = (nombre: unknown) => String(nombre ?? '').trim().startsWith('**');
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Colombia (reglas del dueño, 27-oct; ver tools/propuestas/reglas-envio-colombia.md). La mercancía sale siempre de
+// Bogotá. Transportadoras habilitadas: 1 Envía, 4 Inter, 6 Servientrega, 10 Coordinadora (sin TCC ni Domina).
+// La persona escoge en "Ejecutar"; aquí solo se arma lo que se le muestra: la opción de la asesora logística y la ⭐
+// recomendada por números (menor devolución saliendo de Bogotá, datos de Effi en auto_rutas).
+const CO_HABILITADAS = [1, 4, 6, 10];
+const VALLE_ABURRA = ['MEDELLIN', 'ENVIGADO', 'ITAGUI', 'SABANETA', 'LA ESTRELLA', 'CALDAS', 'COPACABANA', 'GIRARDOTA', 'BARBOSA'];
+function asesoraCO(direccion: string, ciudad: string, dpto: string, soloInter: boolean): { id: number; regla: string } | null {
+  const d = norm(direccion ?? ''), c = norm(ciudad ?? '').replace(/\s*D\.?\s*C\.?$/, ''), dp = norm(dpto ?? '');
+  if (/INTER ?RAPIDISIMO/.test(d) && /OFICINA|\bOF\b|RECLAM/.test(d)) return { id: 4, regla: 'Reclama en oficina Interrapidísimo' };
+  if (/SERVIENTREGA/.test(d) && /OFICINA|\bOF\b|RECLAM/.test(d)) return { id: 6, regla: 'Reclama en oficina Servientrega' };
+  if (VALLE_ABURRA.includes(c) && dp === 'ANTIOQUIA') {
+    if (/\bENCISO\b|SANTO DOMINGO|BELENCITO|\bPOPULAR\b|SAN JAVIER|ROBLEDO|MORAVIA/.test(d)) return { id: 1, regla: 'Medellín: barrio popular (Coordinadora genera devoluciones)' };
+    return { id: 10, regla: 'Medellín y Valle de Aburrá' };
+  }
+  if (c === 'BELLO') {
+    return /CABANAS|SANTA ANA|NIQUIA|\bCENTRO\b/.test(d) ? { id: 10, regla: 'Bello: Cabañas, Santa Ana, Niquía o centro' } : { id: 1, regla: 'Bello' };
+  }
+  if (c === 'CALI') return { id: 10, regla: 'Cali' };
+  if (['BARRANQUILLA', 'SANTA MARTA', 'CUCUTA', 'MONTERIA', 'BOGOTA'].includes(c)) return { id: 1, regla: ciudad };
+  if (['FLORENCIA', 'BARRANCABERMEJA', 'MANIZALES', 'PASTO', 'POPAYAN', 'NEIVA', 'IBAGUE', 'BUCARAMANGA'].includes(c)) return { id: 6, regla: ciudad };
+  if (dp === 'TOLIMA') return { id: 1, regla: 'Tolima' };
+  if (soloInter) return { id: 4, regla: 'Pueblo o zona alejada (solo llega Inter)' };
+  if (dp === 'ATLANTICO' || dp === 'MAGDALENA' || c.startsWith('BUENAVENTURA')) return { id: 4, regla: 'Atlántico, Magdalena o Buenaventura' };
+  return null;
+}
+async function recomendacionCO(direccion: string, ciudad: string, dpto: string) {
+  const r = (await rpc('auto_ruta', { p_destino: ciudad ?? '', p_dpto: dpto ?? '' })) as Json;
+  const opciones = ((r?.opciones ?? []) as Json[]).filter((o) => CO_HABILITADAS.includes(Number(o.id)));
+  const recomendada = opciones.find((o) => Number(o.guias) >= 100)?.id ?? null;
+  return { asesora: asesoraCO(direccion, ciudad, dpto, !!r?.solo_inter), numeros: { nivel: r?.nivel ?? null, recomendada, opciones } };
+}
+// Transportadora por defecto para Colombia: la de la asesora; si no hay, la ⭐; si no, la que traía el plan.
+const escogerCO = (reglas: Json, rec: Awaited<ReturnType<typeof recomendacionCO>>, porDefecto: { t: Json; motivo: string }) => {
+  const id = rec.asesora?.id ?? rec.numeros.recomendada;
+  const t = id ? reglas?.transportes?.[String(id)] : null;
+  if (!t) return porDefecto;
+  return { t, motivo: rec.asesora ? `Asesora: ${rec.asesora.regla}` : '⭐ Menor devolución saliendo de Bogotá' };
+};
+// Valor declarado en Colombia según la transportadora: Servientrega e Inter el valor del recaudo (Inter mínimo $45.000);
+// Envía $10.000; Coordinadora el valor del pedido hasta $100.000.
+const declaradoCO = (transportadora: number, total: number) =>
+  transportadora === 1 ? 10_000 : transportadora === 10 ? Math.min(total, 100_000) : transportadora === 4 ? Math.max(total, 45_000) : total;
 const conMedidas = (cuenta: string, guia: Json) => {
   const m = MEDIDAS[cuenta]?.[Number(guia.transportadora)];
   if (!m || guia.alto) return guia;
@@ -325,6 +373,7 @@ async function convertir(cuenta: string, ahora = false) {
   for (const o of pendientes) {
     const plan: Json = {};
     const revision = (motivo: string) => planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: plan.articulos ?? null, estado: 'revision', motivo, plan });
+    if (conAbono(o.nombre_cliente)) { plan.abono = true; revision('Con abono: el agente no la toca, hacer el proceso a mano en Effi'); continue; }
 
     // 1. Productos de la orden (filtro por artículo; se guarda para no repetir).
     let det = guardadas.find((g) => Number(g.id) === Number(o.id) && Number(g.sucursal) === Number(o.sucursal))?.articulos as { id: number; nombre: string }[] | null;
@@ -364,8 +413,10 @@ async function convertir(cuenta: string, ahora = false) {
     // 4. Remitente según el convenio.
     const remitente = reglas?.remitentes?.[convenio];
     if (!remitente) { revision(`No hay guías anteriores con el convenio ${convenio} para saber el remitente`); continue; }
-    const elegido = elegirTransporte(cuenta, reglas, memoria, String(o.direccion_cliente ?? ''), Number(o.ciudad_cliente), String(o.nombre_ciudad ?? ''));
+    let elegido = elegirTransporte(cuenta, reglas, memoria, String(o.direccion_cliente ?? ''), Number(o.ciudad_cliente), String(o.nombre_ciudad ?? ''));
     if (!elegido) { revision('No hay guías anteriores para saber la transportadora'); continue; }
+    const rec = cuenta === 'TIENDA_CO' ? await recomendacionCO(String(o.direccion_cliente ?? ''), String(o.nombre_ciudad ?? ''), String(o.nombre_provincia ?? '')) : null;
+    if (rec) elegido = escogerCO(reglas, rec, elegido);
 
     plan.remision = {
       idempotency_key: `torre-rv-${o.sucursal}-${o.id}`,
@@ -392,7 +443,7 @@ async function convertir(cuenta: string, ahora = false) {
     plan.resumen = {
       producto: det[0].nombre, cantidad, precio, total, convenio, recuperado, centro,
       remitente: Number(remitente), transportadora: elegido.t.nombre, motivo_transportadora: elegido.motivo, ciudad: o.nombre_ciudad,
-      antecedentes: candidatas[0].n,
+      antecedentes: candidatas[0].n, ...(rec ? { recomendacion: rec } : {}),
     };
     planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: det, estado: 'lista', motivo: null, plan });
   }
@@ -425,7 +476,7 @@ const guiaDeRemision = (r: Json, t: Json, remitente: string | number, centro: nu
 async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Set<number>, sinCobertura: Map<number, string>,
   desde: string, hasta: string) {
   const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
-    .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0);
+    .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0 && !conAbono(r.nombre_cliente));
   if (!rems.length) return [];
   const ordenes: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id_remision=in.(${rems.map((r) => r.id).join(',')})&select=sucursal,id,sucursal_remision,id_remision,guia`);
   const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado`);
@@ -445,13 +496,15 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
     }
     const remitente = reglas?.remitentes?.[r.convenio_dropshipping];
     if (!remitente) { planes.push({ ...base, estado: 'revision', motivo: `No hay guías anteriores con el convenio ${r.convenio_dropshipping} para saber el remitente`, plan }); continue; }
-    const elegido = elegirTransporte(cuenta, reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
+    let elegido = elegirTransporte(cuenta, reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
     if (!elegido) { planes.push({ ...base, estado: 'revision', motivo: 'No hay guías anteriores para saber la transportadora', plan }); continue; }
+    const rec = cuenta === 'TIENDA_CO' ? await recomendacionCO(String(r.direccion_cliente ?? ''), String(r.nombre_ciudad ?? ''), String(r.nombre_provincia ?? '')) : null;
+    if (rec) elegido = escogerCO(reglas, rec, elegido);
     plan.guia = guiaDeRemision(r, elegido.t, remitente, centros.centro_normal);
     plan.resumen = {
       solo_guia: true, remision: Number(r.id_transaccion ?? r.id), total: Number(r.total), ciudad: r.nombre_ciudad,
       transportadora: elegido.t.nombre, motivo_transportadora: elegido.motivo, remitente: Number(remitente),
-      recuperado: Number(r.centro_costos) === Number(centros.centro_recuperado),
+      recuperado: Number(r.centro_costos) === Number(centros.centro_recuperado), ...(rec ? { recomendacion: rec } : {}),
     };
     planes.push({ ...base, estado: 'lista', motivo: null, plan });
   }
@@ -473,7 +526,7 @@ async function guiasPendientes(cuenta: string, ahora = false) {
   const hoy = Date.now();
   const desde = new Date(hoy - 3 * DAY_MS).toISOString().slice(0, 10), hasta = new Date(hoy + 2 * DAY_MS).toISOString().slice(0, 10);
   const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
-    .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0)
+    .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0 && !conAbono(r.nombre_cliente))
     .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > espera)
     .filter((r) => !sinCobertura.has(Number(r.id)))
     .slice(0, ahora ? MAX_GUIAS_AHORA : MAX_CREAR);
@@ -518,6 +571,10 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   if (!fila || !autorizada || !(fila.plan?.remision || (fila.plan?.remision_existente && fila.plan?.guia))) {
     await ev('fin', false, automatico ? 'Automático: la orden ya no estaba lista para crear' : 'La orden no está marcada para ejecutar o no tiene plan');
     return { creada: false };
+  }
+  if (fila.plan?.abono) {
+    await ev('fin', false, 'Pedido con abono: el agente no lo toca, se hace a mano en Effi');
+    return { creada: false, motivo: 'con abono' };
   }
   if (automatico) await ev('inicio', null, `Automático: convirtiendo la OV ${id} (${fila.plan?.resumen?.cantidad ?? ''} × ${fila.plan?.resumen?.producto ?? ''})`);
   const plan = fila.plan as Json;
@@ -602,8 +659,13 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
     await resultado('error', motivo, { paso: 'guia', remision });
     return { creada: false, motivo };
   }
-  const guiaBase = { ...plan.guia, ...(escogida ? { ...camposTransporte(escogida), idempotency_key: `${plan.guia?.idempotency_key}-t${eleccion.transportadora}` } : {}),
+  const guiaBase: Json = { ...plan.guia, ...(escogida ? { ...camposTransporte(escogida), idempotency_key: `${plan.guia?.idempotency_key}-t${eleccion.transportadora}` } : {}),
     id_ref: [Number(remision!.id)], sucursal_ref: [Number(remision!.sucursal ?? sucursal)] };
+  // Colombia: el valor declarado lo pone la regla de cada transportadora (no se copia del documento).
+  if (cuenta === 'TIENDA_CO') {
+    guiaBase.valor_declarado_check = false;
+    guiaBase.valor_declarado = declaradoCO(Number(guiaBase.transportadora), Number(plan.resumen?.total ?? remision?.total ?? 0));
+  }
   await ev('guia', null, `Creando la guía de transporte en Effi${escogida ? ` por ${String(escogida.nombre ?? '').split('|')[0].trim()}` : ''}…`, { enviado: guiaBase });
   const h = await hacerGuia(api, cuenta, cfgReglas?.reglas, guiaBase,
     { ciudad: Number(plan.guia?.id_ciudad_destinatario?.[0]), nombre: String(plan.resumen?.ciudad ?? '') },

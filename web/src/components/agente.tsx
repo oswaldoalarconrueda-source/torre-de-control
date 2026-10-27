@@ -30,6 +30,13 @@ export type OrdenAuto = {
 // Transportadoras que usa el país (aprendidas de sus guías): id → nombre y cuántas guías tuvo en los últimos 10 días.
 export type Transportes = Record<string, { nombre?: string; guias?: number }>;
 type Paso = "ambas" | "remision" | "guia";
+// Lo que el agente calcula en Colombia para cada orden (plan.resumen.recomendacion).
+type Recomendacion = {
+  asesora: { id: number; regla: string } | null;
+  numeros: { nivel: string | null; recomendada: number | null; opciones: { id: number; guias: number; devol: number }[] };
+};
+const CO_HABILITADAS = [1, 4, 6, 10];
+const pct = (n: number) => `${Number(n).toLocaleString("es-CO", { maximumFractionDigits: 1 })} %`;
 export type DatosAuto = {
   config: {
     modo: Modo; minutos_alerta: number; ultima_corrida: string | null; ultimo_error: string | null; actualizado_por: string | null;
@@ -127,6 +134,8 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
   // Dos listas: órdenes que pasan a remisión (y luego a guía) y remisiones ya hechas que solo esperan la guía.
   const listasRemision = listas.filter((o) => o.estado === "sin_remision");
   const listasGuia = listas.filter((o) => o.estado === "sin_guia");
+  // Pedidos con abono (cliente con ** al inicio): el agente no los toca, se quedan en orden y los hace una persona.
+  const conAbono = ordenes.filter((o) => o.estado === "sin_remision" && !!o.cliente?.trim().startsWith("**"));
 
   // El automático está montado para Guatemala y Ecuador; activarlo y pasarlo a manual piden confirmación en pantalla
   // (el navegador de la app bloquea las ventanas de confirmación). "Manual" = simular: arma lo que haría sin crear.
@@ -188,9 +197,26 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
   // orden. La orden debe tener la remisión lista, o la guía de una remisión ya hecha (o un error para reintentar).
   const creaEnEffi = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
   const porOrden = creaEnEffi || cuenta === "TIENDA_CO";
+  // "Ejecutar" orden por orden lo puede pulsar cualquiera que vea el agente de este país (tiene el módulo); el modo y
+  // las tandas siguen siendo solo del dueño.
   const puedeEjecutar = (o: OrdenAuto) =>
-    datos.es_owner && porOrden && (o.plan_estado === "lista" || o.plan_estado === "error") &&
+    porOrden && (o.plan_estado === "lista" || o.plan_estado === "error") &&
     ((!!o.plan?.remision && creaRemision) || (!!o.plan?.remision_existente && !!o.plan?.guia));
+  // Colombia: lo que dice la asesora y la ⭐ por números (menor devolución saliendo de Bogotá, datos de Effi). Solo se
+  // ofrecen Envía, Inter, Servientrega y Coordinadora con recaudo, cada una con su % de devolución hacia ese destino.
+  const recomendacion = (o: OrdenAuto) => (o.plan?.resumen as Record<string, unknown> | undefined)?.recomendacion as Recomendacion | undefined;
+  const opcionesPara = (o: OrdenAuto) => {
+    if (cuenta !== "TIENDA_CO") return opcionesTransporte.map((t) => ({ ...t, etiqueta: `${t.nombre} (${t.guias} guías)` }));
+    const rec = recomendacion(o);
+    return opcionesTransporte.filter((t) => CO_HABILITADAS.includes(t.id))
+      .map((t) => {
+        const ruta = rec?.numeros.opciones.find((x) => Number(x.id) === t.id);
+        const marcas = `${t.id === rec?.asesora?.id ? " · asesora" : ""}${t.id === rec?.numeros.recomendada ? " ⭐" : ""}`;
+        return { ...t, devol: ruta ? Number(ruta.devol) : 999,
+          etiqueta: `${t.nombre.split(" · ")[0].replace(" EFFI", "")}${marcas} — ${ruta ? `${pct(ruta.devol)} dev. (${entero(Number(ruta.guias))} guías)` : "sin datos"}` };
+      })
+      .sort((a, b) => a.devol - b.devol);
+  };
   // Al pulsar "Ejecutar": por defecto los dos pasos (o solo la guía si la remisión ya existe) y la transportadora del plan.
   function abrirEjecutar(o: OrdenAuto) {
     setConfirmarOrden(`${o.sucursal}-${o.id}`);
@@ -341,6 +367,20 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
         </div>
       )}
 
+      {conAbono.length > 0 && (
+        <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
+          <div className="font-semibold text-amber">💰 {entero(conAbono.length)} {conAbono.length === 1 ? "pedido con abono" : "pedidos con abono"}: hacer el proceso</div>
+          <div className="text-xs text-muted mt-0.5">El cliente empieza con ** y el agente no los toca: se quedan en orden de venta para hacerlos a mano en Effi.</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {conAbono.map((o) => (
+              <span key={`${o.sucursal}-${o.id}`} className="rounded-full border border-amber/40 px-2.5 py-0.5 text-[11px]">
+                OV {o.id} · {o.cliente?.replace(/^\s*\*+\s*/, "")} · {o.ciudad ?? "—"}{o.total ? ` · ${entero(o.total)}` : ""} · hace {duracion(o.minutos)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()}
         completas={ordenes.filter((o) => o.estado === "completa" || pendienteResuelto(o)).map((o) => o.id)} />
 
@@ -471,7 +511,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                   <td className="px-3 py-2 whitespace-nowrap">
                     {o.estado === "completa" || o.estado === "anulada" ? (
                       <span className="text-xs text-muted">—</span>
-                    ) : datos.es_owner ? (
+                    ) : (
                       <div className="flex items-center gap-2">
                         {puedeEjecutar(o) && confirmarOrden === clave ? (
                           // Qué paso hacer y por qué transportadora; nada se crea hasta "Sí, crear".
@@ -485,16 +525,34 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                             ) : (
                               <span className="text-[11px] font-semibold text-blue-2">Remisión → guía</span>
                             )}
-                            {eleccion.paso !== "remision" && (
-                              <label className="text-[10px] text-muted">
-                                Transportadora
-                                <select value={eleccion.transportadora ?? ""} onChange={(e) => setEleccion((x) => ({ ...x, transportadora: Number(e.target.value) || null }))}
-                                  className="mt-0.5 block w-full rounded-lg border border-line bg-bg px-2 py-1 text-xs text-text outline-none">
-                                  {!opcionesTransporte.some((t) => t.id === eleccion.transportadora) && <option value="">— La del plan —</option>}
-                                  {opcionesTransporte.map((t) => <option key={t.id} value={t.id}>{t.nombre} ({t.guias} guías)</option>)}
-                                </select>
-                              </label>
-                            )}
+                            {eleccion.paso !== "remision" && (() => {
+                              const opciones = opcionesPara(o);
+                              const rec = recomendacion(o);
+                              const nombre = (id: number | null | undefined) => opciones.find((t) => t.id === id)?.etiqueta.split(" — ")[0].replace(/ · asesora| ⭐/g, "") ?? "—";
+                              const estrella = rec?.numeros.opciones.find((x) => Number(x.id) === rec.numeros.recomendada);
+                              return (
+                                <>
+                                  {rec && (
+                                    <div className="space-y-0.5 text-[11px] leading-snug">
+                                      <div><span className="text-muted">Asesora:</span>{" "}
+                                        {rec.asesora ? <b>{nombre(rec.asesora.id)}</b> : <span className="text-muted">sin regla para esta ciudad</span>}
+                                        {rec.asesora && <span className="text-muted"> ({rec.asesora.regla})</span>}</div>
+                                      <div><span className="text-muted">⭐ Números:</span>{" "}
+                                        {estrella ? <><b>{nombre(rec.numeros.recomendada)}</b> <span className="text-muted">{pct(estrella.devol)} dev. · {rec.numeros.nivel === "departamento" ? "por departamento" : "en la ciudad"}</span></>
+                                          : <span className="text-muted">pocos datos de esta ruta</span>}</div>
+                                    </div>
+                                  )}
+                                  <label className="text-[10px] text-muted">
+                                    Transportadora
+                                    <select value={eleccion.transportadora ?? ""} onChange={(e) => setEleccion((x) => ({ ...x, transportadora: Number(e.target.value) || null }))}
+                                      className="mt-0.5 block w-full rounded-lg border border-line bg-bg px-2 py-1 text-xs text-text outline-none">
+                                      {!opciones.some((t) => t.id === eleccion.transportadora) && <option value="">— La del plan —</option>}
+                                      {opciones.map((t) => <option key={t.id} value={t.id}>{t.etiqueta}</option>)}
+                                    </select>
+                                  </label>
+                                </>
+                              );
+                            })()}
                             <div className="flex gap-2">
                               <button onClick={() => ejecutar(o)} disabled={guardando === clave}
                                 className="rounded-full bg-green px-3 py-1 text-xs font-bold text-black">Sí, crear</button>
@@ -520,7 +578,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                           </button>
                         )}
                       </div>
-                    ) : null}
+                    )}
                   </td>
                 </tr>
                 {abierto && o.plan && (
