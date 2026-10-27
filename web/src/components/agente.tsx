@@ -418,9 +418,13 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                       {o.recuperado ? "Recuperado" : "Principal"}
                     </span>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">
-                    {o.ciudad ?? "—"}
-                    <div className="text-muted">{o.provincia}</div>
+                  {/* Ciudad - departamento y, debajo, la dirección de entrega (la del plan de remisión o de guía). */}
+                  <td className="px-3 py-2 min-w-[12rem] max-w-[20rem] text-xs">
+                    <div className="whitespace-nowrap font-semibold">{[o.ciudad, o.provincia].filter(Boolean).join(" - ") || "—"}</div>
+                    {(() => {
+                      const dir = String(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0] ?? "").trim();
+                      return dir ? <div className="text-muted whitespace-normal">{dir}</div> : null;
+                    })()}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap text-right num">{dinero(o.total, cuenta)}</td>
                   {/* Todo es dropshipping: importa que tenga convenio, no cuál. */}
