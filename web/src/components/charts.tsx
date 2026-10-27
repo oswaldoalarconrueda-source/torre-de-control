@@ -95,14 +95,16 @@ export function FlujoWallet({ filas, moneda }: { filas: { fecha: string; grupo: 
   );
 }
 
-// Gasto de publicidad por día, apilado por país (montos en COP).
-const cop = (v: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", currencyDisplay: "narrowSymbol", notation: "compact", maximumFractionDigits: 1 }).format(v);
+// Gasto de publicidad por día, apilado por país (en COP, o en la moneda del país si se muestra uno solo).
+const compacta = (divisa: string) => (v: number) =>
+  new Intl.NumberFormat("es-CO", { style: "currency", currency: divisa, currencyDisplay: "narrowSymbol", notation: "compact", maximumFractionDigits: 1 }).format(v);
 
-export function GastoPorDia({ filas, paises }: {
+export function GastoPorDia({ filas, paises, divisa = "COP" }: {
   filas: { fecha: string; cuenta: string; monto: number }[];
   paises: { cuenta: string; nombre: string; color: string }[];
+  divisa?: string;
 }) {
-  const moneda = cop;
+  const moneda = compacta(divisa);
   const porFecha = new Map<string, Record<string, number | string>>();
   for (const f of filas) {
     const o = porFecha.get(f.fecha) ?? { fecha: f.fecha };
