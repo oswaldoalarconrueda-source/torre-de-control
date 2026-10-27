@@ -24,6 +24,7 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/agente", label: "Agente", emoji: "🤖", estado: "vivo", modulo: "automatizacion" },
   { href: "/proveeduria", label: "Proveeduría", emoji: "🏭", estado: "vivo", modulo: "proveeduria", soloProveeduria: true },
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
+  { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true },
   { href: "/sin-liquidar", label: "Guías sin liquidar", emoji: "⏳", estado: "vivo", modulo: "dinero" },
   { href: "/sync", label: "Estado de los datos", emoji: "🔄", estado: "vivo", soloOwner: true },
   { href: "/cargas", label: "Cargar archivos", emoji: "📤", estado: "vivo", soloOwner: true },
@@ -39,7 +40,6 @@ export const MENU_EN_VIVO: ItemMenu[] = [
 export const MENU_PRONTO: ItemMenu[] = [
   { href: "/productos", label: "Productos", emoji: "📦", estado: "pronto", modulo: "resumen" },
   { href: "/flujo-caja", label: "Flujo de Caja", emoji: "💵", estado: "pronto", modulo: "dinero" },
-  { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "pronto", modulo: "resumen" },
   { href: "/pagos-publicidad", label: "Pagos de publicidad", emoji: "💳", estado: "pronto", modulo: "dinero" },
   { href: "/utilidad", label: "Utilidad", emoji: "📈", estado: "pronto", modulo: "resumen" },
   { href: "/glosario", label: "Glosario", emoji: "📖", estado: "vivo" },
