@@ -6,8 +6,8 @@ import { infoCuenta } from "@/lib/paises";
 import type { Rango } from "@/lib/filtros";
 import { SelectorFechas } from "./selector-fechas";
 
-export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conFechas = true, varios = false }: {
-  cuentas: string[]; rangos: Rango[]; hoy: string; desde: string; hasta: string; seleccion: string[] | null; conFechas?: boolean;
+export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conFechas = true, varios = false, minimo }: {
+  cuentas: string[]; rangos: Rango[]; hoy: string; desde: string; hasta: string; seleccion: string[] | null; conFechas?: boolean; minimo?: string;
   varios?: boolean;
 }) {
   const router = useRouter();
@@ -74,7 +74,7 @@ export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conF
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-2">
-        {conFechas && <SelectorFechas desde={desde} hasta={hasta} rangos={rangos} hoy={hoy} onAplicar={(d, h) => ir({ d, h })} />}
+        {conFechas && <SelectorFechas desde={desde} hasta={hasta} rangos={rangos} hoy={hoy} minimo={minimo} onAplicar={(d, h) => ir({ d, h })} />}
         {pendiente && (
           <span className="flex items-center gap-1.5 rounded-full border border-blue/40 bg-blue/10 px-3 py-1.5 text-xs text-blue-2" role="status">
             <span className="size-3 rounded-full border-2 border-blue-2 border-t-transparent animate-spin" />

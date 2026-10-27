@@ -26,8 +26,9 @@ export const rpcArgs = (f: Filtros) => ({ p_cuentas: f.cuentas, p_desde: f.desde
 // Fechas "YYYY-MM-DD" operadas a mediodía UTC para no saltar de día por zona horaria.
 export const sumarDias = (iso: string, dias: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + dias * 86_400_000).toISOString().slice(0, 10);
 
-// Atajos del calendario (los mismos del Dashboard Joalix Group).
-export function rangosRapidos(hoy = hoyBogota()): Rango[] {
+// Atajos del calendario (los mismos del Dashboard Joalix Group). Con "inicio" ninguno arranca antes de esa fecha
+// (p. ej. Publicidad: desde que existe la sociedad) y "Todo el rango" empieza ahí.
+export function rangosRapidos(hoy = hoyBogota(), inicio = INICIO_DATOS): Rango[] {
   const inicioMes = `${hoy.slice(0, 8)}01`;
   const finMesAnterior = sumarDias(inicioMes, -1);
   const ayer = sumarDias(hoy, -1);
@@ -38,7 +39,9 @@ export function rangosRapidos(hoy = hoyBogota()): Rango[] {
     { id: "mes", label: "Este mes", d: inicioMes, h: hoy },
     { id: "mes-ant", label: "Mes anterior", d: `${finMesAnterior.slice(0, 8)}01`, h: finMesAnterior },
     { id: "todo", label: "Todo el rango", d: INICIO_DATOS, h: hoy },
-  ];
+  ]
+    .filter((r) => r.h >= inicio)
+    .map((r) => ({ ...r, d: r.id === "todo" || r.d < inicio ? inicio : r.d }));
 }
 
 export const rangoActivo = (rangos: Rango[], desde: string, hasta: string) => rangos.find((r) => r.d === desde && r.h === hasta) ?? null;

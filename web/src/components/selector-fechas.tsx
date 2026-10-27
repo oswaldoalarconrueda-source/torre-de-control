@@ -28,8 +28,8 @@ const moverMes = (ym: string, n: number) => {
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, "0")}`;
 };
 
-function Mes({ ym, hoy, inicio, fin, hover, onDia, onHover }: {
-  ym: string; hoy: string; inicio: string; fin: string | null; hover: string | null;
+function Mes({ ym, hoy, minimo, inicio, fin, hover, onDia, onHover }: {
+  ym: string; hoy: string; minimo?: string; inicio: string; fin: string | null; hover: string | null;
   onDia: (iso: string) => void; onHover: (iso: string | null) => void;
 }) {
   const { a, m } = partes(`${ym}-01`);
@@ -46,7 +46,7 @@ function Mes({ ym, hoy, inicio, fin, hover, onDia, onHover }: {
         {Array.from({ length: vacios }).map((_, i) => <span key={`v${i}`} />)}
         {Array.from({ length: dias }).map((_, i) => {
           const iso = `${ym}-${String(i + 1).padStart(2, "0")}`;
-          const futuro = iso > hoy;
+          const futuro = iso > hoy || (minimo != null && iso < minimo); // fuera de rango: futuro o antes del mínimo
           const extremo = iso === inicio || iso === finVista;
           const dentro = finVista != null && iso > inicio && iso < finVista;
           return (
@@ -78,8 +78,8 @@ function Mes({ ym, hoy, inicio, fin, hover, onDia, onHover }: {
 }
 
 // "inactivo": otro filtro manda (por ejemplo los minutos de En vivo); el botón se ve apagado y muestra "inactivo" como texto.
-export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar, inactivo }: {
-  desde: string; hasta: string; rangos: Rango[]; hoy: string; onAplicar: (d: string, h: string) => void; inactivo?: string;
+export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar, inactivo, minimo }: {
+  desde: string; hasta: string; rangos: Rango[]; hoy: string; onAplicar: (d: string, h: string) => void; inactivo?: string; minimo?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [ini, setIni] = useState(desde);
@@ -186,9 +186,9 @@ export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar, inactivo 
               </div>
               <div className="flex justify-center gap-6">
                 <div className="hidden sm:block">
-                  <Mes ym={moverMes(mesDer, -1)} hoy={hoy} inicio={ini} fin={fin} hover={hover} onDia={elegirDia} onHover={setHover} />
+                  <Mes ym={moverMes(mesDer, -1)} hoy={hoy} minimo={minimo} inicio={ini} fin={fin} hover={hover} onDia={elegirDia} onHover={setHover} />
                 </div>
-                <Mes ym={mesDer} hoy={hoy} inicio={ini} fin={fin} hover={hover} onDia={elegirDia} onHover={setHover} />
+                <Mes ym={mesDer} hoy={hoy} minimo={minimo} inicio={ini} fin={fin} hover={hover} onDia={elegirDia} onHover={setHover} />
               </div>
             </div>
           </div>

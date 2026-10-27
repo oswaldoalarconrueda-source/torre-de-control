@@ -34,14 +34,16 @@ const portafolio = (t: string | null) => {
   const s = t.replace(/^meta_access_token_?/, "");
   return s ? s[0].toUpperCase() + s.slice(1) : "Compras FACIL";
 };
-const ESTADO_META: Record<number, string> = { 1: "Activa", 2: "Desactivada", 3: "Pago pendiente", 7: "En revisión", 9: "En gracia", 101: "Cerrada" };
+// La publicidad de la sociedad empieza en julio de 2026: lo anterior no es de Joalix AA Group.
+const INICIO_PUBLICIDAD = "2026-07-01";
 
 export default async function PublicidadPage({ searchParams }: PageProps<"/publicidad">) {
   await exigirSocio(); // solo dueño y socios
   const sp = await searchParams;
   const base = leerFiltros(sp);
   const lista = typeof sp.c === "string" ? sp.c.split(",").filter((x) => /^[A-Z0-9_]+$/.test(x)) : [];
-  const f: Filtros = { ...base, cuentas: lista.length ? lista : null };
+  const desde = base.desde < INICIO_PUBLICIDAD ? INICIO_PUBLICIDAD : base.desde;
+  const f: Filtros = { ...base, desde, hasta: base.hasta < desde ? desde : base.hasta, cuentas: lista.length ? lista : null };
   const hoy = hoyBogota();
   const hasta = f.hasta > hoy ? hoy : f.hasta;
 
@@ -60,6 +62,7 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
         subtitulo="Gasto en Meta por país, día, cuenta publicitaria y campaña. Llega solo por la API de Meta cada hora (un token por portafolio); el país de entrega del anuncio decide la tienda. Montos en COP."
         f={f}
         varios
+        inicio={INICIO_PUBLICIDAD}
       />
       {error && <p className="text-sm text-red mb-4">{error.message}</p>}
 
