@@ -4,8 +4,9 @@
 //
 // POST /functions/v1/meta-gasto   (cabecera x-sync-token)   ← cron cada hora (meta_refrescar): los últimos 3 días
 // POST ...?desde=2026-09-01&hasta=2026-10-26                  ← historial (de a 31 días por llamada)
-// POST ...?accion=token  body {"token": "..."}                ← scripts/push-meta.mjs: guarda el token en el Vault.
-//   Nunca devuelve el token.
+// POST ...?accion=token  body {"nombre": "meta_access_token_x", "token": "..."}  ← scripts/push-meta.mjs: guarda el token
+//   en el Vault. Nunca devuelve el token. Un token por portafolio comercial (cada uno con su app y su usuario del sistema);
+//   las cuentas que ve cada token se traen con ese token.
 // El país de entrega decide la tienda; si Meta lo da como "unknown", la etiqueta de la campaña: (COL), (EC), (GT)…
 // Las cuentas en otra divisa se pasan a COP con la TRM del mes (app_trm_mes).
 
@@ -67,8 +68,17 @@ function paisMeta(pais: string, campana: string) {
   return null;
 }
 
-async function sincronizar(token: string, desde: string, hasta: string) {
-  const cuentas = await todo(`${GRAPH}/me/adaccounts?fields=account_id,name,currency,timezone_name,account_status&limit=200`, token);
+async function sincronizar(tokens: { nombre: string; token: string }[], desde: string, hasta: string) {
+  // Cuentas de todos los portafolios; si una la ven dos tokens, se trae una sola vez.
+  const cuentas: { c: Record<string, unknown>; token: string; portafolio: string }[] = [];
+  const tokensConError: Record<string, string> = {};
+  for (const t of tokens) {
+    try {
+      for (const c of await todo(`${GRAPH}/me/adaccounts?fields=account_id,name,currency,timezone_name,account_status&limit=200`, t.token)) {
+        if (!cuentas.some((x) => x.c.account_id === c.account_id)) cuentas.push({ c, token: t.token, portafolio: t.nombre });
+      }
+    } catch (e) { tokensConError[t.nombre] = (e as Error).message; }
+  }
   const trm: { mes: string; usd_cop: number; gtq_cop: number }[] = await sb('app_trm_mes?select=mes,usd_cop,gtq_cop');
   const aCop = (divisa: string, fecha: string) => {
     if (divisa === 'COP') return 1;
@@ -81,7 +91,7 @@ async function sincronizar(token: string, desde: string, hasta: string) {
   const nombres: string[] = [];
   const resumen: Record<string, unknown> = {};
   const sinPais = new Set<string>();
-  for (const c of cuentas) {
+  for (const { c, token, portafolio } of cuentas) {
     const id = String(c.account_id), nombre = String(c.name ?? id).trim(), divisa = String(c.currency ?? 'COP');
     try {
       const params = new URLSearchParams({
@@ -105,15 +115,15 @@ async function sincronizar(token: string, desde: string, hasta: string) {
       nombres.push(nombre);
       resumen[nombre] = Math.round(total);
       await sb(`meta_cuentas_ads?on_conflict=id`, { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' },
-        body: JSON.stringify([{ id, nombre, divisa, zona: c.timezone_name ?? null, estado: c.account_status ?? null, ultima_sync: new Date().toISOString(), ultimo_error: null }]) });
+        body: JSON.stringify([{ id, nombre, divisa, zona: c.timezone_name ?? null, estado: c.account_status ?? null, token: portafolio, ultima_sync: new Date().toISOString(), ultimo_error: null }]) });
     } catch (e) {
       resumen[nombre] = { error: (e as Error).message };
       await sb(`meta_cuentas_ads?on_conflict=id`, { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' },
-        body: JSON.stringify([{ id, nombre, divisa, zona: c.timezone_name ?? null, estado: c.account_status ?? null, ultimo_error: (e as Error).message }]) });
+        body: JSON.stringify([{ id, nombre, divisa, zona: c.timezone_name ?? null, estado: c.account_status ?? null, token: portafolio, ultimo_error: (e as Error).message }]) });
     }
   }
   const guardado = nombres.length ? await rpc('meta_guardar', { p_filas: filas, p_cuentas_ads: nombres, p_desde: desde, p_hasta: hasta }) : null;
-  return { desde, hasta, cuentas: resumen, guardado, sin_pais: [...sinPais].slice(0, 10) };
+  return { desde, hasta, portafolios: tokens.map((t) => t.nombre), tokens_con_error: tokensConError, cuentas: resumen, guardado, sin_pais: [...sinPais].slice(0, 10) };
 }
 
 Deno.serve(async (req) => {
@@ -123,22 +133,25 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   try {
     if (url.searchParams.get('accion') === 'token') {
-      const body = await req.json().catch(() => ({})) as { token?: string };
+      const body = await req.json().catch(() => ({})) as { nombre?: string; token?: string };
+      const nombre = (body.nombre ?? 'meta_access_token').toLowerCase();
       const t = (body.token ?? '').replace(/\s+/g, '');
+      if (!/^meta_access_token(_[a-z0-9]+)?$/.test(nombre)) return json(400, { ok: false, mensaje: 'Nombre de token inválido' });
       if (!/^EA[A-Za-z0-9]{50,}$/.test(t)) return json(400, { ok: false, mensaje: 'Token de Meta inválido' });
-      const prueba = await fetch(`${GRAPH}/me?fields=id&access_token=${encodeURIComponent(t)}`);
+      const prueba = await fetch(`${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(t)}`);
       if (!prueba.ok) return json(400, { ok: false, mensaje: `Meta rechazó el token (HTTP ${prueba.status})` });
-      await rpc('app_guardar_secreto', { p_nombre: 'meta_access_token', p_valor: t });
-      return json(200, { ok: true, guardados: ['meta_access_token'] });
+      const quien = await prueba.json().catch(() => ({}));
+      await rpc('app_guardar_secreto', { p_nombre: nombre, p_valor: t });
+      return json(200, { ok: true, guardados: [nombre], portafolio: quien?.name ?? null });
     }
-    const token: string | null = await rpc('meta_credenciales', {});
-    if (!token) return json(400, { ok: false, mensaje: 'Falta meta_access_token en el Vault (scripts/push-meta.mjs)' });
+    const tokens: { nombre: string; token: string }[] = await rpc('meta_tokens', {});
+    if (!tokens.length) return json(400, { ok: false, mensaje: 'No hay tokens de Meta en el Vault (scripts/push-meta.mjs)' });
     // Por defecto los últimos 3 días (hora Colombia). Con desde/hasta, máximo 31 días por llamada.
     const hoy = dia(new Date(Date.now() - 5 * 3_600_000));
     const hasta = url.searchParams.get('hasta') ?? hoy;
     let desde = url.searchParams.get('desde') ?? dia(new Date(Date.parse(hoy) - 2 * DAY_MS));
     if (Date.parse(hasta) - Date.parse(desde) > 30 * DAY_MS) desde = dia(new Date(Date.parse(hasta) - 30 * DAY_MS));
-    return json(200, { ok: true, ...(await sincronizar(token, desde, hasta)) });
+    return json(200, { ok: true, ...(await sincronizar(tokens, desde, hasta)) });
   } catch (e) {
     return json(500, { ok: false, mensaje: String((e as Error).message ?? e).slice(0, 300) });
   }
