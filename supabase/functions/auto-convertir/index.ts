@@ -34,8 +34,9 @@ const MAX_ORDENES = 15;
 // Países donde la Torre crea en Effi, en Automático o cuando el dueño pulsa "Ejecutar ahora" o "Ejecutar". Costa Rica
 // y Colombia están en prueba: no crean nada.
 const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC'];
-// Países donde además se crea la remisión desde la orden. Ecuador no: la API de Effi falla al crearla (error 1452 dentro
-// de Effi; en la web sí se crea), así que allá la remisión la hace una persona en Effi y la Torre hace la guía.
+// Países donde además se crea la remisión desde la orden. Ecuador todavía no: con la llave de perfil Auxiliar Effi
+// fallaba (error 1452); con la de perfil principal ya crea (27-oct, OV 24631 → RV 24527), falta que el dueño lo active.
+// Mientras tanto allá la remisión la hace una persona en Effi y la Torre hace la guía.
 const PAISES_REMISION = ['TIENDA_GT'];
 const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
@@ -100,16 +101,23 @@ class Effi {
     if (!res.ok || !j?.ok) throw new Error(`${recurso} HTTP ${res.status}: ${j?.mensaje ?? 'sin respuesta'}`);
     return { data: j.data ?? [], paginas: Number(j.paginacion?.total_paginas ?? 1), total: Number(j.paginacion?.total ?? 0) };
   }
-  // Crear en Effi: devuelve la respuesta tal cual (ok o el mensaje de error de Effi), sin lanzar excepción.
+  // Crear en Effi: devuelve la respuesta tal cual (ok o el mensaje de error de Effi), sin lanzar excepción. Si Effi
+  // responde "Demasiadas peticiones" (429) no procesó nada: se espera lo que pida y se reintenta.
   async post(recurso: string, cuerpo: Json): Promise<{ status: number; ok: boolean; respuesta: Json | null }> {
-    const espera = this.ultimo + MIN_GAP_MS - Date.now();
-    if (espera > 0) await sleep(espera);
-    this.ultimo = Date.now();
-    const res = await fetch(`${EFFI_API}/${recurso}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${this.key}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(cuerpo),
-    });
+    let res: Response;
+    for (let intento = 0; ; intento++) {
+      const espera = this.ultimo + MIN_GAP_MS - Date.now();
+      if (espera > 0) await sleep(espera);
+      this.ultimo = Date.now();
+      res = await fetch(`${EFFI_API}/${recurso}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.key}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo),
+      });
+      if (res.status !== 429 || intento >= 4) break;
+      await res.text().catch(() => '');
+      await sleep(1000 * Math.min(30, Number(res.headers.get('retry-after')) || 8));
+    }
     const texto = await res.text();
     let j: Json | null = null;
     try { j = JSON.parse(texto); } catch { j = { texto: texto.slice(0, 2000) }; }
@@ -172,8 +180,13 @@ const detalleGuia = (g: { status: number; respuesta: Json | null }, p: Json | un
   return typeof d === 'string' ? d : JSON.stringify(d);
 };
 
+// "Demasiadas peticiones" es Effi pidiendo calma, no un rechazo de la transportadora.
+const esLimite = (g: { status: number; respuesta: Json | null }, p: Json | undefined) =>
+  g.status === 429 || /demasiadas peticiones/i.test(detalleGuia(g, p));
+
 // Crea la guía. En Ecuador, si la transportadora de domicilio no la deja hacer, la ciudad queda en la memoria de
-// cobertura y se repite con la de respaldo.
+// cobertura y se repite con la de respaldo. Si el fallo es el límite de peticiones de Effi, no se toca la memoria ni
+// se cambia de transportadora: la guía se reintenta en la próxima corrida.
 async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, destino: { ciudad: number; nombre: string },
   ev: (ok: boolean | null, mensaje: string, datos?: Json | null) => Promise<unknown>) {
   guia = conMedidas(cuenta, guia);
@@ -181,7 +194,7 @@ async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, de
   let p = primeraGuia(g);
   const tp = TRANSPORTE_PAIS[cuenta];
   const respaldo = tp && reglas?.transportes?.[String(tp.respaldo)];
-  if (fallaGuia(g, p) && tp && respaldo && Number(guia.transportadora) === tp.domicilio) {
+  if (fallaGuia(g, p) && !esLimite(g, p) && tp && respaldo && Number(guia.transportadora) === tp.domicilio) {
     const detalle = detalleGuia(g, p);
     await rpc('auto_sin_cobertura', { p_cuenta: cuenta, p_transportadora: tp.domicilio, p_ciudad: destino.ciudad, p_nombre_ciudad: destino.nombre, p_motivo: detalle });
     await ev(null, `Gintracom no dejó hacer la guía (${detalle}). Se hace con Servientrega y ${destino.nombre} queda en la memoria de cobertura`, { enviado: guia, respuesta: g.respuesta, status: g.status });
@@ -525,7 +538,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
     remision = { id: Number(rem.id), sucursal: Number(rem.sucursal), id_transaccion: rem.id_transaccion };
   }
   if (!remision?.id && !PAISES_REMISION.includes(cuenta)) {
-    const motivo = 'En este país Effi no deja crear la remisión por API (error 1452 dentro de Effi). Hazla en Effi y la Torre hace la guía.';
+    const motivo = 'En este país la Torre todavía no crea remisiones: hazla en Effi y la Torre hace la guía.';
     await ev('remision', false, motivo);
     await resultado('error', motivo, { paso: 'remision' });
     return { creada: false, motivo };
