@@ -438,8 +438,8 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         if (logo.current) {
           ctx.save();
           ctx.beginPath(); ctx.arc(cx, cy, R - 2, 0, Math.PI * 2); ctx.clip();
-          const z = R * 2.25; // el logo trae margen negro: se amplía un poco para que llene el círculo
-          ctx.drawImage(logo.current, cx - z / 2, cy - z / 2 + 4, z, z);
+          const z = R * 1.9; // el logo (sobre el mismo fondo oscuro) cabe completo dentro del círculo, con un poco de aire
+          ctx.drawImage(logo.current, cx - z / 2, cy - z / 2, z, z);
           ctx.restore();
         }
         ctx.strokeStyle = `rgba(212,166,74,${0.75 + 0.25 * l})`; ctx.lineWidth = 2;
