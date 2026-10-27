@@ -69,12 +69,15 @@ function paisMeta(pais: string, campana: string) {
 }
 
 async function sincronizar(tokens: { nombre: string; token: string }[], desde: string, hasta: string) {
-  // Cuentas de todos los portafolios; si una la ven dos tokens, se trae una sola vez.
+  // Cuentas de todos los portafolios; si una la ven dos tokens, se trae una sola vez. Las marcadas "excluir" en
+  // meta_cuentas_ads (no son de la sociedad, p. ej. las Alma) no se traen.
+  const excluidas = new Set(((await sb('meta_cuentas_ads?select=id&excluir=eq.true')) as { id: string }[]).map((x) => x.id));
   const cuentas: { c: Record<string, unknown>; token: string; portafolio: string }[] = [];
   const tokensConError: Record<string, string> = {};
   for (const t of tokens) {
     try {
       for (const c of await todo(`${GRAPH}/me/adaccounts?fields=account_id,name,currency,timezone_name,account_status&limit=200`, t.token)) {
+        if (excluidas.has(String(c.account_id))) continue;
         if (!cuentas.some((x) => x.c.account_id === c.account_id)) cuentas.push({ c, token: t.token, portafolio: t.nombre });
       }
     } catch (e) { tokensConError[t.nombre] = (e as Error).message; }
@@ -150,6 +153,7 @@ Deno.serve(async (req) => {
     const hoy = dia(new Date(Date.now() - 5 * 3_600_000));
     const hasta = url.searchParams.get('hasta') ?? hoy;
     let desde = url.searchParams.get('desde') ?? dia(new Date(Date.parse(hoy) - 2 * DAY_MS));
+    if (![desde, hasta].every((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)) || desde > hasta) return json(400, { ok: false, mensaje: 'Fechas inválidas (desde y hasta: AAAA-MM-DD)' });
     if (Date.parse(hasta) - Date.parse(desde) > 30 * DAY_MS) desde = dia(new Date(Date.parse(hasta) - 30 * DAY_MS));
     return json(200, { ok: true, ...(await sincronizar(tokens, desde, hasta)) });
   } catch (e) {
