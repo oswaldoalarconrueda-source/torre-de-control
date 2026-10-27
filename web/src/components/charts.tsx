@@ -95,33 +95,43 @@ export function FlujoWallet({ filas, moneda }: { filas: { fecha: string; grupo: 
   );
 }
 
-// Gasto de publicidad por día, apilado por país (en COP, o en la moneda del país si se muestra uno solo).
+// Gasto de publicidad por día, apilado por país, en pesos; al pasar el mouse sale también en la moneda de cada país.
 const compacta = (divisa: string) => (v: number) =>
-  new Intl.NumberFormat("es-CO", { style: "currency", currency: divisa, currencyDisplay: "narrowSymbol", notation: "compact", maximumFractionDigits: 1 }).format(v);
+  new Intl.NumberFormat("es-CO", { style: "currency", currency: divisa, currencyDisplay: divisa === "USD" ? "symbol" : "narrowSymbol", notation: "compact", maximumFractionDigits: 1 }).format(v);
+const exacta = (divisa: string) => (v: number) =>
+  new Intl.NumberFormat("es-CO", { style: "currency", currency: divisa, currencyDisplay: divisa === "USD" ? "symbol" : "narrowSymbol", maximumFractionDigits: divisa === "COP" ? 0 : 2 }).format(v);
 
-export function GastoPorDia({ filas, paises, divisa = "COP" }: {
-  filas: { fecha: string; cuenta: string; monto: number }[];
-  paises: { cuenta: string; nombre: string; color: string }[];
-  divisa?: string;
+export function GastoPorDia({ filas, paises }: {
+  filas: { fecha: string; cuenta: string; monto: number; local?: number | null }[];
+  paises: { cuenta: string; nombre: string; color: string; divisa: string }[];
 }) {
-  const moneda = compacta(divisa);
   const porFecha = new Map<string, Record<string, number | string>>();
   for (const f of filas) {
     const o = porFecha.get(f.fecha) ?? { fecha: f.fecha };
     o[f.cuenta] = Number(o[f.cuenta] ?? 0) + Number(f.monto);
+    if (f.local != null) o[`${f.cuenta}__local`] = Number(o[`${f.cuenta}__local`] ?? 0) + Number(f.local);
     porFecha.set(f.fecha, o);
   }
   const data = [...porFecha.values()].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
-  const nombre = (c: string) => paises.find((p) => p.cuenta === c)?.nombre ?? c;
+  const pais = (c: string) => paises.find((p) => p.cuenta === c);
   return (
     <div className="h-72">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ left: 0, right: 4, top: 4 }}>
           <CartesianGrid vertical={false} stroke="rgb(255 255 255 / 0.06)" />
           <XAxis dataKey="fecha" tickFormatter={ejeX} tick={{ fill: "#8a94a8", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={12} />
-          <YAxis tickFormatter={(v) => moneda(Number(v))} tick={{ fill: "#8a94a8", fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
-          <Tooltip {...tooltipStyle} labelFormatter={(l) => ejeX(String(l))} formatter={(v, n) => [moneda(Number(v)), nombre(String(n))]} />
-          <Legend formatter={(v) => <span style={{ color: "#8a94a8", fontSize: 12 }}>{nombre(String(v))}</span>} iconType="circle" iconSize={8} />
+          <YAxis tickFormatter={(v) => compacta("COP")(Number(v))} tick={{ fill: "#8a94a8", fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
+          <Tooltip
+            {...tooltipStyle}
+            labelFormatter={(l) => ejeX(String(l))}
+            formatter={(v, n, item) => {
+              const p = pais(String(n));
+              const local = (item?.payload as Record<string, number> | undefined)?.[`${n}__local`];
+              const enLocal = p && p.divisa !== "COP" && local != null ? ` · ${exacta(p.divisa)(local)}` : "";
+              return [`${exacta("COP")(Number(v))}${enLocal}`, p?.nombre ?? String(n)];
+            }}
+          />
+          <Legend formatter={(v) => <span style={{ color: "#8a94a8", fontSize: 12 }}>{pais(String(v))?.nombre ?? v}</span>} iconType="circle" iconSize={8} />
           {paises.map((p, i) => (
             <Bar key={p.cuenta} dataKey={p.cuenta} stackId="a" fill={p.color} radius={i === paises.length - 1 ? [4, 4, 0, 0] : 0} maxBarSize={28} />
           ))}

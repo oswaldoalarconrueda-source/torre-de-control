@@ -1,6 +1,7 @@
-// trm-diaria: guarda por día la TRM oficial de Colombia (pesos por dólar, Superfinanciera en datos.gov.co) y el tipo
-// de cambio de referencia de Guatemala (quetzales por dólar, Banguat) en app_trm_dia. Con eso el gasto de Meta, que
-// llega en COP, se pasa a la moneda de cada país con la tasa del mismo día: COP → USD (÷ TRM) → GTQ (× Banguat).
+// trm-diaria: guarda por día la TRM oficial de Colombia (pesos por dólar, Superfinanciera en datos.gov.co), el tipo
+// de cambio de referencia de Guatemala (quetzales por dólar, Banguat) y el del colón de Costa Rica (colones por dólar,
+// venta, que Banguat publica de días hábiles) en app_trm_dia. Con eso el gasto de Meta, que llega en COP, se pasa a la
+// moneda de cada país con la tasa del mismo día: COP → USD (÷ TRM) → GTQ o CRC (× tasa del país).
 //
 // POST /functions/v1/trm-diaria   (cabecera x-sync-token)   ← cron dos veces al día: los últimos 15 días
 // POST ...?desde=2026-07-01                                  ← historial
@@ -58,13 +59,14 @@ async function trmColombia(desde: string, hasta: string) {
   return porDia;
 }
 
-async function cambioGuatemala(desde: string, hasta: string) {
+// moneda 2 = dólar (quetzales por dólar); 16 = colón costarricense (colones por dólar).
+async function banguat(desde: string, hasta: string, moneda: 2 | 16) {
   const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
   const xml = await conReintento(async () => {
     const r = await fetch('https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '"http://www.banguat.gob.gt/variables/ws/TipoCambioRango"' },
-      body: `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><TipoCambioRango xmlns="http://www.banguat.gob.gt/variables/ws/"><fechainit>${ddmmyyyy(desde)}</fechainit><fechafin>${ddmmyyyy(hasta)}</fechafin></TipoCambioRango></soap:Body></soap:Envelope>`,
+      headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '"http://www.banguat.gob.gt/variables/ws/TipoCambioRangoMoneda"' },
+      body: `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><TipoCambioRangoMoneda xmlns="http://www.banguat.gob.gt/variables/ws/"><fechainit>${ddmmyyyy(desde)}</fechainit><fechafin>${ddmmyyyy(hasta)}</fechafin><moneda>${moneda}</moneda></TipoCambioRangoMoneda></soap:Body></soap:Envelope>`,
     });
     if (!r.ok) throw new Error(`Banguat: HTTP ${r.status}`);
     return await r.text();
@@ -87,16 +89,18 @@ Deno.serve(async (req) => {
     const desde = url.searchParams.get('desde') ?? masDias(hoy, -15);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || desde > hoy) return json(400, { ok: false, mensaje: 'desde inválido (AAAA-MM-DD)' });
     // Una semana antes para tener con qué rellenar los primeros días si les falta la tasa.
-    const [cop, gtq] = await Promise.all([trmColombia(masDias(desde, -7), hasta), cambioGuatemala(masDias(desde, -7), hasta)]);
-    const filas: { fecha: string; usd_cop: number; usd_gtq: number }[] = [];
-    let ultCop: number | undefined, ultGtq: number | undefined;
-    for (let d = masDias(desde, -7); d <= hasta; d = masDias(d, 1)) {
+    const ini = masDias(desde, -7);
+    const [cop, gtq, crc] = await Promise.all([trmColombia(ini, hasta), banguat(ini, hasta, 2), banguat(ini, hasta, 16)]);
+    const filas: { fecha: string; usd_cop: number; usd_gtq: number; usd_crc: number | null }[] = [];
+    let ultCop: number | undefined, ultGtq: number | undefined, ultCrc: number | undefined;
+    for (let d = ini; d <= hasta; d = masDias(d, 1)) {
       ultCop = cop.get(d) ?? ultCop;
       ultGtq = gtq.get(d) ?? ultGtq;
-      if (d >= desde && ultCop && ultGtq && (cop.has(d) || d <= hoy)) filas.push({ fecha: d, usd_cop: ultCop, usd_gtq: ultGtq });
+      ultCrc = crc.get(d) ?? ultCrc;
+      if (d >= desde && ultCop && ultGtq && (cop.has(d) || d <= hoy)) filas.push({ fecha: d, usd_cop: ultCop, usd_gtq: ultGtq, usd_crc: ultCrc ?? null });
     }
     if (filas.length) await sb('app_trm_dia?on_conflict=fecha', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify(filas) });
-    return json(200, { ok: true, desde, hasta: filas.at(-1)?.fecha ?? null, dias: filas.length, trm_colombia: cop.size, banguat: gtq.size });
+    return json(200, { ok: true, desde, hasta: filas.at(-1)?.fecha ?? null, dias: filas.length, trm_colombia: cop.size, banguat: gtq.size, colon: crc.size });
   } catch (e) {
     return json(500, { ok: false, mensaje: String((e as Error).message ?? e).slice(0, 300) });
   }
