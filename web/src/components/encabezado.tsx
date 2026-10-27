@@ -5,9 +5,12 @@ import { ordenCuenta } from "@/lib/paises";
 import { FiltrosBar } from "./filtros-bar";
 
 // Título de la pantalla + filtros de país y calendario (solo muestra las cuentas que el usuario puede ver).
-export async function Encabezado({ titulo, subtitulo, f, conFechas = true, varios = false }: { titulo: string; subtitulo: string; f: Filtros; conFechas?: boolean; varios?: boolean }) {
+// tipos: qué cuentas salen en la barra (los módulos de tiendas solo tiendas; Datos también la proveeduría).
+export async function Encabezado({ titulo, subtitulo, f, conFechas = true, varios = false, tipos = ["tienda"] }: {
+  titulo: string; subtitulo: string; f: Filtros; conFechas?: boolean; varios?: boolean; tipos?: string[];
+}) {
   const supabase = await createClient();
-  const { data } = await supabase.from("effi_accounts").select("slug").eq("activa", true).order("slug");
+  const { data } = await supabase.from("effi_accounts").select("slug").eq("activa", true).in("tipo", tipos).order("slug");
   const cuentas = (data ?? []).map((c) => c.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
   const hoy = hoyBogota();
   return (

@@ -10,9 +10,10 @@ import { tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
 
-export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, porAceptar = 0 }: {
+export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, porAceptar = 0, conProveeduria = false }: {
   acceso: Acceso; email: string; ultimoSync: string; sociedad: string; sociedades: string[] | null; vista: string | null;
   porAceptar?: number; // registros nuevos esperando que el dueño los acepte
+  conProveeduria?: boolean; // ve alguna empresa de proveeduría (Distrilatam)
 }) {
   const esOwner = acceso.rol === "owner";
   const path = usePathname();
@@ -33,6 +34,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
 
   const item = (it: ItemMenu) => {
     if (it.soloOwner && !esOwner) return null;
+    if (it.soloProveeduria && !conProveeduria) return null;
     if (it.modulo && !tieneModulo(acceso, it.modulo)) return null;
     const activo = it.href === "/" ? path === "/" : path.startsWith(it.href);
     return (

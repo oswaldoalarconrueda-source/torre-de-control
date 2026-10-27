@@ -83,7 +83,7 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
   );
 }
 
-function Fila({ titulo, detalle, children }: { titulo: string; detalle: string; children: ReactNode }) {
+export function Fila({ titulo, detalle, children }: { titulo: string; detalle: string; children: ReactNode }) {
   return (
     <div>
       <div className="flex items-baseline gap-2 mb-2">
@@ -96,7 +96,7 @@ function Fila({ titulo, detalle, children }: { titulo: string; detalle: string; 
 }
 
 // "ayuda" no se muestra en la tarjeta: queda como texto al pasar el mouse para no alargar los recuadros.
-function Tarjeta({ titulo, valor, badge, ayuda, pie, pendiente, children }: {
+export function Tarjeta({ titulo, valor, badge, ayuda, pie, pendiente, children }: {
   titulo: string; valor: string; badge?: string | null; ayuda?: string; pie?: string; pendiente?: boolean; children?: ReactNode;
 }) {
   return (
@@ -121,7 +121,7 @@ function Tarjeta({ titulo, valor, badge, ayuda, pie, pendiente, children }: {
 
 // "Resumen real: utilidad neta" del Dashboard Joalix: solo el resultado y su % sobre la venta total.
 // El desglose (PyG, proyección de pendientes, publicidad y gastos) va en la pestaña 📈 Utilidad.
-function UtilidadNeta({ u, ventaTotal, cuenta }: { u: Utilidad; ventaTotal: number; cuenta: string }) {
+export function UtilidadNeta({ u, ventaTotal, cuenta }: { u: Pick<Utilidad, "utilidad_neta">; ventaTotal: number; cuenta: string }) {
   const neta = u.utilidad_neta;
   return (
     <div className="card card-glow p-5">

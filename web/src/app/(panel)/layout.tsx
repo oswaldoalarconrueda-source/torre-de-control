@@ -13,7 +13,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const [usuario, { data: ultimo }, { data: cuentas }, { data: lista }] = await Promise.all([
     getUsuario(),
     supabase.rpc("app_ultimo_sync"),
-    supabase.from("effi_accounts").select("sociedad"),
+    supabase.from("effi_accounts").select("sociedad,tipo"),
     supabase.from("app_sociedades").select("nombre").order("orden"),
   ]);
   if (!usuario) redirect("/login");
@@ -38,7 +38,8 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
     <div className="lg:flex">
       <Suspense>
         <Sidebar acceso={usuario} email={usuario.email} sociedad={sociedad} ultimoSync={haceCuanto(ultimo as string | null)}
-          sociedades={opciones} vista={(yo?.sociedad_vista as string | null) ?? null} porAceptar={porAceptar ?? 0} />
+          sociedades={opciones} vista={(yo?.sociedad_vista as string | null) ?? null} porAceptar={porAceptar ?? 0}
+          conProveeduria={(cuentas ?? []).some((c) => c.tipo === "proveeduria")} />
       </Suspense>
       {tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} />}
       <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-16 max-w-[1400px]">{children}</main>

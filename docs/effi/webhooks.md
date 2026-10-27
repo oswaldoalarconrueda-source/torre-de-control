@@ -59,7 +59,29 @@ La lista completa de eventos (unos 190, de todos los módulos) aparece en el sel
 | TIENDA_GT | pendiente |
 | TIENDA_CR | pendiente |
 | VALKA_GT (VALKA GT, ID 58130, sociedad Valka) | ✅ 13/13, el 2026-10-25 (nombre "Torre Control - <evento>": Effi quita el "·") |
-| Proveedurías | pendiente (todavía sin API key) |
+| DISTRI_GT (DISTRIGUATEMALA, ID 25084, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
+| DISTRI_CR (DISTRICOSTARICA, ID 40014, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
+| DISTRI_LAB (DISTRILAB, ID 53639, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
+
+**Proveedurías (Distrilatam):** no hacen guías, así que llevan otros 10 eventos. Todos se llaman "Torre Control - <evento>" y
+apuntan a `effi-webhook?cuenta=DISTRI_…`:
+- `remision_v.crear` / `.anular`
+- `factura_v.crear` / `.anular`
+- `orden_v.crear` / `.anular`
+- `devolucion_v.crear` / `.anular`
+- `movimiento_dinero_effi.crear` / `.anular`
+
+Más 33 de inventario y compras (pedido del 2026-10-26):
+- **Inventario (17):**
+  - `articulo.crear` / `.modificar` / `.anular`
+  - `ajuste_inventario.crear` / `.anular`
+  - `traslado_inventario.crear` / `.autorizar` / `.anular`
+  - `despacho_inventario`, `recepcion_inventario` y `conteo_inventario`: `.crear` / `.modificar` / `.anular`
+- **Compras (16):**
+  - `factura_c`, `orden_c`, `remision_c` y `nota_credito_c`: `.crear` / `.modificar` / `.anular`
+  - `devolucion_c.crear` / `.anular`
+  - `anticipo_proveedor.crear` / `.anular`
+- **Cómo se crearon:** desde la sesión de Effi, con el mismo formulario de la página (`POST app/webhook/crear`), sin recargarla.
 
 **Observación del 2026-10-23, unos 20 min después de crear los webhooks de CO y EC:**
 - La API muestra cambios de estado y movimientos de wallet posteriores a la creación de los webhooks: CO tiene 1.840 cambios de estado en el día y EC 1.061.
