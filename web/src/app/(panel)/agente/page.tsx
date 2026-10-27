@@ -2,7 +2,7 @@ import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { leerFiltros } from "@/lib/filtros";
 import { infoCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
-import { Agente, type DatosAuto } from "@/components/agente";
+import { Agente, type DatosAuto, type Transportes } from "@/components/agente";
 
 // 🤖 Agente de órdenes de venta, país por país (empieza por Guatemala). Por ahora vigila: muestra cada orden con
 // su remisión y su guía, y marca lo que falta o no cumple las reglas. Crear en Effi se activa más adelante.
@@ -13,7 +13,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
   const cuenta = f.cuentas?.[0] ?? "TIENDA_GT";
   const supabase = await createClient();
   const [{ data: config }, { data, error }] = await Promise.all([
-    supabase.from("auto_config").select("cuenta,modo").eq("cuenta", cuenta).maybeSingle(),
+    supabase.from("auto_config").select("cuenta,modo,transportes:reglas->transportes").eq("cuenta", cuenta).maybeSingle(),
     supabase.rpc("auto_lista", { p_cuenta: cuenta, p_dias: 3 }),
   ]);
   const pais = infoCuenta(cuenta);
@@ -58,7 +58,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
       ) : (
         <>
           {error && <p className="text-sm text-red mb-4">{error.message}</p>}
-          {data && <Agente key={cuenta} cuenta={cuenta} datos={data as DatosAuto} />}
+          {data && <Agente key={cuenta} cuenta={cuenta} datos={data as DatosAuto} transportes={(config?.transportes ?? {}) as Transportes} />}
         </>
       )}
     </>

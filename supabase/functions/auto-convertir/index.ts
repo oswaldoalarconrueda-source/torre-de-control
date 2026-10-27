@@ -36,6 +36,9 @@ const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC'];
 // Países donde además se crea la remisión desde la orden (action 3, nunca anulando la orden). Ecuador desde el 27-oct,
 // con la llave de perfil principal (con la de perfil Auxiliar Effi fallaba con el error 1452).
 const PAISES_REMISION = ['TIENDA_GT', 'TIENDA_EC'];
+// "Ejecutar" orden por orden (el dueño escoge el paso y la transportadora): también Colombia, que todavía no crea sola
+// mientras el dueño da sus condiciones.
+const PAISES_POR_ORDEN = ['TIENDA_GT', 'TIENDA_EC', 'TIENDA_CO'];
 const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const MAX_GUIAS_AHORA = 10;   // "Ejecutar ahora": guías por corrida, de a 10 para no cargar el sistema (regla del dueño)
@@ -184,15 +187,20 @@ const esLimite = (g: { status: number; respuesta: Json | null }, p: Json | undef
 
 // Crea la guía. En Ecuador, si la transportadora de domicilio no la deja hacer, la ciudad queda en la memoria de
 // cobertura y se repite con la de respaldo. Si el fallo es el límite de peticiones de Effi, no se toca la memoria ni
-// se cambia de transportadora: la guía se reintenta en la próxima corrida.
+// se cambia de transportadora: la guía se reintenta en la próxima corrida. Con "fija" (el dueño escogió la
+// transportadora) nunca se cambia por otra. Si Effi responde 500 vacío (pide las medidas del paquete), se repite con 1×1×1.
 async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, destino: { ciudad: number; nombre: string },
-  ev: (ok: boolean | null, mensaje: string, datos?: Json | null) => Promise<unknown>) {
+  ev: (ok: boolean | null, mensaje: string, datos?: Json | null) => Promise<unknown>, fija = false) {
   guia = conMedidas(cuenta, guia);
   let g = await api.post('guia_transporte', guia);
+  if (g.status === 500 && !guia.alto && !(g.respuesta?.texto ?? '').trim()) {
+    guia = { ...guia, alto: 1, ancho: 1, largo: 1, volumen_total: guia.volumen_total || 1, idempotency_key: `${guia.idempotency_key}-m` };
+    g = await api.post('guia_transporte', guia);
+  }
   let p = primeraGuia(g);
   const tp = TRANSPORTE_PAIS[cuenta];
   const respaldo = tp && reglas?.transportes?.[String(tp.respaldo)];
-  if (fallaGuia(g, p) && !esLimite(g, p) && tp && respaldo && Number(guia.transportadora) === tp.domicilio) {
+  if (!fija && fallaGuia(g, p) && !esLimite(g, p) && tp && respaldo && Number(guia.transportadora) === tp.domicilio) {
     const detalle = detalleGuia(g, p);
     await rpc('auto_sin_cobertura', { p_cuenta: cuenta, p_transportadora: tp.domicilio, p_ciudad: destino.ciudad, p_nombre_ciudad: destino.nombre, p_motivo: detalle });
     await ev(null, `Gintracom no dejó hacer la guía (${detalle}). Se hace con Servientrega y ${destino.nombre} queda en la memoria de cobertura`, { enviado: guia, respuesta: g.respuesta, status: g.status });
@@ -298,7 +306,7 @@ async function convertir(cuenta: string, ahora = false) {
   const desde = new Date(hoy.getTime() - 3 * DAY_MS).toISOString().slice(0, 10);
   const hasta = new Date(hoy.getTime() + DAY_MS).toISOString().slice(0, 10);
   const pendientes = (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => !o.id_remision_v).slice(0, MAX_ORDENES);
-  const planesGuia = TRANSPORTE_PAIS[cuenta] ? await planearGuias(api, cuenta, reglas, memoria, await sinCoberturaTotal(cuenta), desde, hasta) : [];
+  const planesGuia = await planearGuias(api, cuenta, reglas, memoria, await sinCoberturaTotal(cuenta), desde, hasta);
   if (!pendientes.length) {
     await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: planesGuia, p_reglas: reglasNuevas });
     return { pendientes: 0, guias: planesGuia.length };
@@ -502,7 +510,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   const resultado = (estado: 'creada' | 'error', motivo: string | null, datos: Json) =>
     rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_estado: estado, p_motivo: motivo, p_resultado: datos });
 
-  if (!PAISES_CREACION.includes(cuenta)) throw new Error('La creación no está montada para este país');
+  if (!(automatico ? PAISES_CREACION : PAISES_POR_ORDEN).includes(cuenta)) throw new Error('La creación no está montada para este país');
   const [fila] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id=eq.${id}&select=plan,plan_estado,decision`);
   // Orden recién llegada que la vigilancia (cada 2 minutos) aún no registra: no es error, se crea en la próxima corrida.
   if (automatico && !fila) return { creada: false, motivo: 'aún no registrada' };
@@ -514,6 +522,10 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   if (automatico) await ev('inicio', null, `Automático: convirtiendo la OV ${id} (${fila.plan?.resumen?.cantidad ?? ''} × ${fila.plan?.resumen?.producto ?? ''})`);
   const plan = fila.plan as Json;
   const previo = (plan.resultado ?? {}) as Json;
+  // Elección del dueño al pulsar "Ejecutar": qué paso hacer y por qué transportadora (sin elección: los dos pasos con la
+  // transportadora del plan).
+  const eleccion = (automatico ? {} : plan.eleccion ?? {}) as { paso?: 'ambas' | 'remision' | 'guia'; transportadora?: number | null };
+  const paso = eleccion.paso ?? 'ambas';
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
   const key = keys.find((k) => k.slug === cuenta)?.api_key;
   if (!key) throw new Error('Sin API key');
@@ -538,7 +550,13 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
     }
     remision = { id: Number(rem.id), sucursal: Number(rem.sucursal), id_transaccion: rem.id_transaccion };
   }
-  if (!remision?.id && !PAISES_REMISION.includes(cuenta)) {
+  if (!remision?.id && paso === 'guia') {
+    const motivo = 'Se pidió solo la guía, pero la orden todavía no tiene remisión';
+    await ev('remision', false, motivo);
+    await resultado('error', motivo, { paso: 'remision' });
+    return { creada: false, motivo };
+  }
+  if (!remision?.id && !PAISES_REMISION.includes(cuenta) && (automatico || !PAISES_POR_ORDEN.includes(cuenta))) {
     const motivo = 'En este país la Torre todavía no crea remisiones: hazla en Effi y la Torre hace la guía.';
     await ev('remision', false, motivo);
     await resultado('error', motivo, { paso: 'remision' });
@@ -565,16 +583,31 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
     }
     remision = r.respuesta?.data as Json;
     await ev('remision', true, `Remisión ${remision?.id_transaccion ?? remision?.id} creada por ${remision?.total ?? ''}`, { respuesta: r.respuesta });
+    // Solo la remisión: la orden queda sin plan y en la siguiente corrida aparece en "remisión → guía".
+    if (paso === 'remision') {
+      await rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_estado: null,
+        p_motivo: `Remisión ${remision?.id_transaccion ?? remision?.id} creada por la Torre; falta la guía`, p_resultado: { remision } });
+      await ev('fin', true, `Orden ${id}: remisión ${remision?.id_transaccion ?? remision?.id} creada (la guía se hace aparte)`);
+      return { creada: true, remision: remision?.id };
+    }
   }
 
-  // 2. Guía de transporte con la remisión recién creada.
+  // 2. Guía de transporte con la remisión recién creada, por la transportadora que escogió el dueño o la del plan.
   // Effi responde { data: { guias: [ {id, guia, vigente, response, url_guia_transportadora, …} ], cantidad } }.
   const [cfgReglas] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=reglas`);
-  const guiaBase = { ...plan.guia, id_ref: [Number(remision!.id)], sucursal_ref: [Number(remision!.sucursal ?? sucursal)] };
-  await ev('guia', null, 'Creando la guía de transporte en Effi…', { enviado: guiaBase });
+  const escogida = eleccion.transportadora ? cfgReglas?.reglas?.transportes?.[String(eleccion.transportadora)] : null;
+  if (eleccion.transportadora && !escogida) {
+    const motivo = `La transportadora ${eleccion.transportadora} no está entre las que usa este país`;
+    await ev('guia', false, motivo);
+    await resultado('error', motivo, { paso: 'guia', remision });
+    return { creada: false, motivo };
+  }
+  const guiaBase = { ...plan.guia, ...(escogida ? { ...camposTransporte(escogida), idempotency_key: `${plan.guia?.idempotency_key}-t${eleccion.transportadora}` } : {}),
+    id_ref: [Number(remision!.id)], sucursal_ref: [Number(remision!.sucursal ?? sucursal)] };
+  await ev('guia', null, `Creando la guía de transporte en Effi${escogida ? ` por ${String(escogida.nombre ?? '').split('|')[0].trim()}` : ''}…`, { enviado: guiaBase });
   const h = await hacerGuia(api, cuenta, cfgReglas?.reglas, guiaBase,
     { ciudad: Number(plan.guia?.id_ciudad_destinatario?.[0]), nombre: String(plan.resumen?.ciudad ?? '') },
-    (ok, mensaje, datos = null) => ev('guia', ok, mensaje, datos));
+    (ok, mensaje, datos = null) => ev('guia', ok, mensaje, datos), !!escogida);
   const { g, p: primera, guia } = h;
   if (!h.ok) {
     const motivo = `Remisión ${remision!.id_transaccion ?? remision!.id} creada, pero Effi no dejó crear la guía: ${h.detalle}`;

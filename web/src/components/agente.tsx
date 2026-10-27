@@ -27,6 +27,9 @@ export type OrdenAuto = {
   decision: "ejecutar" | "descartar" | null; decision_por: string | null; decision_en: string | null;
   plan: Plan | null; plan_estado: "lista" | "revision" | "creada" | "error" | null; plan_motivo: string | null; plan_en: string | null;
 };
+// Transportadoras que usa el país (aprendidas de sus guías): id → nombre y cuántas guías tuvo en los últimos 10 días.
+export type Transportes = Record<string, { nombre?: string; guias?: number }>;
+type Paso = "ambas" | "remision" | "guia";
 export type DatosAuto = {
   config: {
     modo: Modo; minutos_alerta: number; ultima_corrida: string | null; ultimo_error: string | null; actualizado_por: string | null;
@@ -66,10 +69,15 @@ function proxima(zona: string, cadaMin: number, cortes: string[], antesMin: numb
 }
 const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1440 ? `${Math.round(min / 60)} h` : `${Math.floor(min / 1440)} d`);
 
-export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) {
+export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; datos: DatosAuto; transportes?: Transportes }) {
   const router = useRouter();
   const [confirmarModo, setConfirmarModo] = useState(false);
   const [confirmarOrden, setConfirmarOrden] = useState<string | null>(null);
+  // Lo que el dueño escoge al pulsar "Ejecutar" en una orden: qué paso hacer y por qué transportadora.
+  const [eleccion, setEleccion] = useState<{ paso: Paso; transportadora: number | null }>({ paso: "ambas", transportadora: null });
+  const opcionesTransporte = Object.entries(transportes)
+    .map(([id, t]) => ({ id: Number(id), nombre: String(t.nombre ?? id).split("|").map((s) => s.trim()).join(" · "), guias: Number(t.guias ?? 0) }))
+    .sort((a, b) => b.guias - a.guias);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState<string | null>(null);
   const modo = datos.config?.modo ?? "apagado";
@@ -123,9 +131,10 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   // El automático está montado para Guatemala y Ecuador; activarlo y pasarlo a manual piden confirmación en pantalla
   // (el navegador de la app bloquea las ventanas de confirmación). "Manual" = simular: arma lo que haría sin crear.
   const automaticoPosible = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
-  // Guatemala y Ecuador: la Torre hace la remisión desde la orden y después la guía (Ecuador desde el 27-oct, con la
-  // llave de perfil principal; con la de perfil Auxiliar Effi fallaba con el error 1452).
-  const creaRemision = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
+  // Guatemala, Ecuador y Colombia: la Torre hace la remisión desde la orden y después la guía (Ecuador desde el 27-oct,
+  // con la llave de perfil principal; con la de perfil Auxiliar Effi fallaba con el error 1452). Colombia solo orden por
+  // orden, con "Ejecutar", mientras el dueño da sus condiciones.
+  const creaRemision = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC" || cuenta === "TIENDA_CO";
   async function cambiarModo(m: Modo) {
     if (m === modo || (m === "automatico" && !automaticoPosible)) return;
     setGuardando("modo"); setError(null);
@@ -175,17 +184,26 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
     setGuardando(null);
     if (e) setError(e.message); else { setEditando(false); router.refresh(); }
   }
-  // Guatemala y Ecuador tienen montada la creación; la orden debe tener la remisión lista, o la guía de una remisión ya
-  // hecha (o un error para reintentar).
+  // Guatemala y Ecuador tienen montada la creación en tanda ("Ejecutar ahora", automático); Colombia solo orden por
+  // orden. La orden debe tener la remisión lista, o la guía de una remisión ya hecha (o un error para reintentar).
   const creaEnEffi = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
+  const porOrden = creaEnEffi || cuenta === "TIENDA_CO";
   const puedeEjecutar = (o: OrdenAuto) =>
-    datos.es_owner && creaEnEffi && (o.plan_estado === "lista" || o.plan_estado === "error") &&
+    datos.es_owner && porOrden && (o.plan_estado === "lista" || o.plan_estado === "error") &&
     ((!!o.plan?.remision && creaRemision) || (!!o.plan?.remision_existente && !!o.plan?.guia));
+  // Al pulsar "Ejecutar": por defecto los dos pasos (o solo la guía si la remisión ya existe) y la transportadora del plan.
+  function abrirEjecutar(o: OrdenAuto) {
+    setConfirmarOrden(`${o.sucursal}-${o.id}`);
+    setEleccion({ paso: o.plan?.remision ? "ambas" : "guia", transportadora: Number(o.plan?.guia?.transportadora) || null });
+  }
   async function ejecutar(o: OrdenAuto) {
     const clave = `${o.sucursal}-${o.id}`;
     setConfirmarOrden(null);
     setGuardando(clave); setError(null);
-    const { error: e } = await createClient().rpc("auto_decidir", { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_decision: "ejecutar" });
+    const { error: e } = await createClient().rpc("auto_ejecutar_orden", {
+      p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_paso: eleccion.paso,
+      p_transportadora: eleccion.paso === "remision" ? null : eleccion.transportadora,
+    });
     setGuardando(null);
     if (e) setError(e.message); else router.refresh();
   }
@@ -211,7 +229,9 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                     : "La Torre crea sola en Effi la guía de cada remisión, según el horario (la remisión se hace en Effi)."
                   : creaEnEffi
                     ? "La Torre no crea nada sola en Effi: crea cuando pulsas “Ejecutar ahora” o “Ejecutar” en una orden."
-                    : "La Torre solo revisa: la creación en Effi aún no está montada para este país."}
+                    : porOrden
+                      ? "La Torre no crea nada sola en Effi: crea solo cuando pulsas “Ejecutar” en una orden, con el paso y la transportadora que escojas."
+                      : "La Torre solo revisa: la creación en Effi aún no está montada para este país."}
                 {datos.config?.ultima_corrida && <> · última revisión {haceCuanto(datos.config.ultima_corrida)}</>}
               </div>
               {datos.config?.ultimo_error && <div className="text-xs text-red mt-0.5">{datos.config.ultimo_error}</div>}
@@ -345,7 +365,9 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
       {[
         { titulo: "Listas: orden → remisión", filas: listasRemision, vacio: "Ninguna orden esperando remisión.",
           texto: creaRemision
-            ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una."
+            ? creaEnEffi
+              ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una."
+              : "Órdenes que el agente pasa a remisión (y a guía si quieres) cuando pulsas “Ejecutar” en cada una: ahí escoges el paso y la transportadora."
             : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía." },
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.",
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
@@ -448,14 +470,36 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                     ) : datos.es_owner ? (
                       <div className="flex items-center gap-2">
                         {puedeEjecutar(o) && confirmarOrden === clave ? (
-                          <>
-                            <button onClick={() => ejecutar(o)} disabled={guardando === clave}
-                              className="rounded-full bg-green px-3 py-1 text-xs font-bold text-black">Sí, crear</button>
-                            <button onClick={() => setConfirmarOrden(null)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted hover:text-text">No</button>
-                          </>
+                          // Qué paso hacer y por qué transportadora; nada se crea hasta "Sí, crear".
+                          <div className="flex min-w-[17rem] flex-col gap-1.5 rounded-xl border border-green/40 bg-green/5 p-2">
+                            {o.plan?.remision ? (
+                              <select value={eleccion.paso} onChange={(e) => setEleccion((x) => ({ ...x, paso: e.target.value as Paso }))}
+                                className="rounded-lg border border-line bg-bg px-2 py-1 text-xs outline-none">
+                                <option value="ambas">Orden → remisión → guía</option>
+                                <option value="remision">Solo orden → remisión</option>
+                              </select>
+                            ) : (
+                              <span className="text-[11px] font-semibold text-blue-2">Remisión → guía</span>
+                            )}
+                            {eleccion.paso !== "remision" && (
+                              <label className="text-[10px] text-muted">
+                                Transportadora
+                                <select value={eleccion.transportadora ?? ""} onChange={(e) => setEleccion((x) => ({ ...x, transportadora: Number(e.target.value) || null }))}
+                                  className="mt-0.5 block w-full rounded-lg border border-line bg-bg px-2 py-1 text-xs text-text outline-none">
+                                  {!opcionesTransporte.some((t) => t.id === eleccion.transportadora) && <option value="">— La del plan —</option>}
+                                  {opcionesTransporte.map((t) => <option key={t.id} value={t.id}>{t.nombre} ({t.guias} guías)</option>)}
+                                </select>
+                              </label>
+                            )}
+                            <div className="flex gap-2">
+                              <button onClick={() => ejecutar(o)} disabled={guardando === clave}
+                                className="rounded-full bg-green px-3 py-1 text-xs font-bold text-black">Sí, crear</button>
+                              <button onClick={() => setConfirmarOrden(null)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted hover:text-text">No</button>
+                            </div>
+                          </div>
                         ) : puedeEjecutar(o) ? (
                           <button
-                            onClick={() => setConfirmarOrden(clave)}
+                            onClick={() => abrirEjecutar(o)}
                             disabled={guardando === clave || o.decision === "ejecutar"}
                             title={o.plan_estado === "error" ? "Vuelve a intentar con Effi (si la remisión ya se creó, solo reintenta la guía)" : "Crea en Effi la remisión y la guía que muestra la simulación"}
                             className="inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-3 py-1 text-xs font-semibold text-green hover:bg-green/20 disabled:opacity-60"
@@ -465,7 +509,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
                         ) : (
                           <button
                             disabled
-                            title={creaEnEffi ? "Necesita una simulación lista para crear" : "La creación en Effi aún no está montada para este país"}
+                            title={porOrden ? "Necesita una simulación lista para crear" : "La creación en Effi aún no está montada para este país"}
                             className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted opacity-60 cursor-not-allowed"
                           >
                             <Play size={12} /> Ejecutar
