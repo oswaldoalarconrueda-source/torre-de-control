@@ -123,8 +123,9 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
   // El automático está montado para Guatemala y Ecuador; activarlo y pasarlo a manual piden confirmación en pantalla
   // (el navegador de la app bloquea las ventanas de confirmación). "Manual" = simular: arma lo que haría sin crear.
   const automaticoPosible = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
-  // En Ecuador la API de Effi falla al crear remisiones (error 1452 dentro de Effi): allá la Torre hace solo las guías.
-  const creaRemision = cuenta === "TIENDA_GT";
+  // Guatemala y Ecuador: la Torre hace la remisión desde la orden y después la guía (Ecuador desde el 27-oct, con la
+  // llave de perfil principal; con la de perfil Auxiliar Effi fallaba con el error 1452).
+  const creaRemision = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
   async function cambiarModo(m: Modo) {
     if (m === modo || (m === "automatico" && !automaticoPosible)) return;
     setGuardando("modo"); setError(null);
@@ -345,7 +346,7 @@ export function Agente({ cuenta, datos }: { cuenta: string; datos: DatosAuto }) 
         { titulo: "Listas: orden → remisión", filas: listasRemision, vacio: "Ninguna orden esperando remisión.",
           texto: creaRemision
             ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una."
-            : "Por ahora la remisión se hace en Effi (la API de Effi falla al crearla); apenas exista, el agente hace la guía." },
+            : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía." },
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.",
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
         { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.",

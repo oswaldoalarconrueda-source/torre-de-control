@@ -24,7 +24,7 @@ const MODO: Record<Modo, { label: string; color: string }> = {
   vigilar: { label: "En prueba", color: "var(--amber)" },
   apagado: { label: "Apagado", color: "var(--muted)" },
 };
-// Igual que en /agente: Guatemala hace remisión y guía; Ecuador solo guías (la API de Effi falla al crear remisiones).
+// Igual que en /agente: Guatemala y Ecuador hacen remisión y guía.
 const CREA = ["TIENDA_GT", "TIENDA_EC"];
 
 export function AgenteFlotante({ esOwner }: { esOwner: boolean }) {

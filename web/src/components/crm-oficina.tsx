@@ -217,6 +217,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
               <th className="px-3 py-3">Estado global</th>
               {CONTACTOS.map((c) => <th key={c.intento} className="px-2 py-3">{c.label}</th>)}
               <th className="px-3 py-3 min-w-[18rem]">Observación</th>
+              {esDueno && <th className="px-3 py-3">Quién lo hizo</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -325,11 +326,21 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                           )}
                           {actual.codigo === "otro" && !(actual.texto ?? "").trim() && <span className="text-[10px] text-amber">Escribe lo que dijo el cliente</span>}
                           {guardando === `${g.guia}|obs` && <span className="text-[10px] text-muted">Guardando…</span>}
-                          {esDueno && g.observacion?.usuario && <span className="basis-full text-[10px] text-muted">{quien(g.observacion.usuario)} · {hora(g.observacion.actualizado_en)}</span>}
                         </div>
                       );
                     })()}
                   </td>
+                  {/* Quién hizo la observación (o, si aún no hay, el último contacto) y cuándo. */}
+                  {esDueno && (() => {
+                    const ultimo = ls.at(-1);
+                    const u = g.observacion?.usuario ? { email: g.observacion.usuario, en: g.observacion.actualizado_en }
+                      : ultimo?.usuario ? { email: ultimo.usuario, en: ultimo.creado_en } : null;
+                    return (
+                      <td className="px-3 py-2 whitespace-nowrap text-xs">
+                        {u ? <><div className="font-semibold">{quien(u.email)}</div><div className="text-[10px] text-muted">{hora(u.en)}</div></> : <span className="text-muted">—</span>}
+                      </td>
+                    );
+                  })()}
                 </tr>
               );
             })}

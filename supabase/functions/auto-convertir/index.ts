@@ -1,9 +1,8 @@
 // auto-convertir: el Agente arma la remisión y la guía de cada orden de venta vigente sin remisión.
 // Simulación (cron): guarda en auto_ordenes.plan lo que enviaría a Effi y no crea nada.
 // Creación (Guatemala y Ecuador): cuando el dueño pulsa "Ejecutar" o "Ejecutar ahora" (?ahora=1), o sola en modo
-// Automático (solo Guatemala), crea la remisión y después la
-// guía, dejando cada paso en auto_eventos (bitácora en vivo) y el resultado o el error de Effi, con lo enviado y lo
-// respondido, en el plan. En Automático también hace la guía de las remisiones vigentes sin guía (más de 15 minutos).
+// Automático, crea la remisión y después la guía, dejando cada paso en auto_eventos (bitácora en vivo) y el resultado
+// o el error de Effi, con lo enviado y lo respondido, en el plan. En Automático también hace la guía de las remisiones vigentes sin guía (más de 15 minutos).
 //
 // POST /functions/v1/auto-convertir?cuenta=TIENDA_GT              (cabecera x-sync-token) ← auto_convertir_tick (cron)
 // POST /functions/v1/auto-convertir?cuenta=TIENDA_GT&crear=1-6957  ← auto_decidir('ejecutar')
@@ -34,10 +33,9 @@ const MAX_ORDENES = 15;
 // Países donde la Torre crea en Effi, en Automático o cuando el dueño pulsa "Ejecutar ahora" o "Ejecutar". Costa Rica
 // y Colombia están en prueba: no crean nada.
 const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC'];
-// Países donde además se crea la remisión desde la orden. Ecuador todavía no: con la llave de perfil Auxiliar Effi
-// fallaba (error 1452); con la de perfil principal ya crea (27-oct, OV 24631 → RV 24527), falta que el dueño lo active.
-// Mientras tanto allá la remisión la hace una persona en Effi y la Torre hace la guía.
-const PAISES_REMISION = ['TIENDA_GT'];
+// Países donde además se crea la remisión desde la orden (action 3, nunca anulando la orden). Ecuador desde el 27-oct,
+// con la llave de perfil principal (con la de perfil Auxiliar Effi fallaba con el error 1452).
+const PAISES_REMISION = ['TIENDA_GT', 'TIENDA_EC'];
 const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const MAX_GUIAS_AHORA = 10;   // "Ejecutar ahora": guías por corrida, de a 10 para no cargar el sistema (regla del dueño)
