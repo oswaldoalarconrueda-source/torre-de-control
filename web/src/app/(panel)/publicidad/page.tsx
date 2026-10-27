@@ -1,10 +1,12 @@
 import { createClient, exigirSocio } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros, type Filtros } from "@/lib/filtros";
-import { dinero, diaCorto, entero, haceCuanto, pct } from "@/lib/formato";
+import { diaCorto, entero, haceCuanto, pct } from "@/lib/formato";
 import { infoCuenta, ordenCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { GastoPorDia } from "@/components/charts";
 import { Kpi, Panel, TablaScroll, Vacio } from "@/components/ui";
+import { TablaCuentasAds, type CuentaAds } from "@/components/publicidad-cuentas";
+import { Doble, cop, enLocal, portafolio } from "@/components/publicidad-montos";
 
 // 📢 Publicidad: todo el gasto de Meta que tiene la Torre, por país, día, cuenta publicitaria y campaña. Casi todo llega
 // por la API (meta-gasto, cada hora, un token por portafolio); lo que no, quedó de los CSV del BM. Meta cobra en COP;
@@ -13,10 +15,6 @@ import { Kpi, Panel, TablaScroll, Vacio } from "@/components/ui";
 // Solo la ven el dueño y los socios (ni empleados ni proveedores).
 
 type PorTienda = { cuenta: string; monto: number; local: number | null; sin_tasa: number; dias: number; ultimo: string; cuentas_ads: number };
-type CuentaAds = {
-  cuenta_ads: string; total: number; por_tienda: Record<string, number>; por_tienda_local: Record<string, number | null>; ultimo: string; portafolio: string | null;
-  por_api: boolean; ultima_sync: string | null; error: string | null;
-};
 type Campana = { campana: string; cuenta_ads: string; cuenta: string; monto: number; local: number | null; dias: number; ultimo: string };
 type Dia = { fecha: string; cuenta: string; monto: number; local: number | null; usd_cop: number | null; usd_gtq: number | null; usd_crc: number | null };
 type Conexion = {
@@ -30,32 +28,8 @@ type Resumen = {
 };
 
 const COLOR: Record<string, string> = { CO: "#f5c542", EC: "#2f7bff", GT: "#36c5f0", CR: "#ff5a6a" };
-const cop = (v: unknown, compacto = false) => dinero(v, "TIENDA_CO", compacto);
-// "meta_access_token_joaquin" → "Joaquin"; el primero (sin sufijo) es el portafolio Compras FACIL.
-const portafolio = (t: string | null) => {
-  if (!t) return "—";
-  const s = t.replace(/^meta_access_token_?/, "");
-  return s ? s[0].toUpperCase() + s.slice(1) : "Compras FACIL";
-};
 // La publicidad de la sociedad empieza en julio de 2026: lo anterior no es de Joalix AA Group.
 const INICIO_PUBLICIDAD = "2026-07-01";
-
-// Moneda del país; el dólar va como "US$" para no confundirlo con los pesos ("$").
-const enLocal = (v: number | null | undefined, cuenta: string) =>
-  v == null ? "sin TRM" : infoCuenta(cuenta).divisa === "USD"
-    ? new Intl.NumberFormat("es-CO", { style: "currency", currency: "USD", currencyDisplay: "symbol", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
-    : dinero(v, cuenta);
-
-// Pesos (lo que cobra Meta) arriba y, debajo, la moneda del país (lo que se sube a Datos). Colombia: solo pesos.
-function Doble({ local, enCop, cuenta, fuerte = false }: { local: number | null | undefined; enCop: number | null | undefined; cuenta: string; fuerte?: boolean }) {
-  if (infoCuenta(cuenta).divisa === "COP") return <span className={fuerte ? "font-semibold" : undefined}>{cop(enCop)}</span>;
-  return (
-    <span className="inline-flex flex-col items-end leading-tight">
-      <span className={fuerte ? "font-semibold" : undefined}>{cop(enCop)}</span>
-      <span className="text-[11px] text-blue-2">{enLocal(local, cuenta)}</span>
-    </span>
-  );
-}
 
 export default async function PublicidadPage({ searchParams }: PageProps<"/publicidad">) {
   await exigirSocio(); // solo dueño y socios
@@ -78,7 +52,6 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
   const unica = tiendas.length === 1 && infoCuenta(tiendas[0].cuenta).divisa !== "COP" ? tiendas[0].cuenta : null;
   const div = unica ? infoCuenta(unica).divisa : "COP";
   const totalLocal = unica ? Number(tiendas[0].local ?? 0) : null;
-  const sumaLocal = (o: Record<string, number | null>) => Object.values(o).reduce<number>((a, v) => a + Number(v ?? 0), 0);
   // En el detalle por día, con centavos (es lo que se pasa al cuadro de datos).
   const exacto = (v: number | null | undefined) =>
     v == null ? "—" : new Intl.NumberFormat("es-CO", { style: "currency", currency: div, currencyDisplay: div === "USD" ? "symbol" : "narrowSymbol", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
@@ -178,31 +151,7 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
 
       <Panel titulo="Cuentas publicitarias" detalle={`Gasto del periodo por cuenta y país: en pesos y, debajo, en la moneda de cada país${unica ? "" : " (el total suma países: solo pesos)"}`} className="mb-3">
         {r?.por_cuenta_ads.length ? (
-          <TablaScroll>
-            <thead>
-              <tr>
-                <th>Origen</th><th>Cuenta</th>
-                {tiendas.map((t) => <th key={t.cuenta} className="text-right">{infoCuenta(t.cuenta).bandera} {infoCuenta(t.cuenta).nombre}</th>)}
-                <th className="text-right">Total</th><th className="text-right">% del total</th><th className="text-right">Último día</th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.por_cuenta_ads.map((c) => (
-                <tr key={c.cuenta_ads}>
-                  <td className="text-xs">
-                    {c.por_api
-                      ? <span className={c.error ? "text-red" : "text-green"} title={c.error ?? undefined}>API · {portafolio(c.portafolio)}{c.error ? " · error" : ""}</span>
-                      : <span className="text-amber">Archivo (sin API)</span>}
-                  </td>
-                  <td className="font-medium">{c.cuenta_ads}</td>
-                  {tiendas.map((t) => <td key={t.cuenta} className="text-right num">{c.por_tienda[t.cuenta] ? <Doble local={c.por_tienda_local[t.cuenta]} enCop={c.por_tienda[t.cuenta]} cuenta={t.cuenta} /> : <span className="text-muted">—</span>}</td>)}
-                  <td className="text-right num">{unica ? <Doble local={sumaLocal(c.por_tienda_local)} enCop={c.total} cuenta={unica} fuerte /> : <span className="font-semibold">{cop(c.total)}</span>}</td>
-                  <td className="text-right num text-muted">{pct(Number(r.total) ? c.total / Number(r.total) : 0)}</td>
-                  <td className="text-right text-muted">{diaCorto(c.ultimo)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </TablaScroll>
+          <TablaCuentasAds filas={r.por_cuenta_ads} tiendas={tiendas.map((t) => t.cuenta)} total={Number(r.total)} unica={unica} />
         ) : <Vacio>Sin gasto en este periodo.</Vacio>}
       </Panel>
 
