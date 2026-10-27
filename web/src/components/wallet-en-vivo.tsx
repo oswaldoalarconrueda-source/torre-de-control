@@ -9,6 +9,8 @@ import { entero, haceCuanto } from "@/lib/formato";
 // todos los movimientos, anulados incluidos, porque cada anulado tiene su reversión (historia completa en Supabase,
 // al día cada minuto). Se consulta cada 15 s; cuando
 // el saldo cambia, la tarjeta destella y muestra cuánto entró o salió.
+// Abajo, los últimos movimientos de todas las wallets cruzados por fecha (cada uno con su bandera); al tocar una
+// tarjeta se ven solo los de esa wallet, y al tocarla otra vez se vuelve a todas.
 
 type Movimiento = { fecha: string; tipo: string | null; t: number | null; valor: number; guia: string | null; anulado: boolean };
 type Wallet = {
@@ -32,7 +34,7 @@ const conSigno = (v: number, cuenta: string, divisa?: string | null) => `${v >= 
 export function WalletEnVivo() {
   const [datos, setDatos] = useState<Respuesta | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sel, setSel] = useState<string>("TIENDA_CO");
+  const [sel, setSel] = useState<string | null>(null); // null = todas las wallets
   // Cambio de saldo por cuenta desde la consulta anterior (para el destello y el "+Q 329,01").
   const [cambio, setCambio] = useState<Record<string, { delta: number; en: number }>>({});
   const previo = useRef<Record<string, number>>({});
@@ -63,7 +65,11 @@ export function WalletEnVivo() {
   }, []);
 
   const cuentas = (datos?.cuentas ?? []).slice().sort((a, b) => ORDEN.indexOf(a.cuenta) - ORDEN.indexOf(b.cuenta));
-  const elegida = cuentas.find((w) => w.cuenta === sel) ?? cuentas.find((w) => w.movimientos_total > 0);
+  const elegida = sel ? cuentas.find((w) => w.cuenta === sel) ?? null : null;
+  // Todas: los recientes de cada wallet, cruzados por fecha.
+  const todos = cuentas.flatMap((w) => w.recientes.map((m) => ({ ...m, cuenta: w.cuenta, divisa: w.divisa })))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40);
+  const lista = elegida ? elegida.recientes.map((m) => ({ ...m, cuenta: elegida.cuenta, divisa: elegida.divisa })) : todos;
 
   if (!datos) return <div className="card p-10 text-center text-sm text-muted">{error ?? "Calculando saldos…"}</div>;
 
@@ -72,32 +78,34 @@ export function WalletEnVivo() {
       {error && <p className="text-xs text-amber" role="status">{error}</p>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cuentas.map((w) => (
-          <Tarjeta key={w.cuenta} w={w} cambio={cambio[w.cuenta]} activa={elegida?.cuenta === w.cuenta} onClick={() => setSel(w.cuenta)} />
+          <Tarjeta key={w.cuenta} w={w} cambio={cambio[w.cuenta]} activa={elegida?.cuenta === w.cuenta}
+            onClick={() => setSel((s) => (s === w.cuenta ? null : w.cuenta))} />
         ))}
       </div>
 
-      {elegida && elegida.movimientos_total > 0 && (
+      {lista.length > 0 && (
         <div className="card p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <span className="font-display font-semibold">
-              Últimos movimientos · {infoCuenta(elegida.cuenta).bandera} {infoCuenta(elegida.cuenta).nombre}
+              Últimos movimientos · {elegida ? `${infoCuenta(elegida.cuenta).bandera} ${infoCuenta(elegida.cuenta).nombre}` : "todas las wallets"}
             </span>
             <span className="text-[11px] font-mono text-muted">
-              {entero(elegida.movimientos_total)} movimientos desde el primer día de la wallet
+              {elegida ? <>{entero(elegida.movimientos_total)} movimientos · toca la tarjeta otra vez para ver todas</> : "toca una tarjeta para ver solo esa wallet"}
             </span>
           </div>
           <ul className="divide-y divide-line">
-            {elegida.recientes.map((m, i) => {
-              const hora = new Intl.DateTimeFormat("es-CO", { timeZone: infoCuenta(elegida.cuenta).zona, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(m.fecha));
+            {lista.map((m, i) => {
+              const hora = new Intl.DateTimeFormat("es-CO", { timeZone: infoCuenta(m.cuenta).zona, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(m.fecha));
               return (
-                <li key={`${m.fecha}-${i}`} className="flex items-center gap-3 py-2 text-sm">
+                <li key={`${m.cuenta}-${m.fecha}-${i}`} className="flex items-center gap-3 py-2 text-sm">
                   <span className="w-36 shrink-0 whitespace-nowrap text-[11px] font-mono text-muted">{hora}</span>
+                  {!elegida && <span className="w-36 shrink-0 truncate text-xs" title={infoCuenta(m.cuenta).nombre}>{infoCuenta(m.cuenta).bandera} {infoCuenta(m.cuenta).nombre}</span>}
                   <span className="min-w-0 flex-1 truncate">
                     {m.tipo ?? "—"}
                     {m.anulado && <span className="ml-2 rounded-full border border-line px-1.5 text-[10px] text-muted">anulado</span>}
                   </span>
                   {m.guia && <span className="hidden sm:inline font-mono text-[11px] text-muted">{m.guia}</span>}
-                  <span className={`num shrink-0 font-semibold ${m.valor >= 0 ? "text-green" : "text-red"}`}>{conSigno(m.valor, elegida.cuenta, elegida.divisa)}</span>
+                  <span className={`num shrink-0 font-semibold ${m.valor >= 0 ? "text-green" : "text-red"}`}>{conSigno(m.valor, m.cuenta, m.divisa)}</span>
                 </li>
               );
             })}
