@@ -10,6 +10,7 @@ export type ItemMenu = {
   emoji: string;
   estado: "vivo" | "pronto";
   soloOwner?: boolean;
+  soloSocios?: boolean; // solo el dueño y los socios (no empleados ni proveedores, aunque tengan el módulo)
   soloProveeduria?: boolean; // solo si el usuario ve alguna empresa de proveeduría
   noProveeduria?: boolean; // oculto para socios y trabajadores que solo ven proveeduría (el dueño lo ve igual)
   modulo?: ModuloId;
@@ -24,7 +25,7 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/agente", label: "Agente", emoji: "🤖", estado: "vivo", modulo: "automatizacion" },
   { href: "/proveeduria", label: "Proveeduría", emoji: "🏭", estado: "vivo", modulo: "proveeduria", soloProveeduria: true },
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
-  { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true },
+  { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true, soloSocios: true },
   { href: "/sin-liquidar", label: "Guías sin liquidar", emoji: "⏳", estado: "vivo", modulo: "dinero" },
   { href: "/sync", label: "Estado de los datos", emoji: "🔄", estado: "vivo", soloOwner: true },
   { href: "/cargas", label: "Cargar archivos", emoji: "📤", estado: "vivo", soloOwner: true },

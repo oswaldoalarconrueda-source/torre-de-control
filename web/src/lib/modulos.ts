@@ -25,6 +25,9 @@ export type Acceso = { rol: Rol; activo: boolean; modulos: string[] };
 export const tieneModulo = (u: Acceso, m: ModuloId) =>
   u.activo && (u.rol === "owner" || u.rol === "socio" || ((u.rol === "empleado" || u.rol === "proveedor") && u.modulos.includes(m)));
 
+// Dueño y socios: pantallas que no se le dan a empleados ni proveedores (p. ej. 📢 Publicidad).
+export const esSocio = (u: Acceso) => u.activo && (u.rol === "owner" || u.rol === "socio");
+
 // Primera pantalla a la que el usuario sí puede entrar (para mandarlo ahí si abre una que no tiene).
 export function primeraRuta(u: Acceso) {
   const m = MODULOS.find((x) => tieneModulo(u, x.id));

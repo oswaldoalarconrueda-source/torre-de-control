@@ -1,4 +1,4 @@
-import { createClient, exigirModulo } from "@/lib/supabase/server";
+import { createClient, exigirSocio } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros, type Filtros } from "@/lib/filtros";
 import { dinero, diaCorto, entero, haceCuanto, pct } from "@/lib/formato";
 import { infoCuenta, ordenCuenta } from "@/lib/paises";
@@ -8,6 +8,7 @@ import { Kpi, Panel, TablaScroll, Vacio } from "@/components/ui";
 
 // 📢 Publicidad: todo el gasto de Meta que tiene la Torre, por país, día, cuenta publicitaria y campaña. Casi todo llega
 // por la API (meta-gasto, cada hora, un token por portafolio); lo que no, quedó de los CSV del BM. Montos en COP.
+// Solo la ven el dueño y los socios (ni empleados ni proveedores).
 
 type PorTienda = { cuenta: string; monto: number; dias: number; ultimo: string; cuentas_ads: number };
 type CuentaAds = {
@@ -36,7 +37,7 @@ const portafolio = (t: string | null) => {
 const ESTADO_META: Record<number, string> = { 1: "Activa", 2: "Desactivada", 3: "Pago pendiente", 7: "En revisión", 9: "En gracia", 101: "Cerrada" };
 
 export default async function PublicidadPage({ searchParams }: PageProps<"/publicidad">) {
-  await exigirModulo("resumen");
+  await exigirSocio(); // solo dueño y socios
   const sp = await searchParams;
   const base = leerFiltros(sp);
   const lista = typeof sp.c === "string" ? sp.c.split(",").filter((x) => /^[A-Z0-9_]+$/.test(x)) : [];

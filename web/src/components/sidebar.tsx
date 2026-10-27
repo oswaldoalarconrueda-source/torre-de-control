@@ -6,7 +6,7 @@ import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Menu, X } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
-import { tieneModulo, type Acceso } from "@/lib/modulos";
+import { esSocio, tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
 
@@ -35,6 +35,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
 
   const item = (it: ItemMenu) => {
     if (it.soloOwner && !esOwner) return null;
+    if (it.soloSocios && !esSocio(acceso)) return null;
     if (it.soloProveeduria && !conProveeduria) return null;
     if (it.noProveeduria && soloProveeduria && !esOwner) return null;
     if (it.modulo && !tieneModulo(acceso, it.modulo)) return null;

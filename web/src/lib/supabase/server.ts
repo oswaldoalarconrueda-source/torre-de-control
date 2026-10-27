@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { primeraRuta, tieneModulo, type Acceso, type ModuloId, type Rol } from "@/lib/modulos";
+import { esSocio, primeraRuta, tieneModulo, type Acceso, type ModuloId, type Rol } from "@/lib/modulos";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -46,5 +46,13 @@ export async function exigirModulo(m: ModuloId) {
   const u = await getUsuario();
   if (!u) redirect("/login");
   if (!tieneModulo(u, m)) redirect(primeraRuta(u));
+  return u;
+}
+
+// Para las pantallas solo de dueño y socios: a los demás los manda a su primera pantalla.
+export async function exigirSocio() {
+  const u = await getUsuario();
+  if (!u) redirect("/login");
+  if (!esSocio(u)) redirect(primeraRuta(u));
   return u;
 }
