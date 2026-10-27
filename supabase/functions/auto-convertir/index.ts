@@ -304,9 +304,11 @@ async function convertir(cuenta: string, ahora = false) {
     return { pendientes: 0, guias: planesGuia.length };
   }
 
-  // Artículos de la empresa (sin el concepto FLETE) y lo ya detectado antes.
+  // Artículos de la empresa (sin el concepto FLETE) y lo ya detectado antes. "nombre" va normalizado para comparar;
+  // "descripcion" es el nombre exacto de Effi, que es el que va en la remisión: con el nombre sin tildes Effi no arma la
+  // transacción de dropshipping ("Error al intentar crear la transacción Dropshipping", Colombia, 27-oct).
   const articulos = (await api.todas('articulo', {})).filter((a) => a.vigente !== '0' && norm(a.descripcion ?? '') !== 'FLETE')
-    .map((a) => ({ id: Number(a.id), nombre: norm(a.descripcion ?? '') }));
+    .map((a) => ({ id: Number(a.id), nombre: norm(a.descripcion ?? ''), descripcion: String(a.descripcion ?? '') }));
   const guardadas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id=in.(${pendientes.map((o) => o.id).join(',')})&select=sucursal,id,articulos`);
   const historial: { total: string; contenido: string; n: number }[] = await rpc('auto_historial_contenido', { p_cuenta: cuenta });
   const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado`);
@@ -366,7 +368,8 @@ async function convertir(cuenta: string, ahora = false) {
       cliente: o.cliente, id_pais_cliente: Number(o.pais_cliente), id_provincia_cliente: Number(o.provincia_cliente),
       id_ciudad_cliente: Number(o.ciudad_cliente), direccion_cliente: o.direccion_cliente,
       convenio_dropshipping: convenio,
-      articulo: [det[0].id], descripcion: [det[0].nombre], cantidad: [cantidad], precio: [precio],
+      articulo: [det[0].id], descripcion: [articulos.find((a) => a.id === Number(det![0].id))?.descripcion || det[0].nombre],
+      cantidad: [cantidad], precio: [precio],
       t_forma_pago: [reglas.formaPagoRemision], valor_forma_pago: [total],
     };
     plan.guia = {
