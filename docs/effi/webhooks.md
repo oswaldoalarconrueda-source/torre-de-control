@@ -58,6 +58,7 @@ La lista completa de eventos (unos 190, de todos los módulos) aparece en el sel
 | TIENDA_EC (NATURALFITT EC, ID 57380) | ✅ **151/151**: todos los eventos que Effi deja crear en esa empresa (13 del 2026-10-23 + 138 del 2026-10-28) |
 | TIENDA_GT (NATURALFITT GT, ID 56172) | ✅ **103/103**: todos los eventos que Effi deja crear en esa empresa (los 13 de siempre + 90 creados el 2026-10-28, pedido del dueño "aunque hoy no se usen") |
 | TIENDA_CR (NATURALFITT CR, ID 59798) | ✅ **103/103**: todos los eventos que Effi deja crear (13 que ya estaban + 90 del 2026-10-28) |
+| AUNCLIC_GT (A UN CLIC GT, ID 54019) | ✅ **151/151**: todos los eventos que Effi deja crear, creados el 2026-10-28 con la sesión de la empresa (usuario de A un clic), nombre "Torre Control - <evento>", plataforma "Otra", `?cuenta=AUNCLIC_GT` |
 | VALKA_GT (VALKA GT, ID 58130, sociedad Valka) | ✅ 13/13, el 2026-10-25 (nombre "Torre Control - <evento>": Effi quita el "·") |
 | DISTRI_GT (DISTRIGUATEMALA, ID 25084, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
 | DISTRI_CR (DISTRICOSTARICA, ID 40014, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
