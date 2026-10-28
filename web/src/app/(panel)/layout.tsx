@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { SinAcceso } from "@/components/sin-acceso";
 import { AgenteFlotante } from "@/components/agente-flotante";
 import { tieneModulo } from "@/lib/modulos";
+import { infoCuenta } from "@/lib/paises";
 
 export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
@@ -25,13 +26,15 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const sociedad = sociedades.join(" · ") || "Sin tiendas asignadas";
   // El dueño escoge qué Torre mira (todas o una sociedad); los demás ven solo la suya.
   const esOwner = usuario.rol === "owner";
-  const [{ data: yo }, { count: porAceptar }] = esOwner
+  const [{ data: yo }, { count: porAceptar }, { data: caida }] = esOwner
     ? await Promise.all([
       supabase.from("app_usuarios").select("sociedad_vista").eq("user_id", usuario.id).maybeSingle(),
       // Registros nuevos que esperan que el dueño los acepte (se avisan en "Solo para ti").
       supabase.from("app_usuarios").select("user_id", { count: "exact", head: true }).eq("rol", "pendiente"),
+      // Webhooks de Effi caídos (effi_webhooks_vigilar): aviso rojo arriba mientras no vuelvan.
+      supabase.from("effi_webhook_incidentes").select("cuentas,desde").is("resuelto_en", null).order("id", { ascending: false }).limit(1).maybeSingle(),
     ])
-    : [{ data: null }, { count: 0 }];
+    : [{ data: null }, { count: 0 }, { data: null }];
   const opciones = esOwner ? (lista ?? []).map((x) => x.nombre as string) : null;
 
   return (
@@ -43,7 +46,16 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
           soloProveeduria={!!cuentas?.length && cuentas.every((c) => c.tipo === "proveeduria")} />
       </Suspense>
       {tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} />}
-      <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-16 max-w-[1400px]">{children}</main>
+      <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-16 max-w-[1400px]">
+        {caida && (
+          <div className="mt-4 rounded-xl border border-red/50 bg-red/10 px-4 py-3 text-sm">
+            <b className="text-red">🚨 Los webhooks de Effi dejaron de llegar</b>
+            {" "}({(caida.cuentas as string[]).map((c) => infoCuenta(c).nombre).join(", ")}) desde {haceCuanto(caida.desde as string)}.
+            <span className="text-muted"> La Torre sigue al día: la API la está actualizando cada minuto. Conviene avisarle a Effi.</span>
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   );
 }

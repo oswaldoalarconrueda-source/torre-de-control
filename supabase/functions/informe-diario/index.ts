@@ -191,6 +191,44 @@ function html(filas: Fila[], diasAtras: number, encabezado = 'Torre de Control �
   </td></tr></table></body></html>`;
 }
 
+// Alerta de webhooks (informe_programado.tipo = 'alerta_webhooks'): sale cuando los avisos de Effi dejan de llegar
+// (effi_webhooks_vigilar) y otra vez cuando vuelven. Mientras tanto la API cubre cada minuto.
+type Salud = { cuenta: string; ultimo_aviso: string | null; avisos_30: number; cambios_api_30: number; caido: boolean };
+type Incidente = { id: number; cuentas: string[]; desde: string; resuelto_en: string | null };
+const horaCo = (iso: string | null) => iso
+  ? new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+  : '—';
+function htmlAlertaWebhooks(inc: Incidente | null, salud: Salud[]) {
+  const volvieron = !!inc?.resuelto_en;
+  const filas = salud.map((x) => {
+    const pa = PAIS[x.cuenta] ?? { nombre: x.cuenta, bandera: '🏳️', moneda: '' };
+    const color = x.caido ? '#ff5470' : '#2fd28f';
+    return `<tr>
+      <td style="padding:10px 12px;border-top:1px solid #1e2740;color:#e8edf7;font-weight:700">${pa.bandera} ${pa.nombre}</td>
+      <td style="padding:10px 12px;border-top:1px solid #1e2740;color:${color};font-weight:700">${x.caido ? 'Sin avisos' : 'Llegando'}</td>
+      <td style="padding:10px 12px;border-top:1px solid #1e2740;color:#8a96b3">${n(x.avisos_30)} avisos · ${n(x.cambios_api_30)} cambios vistos por la API</td>
+      <td style="padding:10px 12px;border-top:1px solid #1e2740;color:#8a96b3">último aviso ${horaCo(x.ultimo_aviso)}</td>
+    </tr>`;
+  }).join('');
+  const titulo = volvieron ? '✅ Los webhooks de Effi volvieron a llegar' : '🚨 Los webhooks de Effi dejaron de llegar';
+  const texto = volvieron
+    ? `Estuvieron caídos desde ${horaCo(inc!.desde)} hasta ${horaCo(inc!.resuelto_en)} (hora Colombia). La Torre vuelve a actualizarse al instante con los avisos.`
+    : `Desde ${horaCo(inc?.desde ?? null)} (hora Colombia) Effi no manda avisos de ${(inc?.cuentas ?? []).map((c) => PAIS[c]?.nombre ?? c).join(', ')}, aunque la API sí ve movimiento. La Torre no se detiene: la API la está actualizando cada minuto. Conviene avisarle a Effi.`;
+  return `<!doctype html><html><body style="margin:0;background:#070b16;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px">
+    <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%">
+      <tr><td style="padding:0 4px 16px">
+        <div style="font-size:22px;font-weight:800;color:${volvieron ? '#2fd28f' : '#ff5470'}">${titulo}</div>
+        <div style="font-size:14px;color:#c9d2e6;margin-top:8px;line-height:1.5">${texto}</div>
+      </td></tr>
+      <tr><td><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0f1526;border:1px solid #1e2740;border-radius:14px;border-collapse:separate;font-size:13px">
+        <tr><td colspan="4" style="padding:12px;font-size:11px;color:#8a96b3;text-transform:uppercase;letter-spacing:.06em">Últimos 30 minutos por tienda</td></tr>
+        ${filas}
+      </table></td></tr>
+    </table>
+  </td></tr></table></body></html>`;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json(405, { ok: false, mensaje: 'Solo POST' });
   const token = req.headers.get('x-sync-token') || '';
@@ -218,6 +256,15 @@ Deno.serve(async (req) => {
     const para = (url.searchParams.get('para') || prog?.destinatarios.join(',') || cred.user).split(',')
       .map((x) => x.trim().toLowerCase()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
     if (!para.length) return json(400, { ok: false, mensaje: 'Destinatarios inválidos' });
+    if ((prog?.tipo ?? url.searchParams.get('tipo')) === 'alerta_webhooks') {
+      const a = (await rpc('effi_webhooks_alerta', {})) as { incidente: Incidente | null; salud: Salud[] };
+      const volvieron = !!a.incidente?.resuelto_en;
+      const asunto = `${prueba ? '[Prueba] ' : ''}${volvieron ? '✅ Volvieron los webhooks de Effi' : '🚨 URGENTE · Los webhooks de Effi dejaron de llegar'}`;
+      const transporte = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: cred.user, pass: cred.pass } });
+      const info = await transporte.sendMail({ from: `Torre de Control <${cred.user}>`, to: para.join(', '), subject: asunto,
+        priority: volvieron ? 'normal' : 'high', html: htmlAlertaWebhooks(a.incidente, a.salud ?? []) });
+      return json(200, { ok: true, enviados: para.length, asunto, id: info.messageId });
+    }
     if ((prog?.tipo ?? url.searchParams.get('tipo')) === 'cpa') {
       const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date(Date.now() - Math.max(1, diasAtras) * 86_400_000));
       const filas = (await rpc('informe_cpa', { p_dia: dia, p_sociedad: prog?.sociedad ?? 'Joalix AA Group' })) as Cpa[];
