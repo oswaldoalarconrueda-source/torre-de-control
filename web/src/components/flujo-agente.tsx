@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, FileText, ShoppingCart, Truck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, RotateCw, ShoppingCart, Truck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { entero } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
@@ -27,6 +27,9 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
   const [delDia, setDelDia] = useState<Evento[]>([]); // aciertos y errores de las últimas 30 h, sin tope
   const [abierto, setAbierto] = useState<number | null>(null);
   const [ahora, setAhora] = useState(() => Date.now());
+  // Reintentar a un clic: órdenes enviadas a crear de nuevo (se ocultan hasta que llegue su resultado) y el último error.
+  const [reintentando, setReintentando] = useState<Record<number, number>>({});
+  const [fallo, setFallo] = useState<string | null>(null);
   const zona = infoCuenta(cuenta).zona;
 
   useEffect(() => {
@@ -91,6 +94,26 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
     }
     return [...m.values()];
   }, [pendientes]);
+
+  // Repite la orden con el mismo paso y transportadora de la vez anterior (auto_reintentar). Mientras no llegue un
+  // evento nuevo de esa orden, el botón queda en "Enviada…".
+  const enviada = (e: Evento) => e.id_orden != null && (reintentando[e.id_orden] ?? 0) >= e.id;
+  async function reintentar(lista: Evento[]) {
+    const ids = [...new Set(lista.map((e) => e.id_orden).filter((x): x is number => x != null))];
+    if (!ids.length) return;
+    setFallo(null);
+    setReintentando((r) => ({ ...r, ...Object.fromEntries(lista.filter((e) => e.id_orden != null).map((e) => [e.id_orden, e.id])) }));
+    const supabase = createClient();
+    for (const id of ids) {
+      const { error } = await supabase.rpc("auto_reintentar", { p_cuenta: cuenta, p_id: id });
+      if (error) {
+        setFallo(`OV ${id}: ${error.message}`);
+        setReintentando((r) => { const s = { ...r }; delete s[id]; return s; });
+      }
+    }
+    onNuevo();
+  }
+  const reintentables = errores.filter((e) => e.id_orden != null && !enviada(e));
 
   // ¿Está creando algo ahora? El último paso en curso de una orden que todavía no terminó (menos de 2 minutos).
   const activo = useMemo(() => {
@@ -159,7 +182,14 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
           Errores de hoy
           <span className={`rounded-full px-2 py-0.5 text-[10px] ${errores.length ? "bg-red/15 text-red" : "bg-green/15 text-green"}`}>{errores.length}</span>
           {errores.length > 0 && <span className="normal-case tracking-normal font-sans">· una línea por remisión u orden; desaparece cuando queda resuelta</span>}
+          {reintentables.length > 1 && (
+            <button onClick={() => reintentar(reintentables)}
+              className="ml-auto inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-3 py-1 font-sans text-[11px] font-semibold normal-case tracking-normal text-green hover:bg-green/20">
+              <RotateCw size={12} /> Reintentar todos ({reintentables.length})
+            </button>
+          )}
         </div>
+        {fallo && <div className="mb-2 text-xs text-red">No se pudo reintentar: {fallo}</div>}
         {errores.length ? (
           <div className="rounded-xl border border-red/40 overflow-hidden">
             {errores.map((e) => (
@@ -174,6 +204,14 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
                   <span className="min-w-[16rem] flex-1 text-text/90">{e.motivo}</span>
                   {e.intentos > 1 && <span className="whitespace-nowrap text-[10px] text-muted">{e.intentos} intentos hoy</span>}
                   <span className="whitespace-nowrap rounded-full border border-amber/50 bg-amber/10 px-2 py-0.5 text-[10px] font-semibold text-amber">Requiere verificación humana</span>
+                  {e.id_orden != null && (enviada(e) ? (
+                    <span className="whitespace-nowrap text-[11px] font-semibold text-blue-2">Enviada a Effi…</span>
+                  ) : (
+                    <button onClick={() => reintentar([e])} title="Vuelve a crear en Effi con el mismo paso y la misma transportadora"
+                      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-green/50 bg-green/10 px-2.5 py-0.5 text-[11px] font-semibold text-green hover:bg-green/20">
+                      <RotateCw size={11} /> Reintentar
+                    </button>
+                  ))}
                   {e.datos && (
                     <button onClick={() => setAbierto(abierto === e.id ? null : e.id)} className="whitespace-nowrap text-blue-2 underline">
                       {abierto === e.id ? "ocultar variables" : "ver variables"}
