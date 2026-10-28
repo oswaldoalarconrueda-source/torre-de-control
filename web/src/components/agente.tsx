@@ -26,7 +26,19 @@ export type OrdenAuto = {
   guia: string | null; estado: Estado; motivos: string[]; minutos: number;
   decision: "ejecutar" | "descartar" | null; decision_por: string | null; decision_en: string | null;
   plan: Plan | null; plan_estado: "lista" | "revision" | "creada" | "error" | null; plan_motivo: string | null; plan_en: string | null;
+  restriccion?: Restriccion | null;
 };
+// Condición de envío de la ciudad que dieron las asesoras logísticas (auto_restricciones; Colombia desde el 28-oct).
+type Restriccion = { tipo: keyof typeof CONDICIONES; motivo: string; lugar: string };
+const CONDICIONES = {
+  anticipado: "💳 Solo pago anticipado",
+  anticipado_flete: "💳 Anticipado + $20.000 de flete",
+  sin_cobertura: "🚫 Sin cobertura",
+  flete_alto: "💸 Flete muy alto",
+  solo_envia: "🚚 Inter solo anticipado · Envía sí",
+  inter_oficina: "🏢 Solo a oficina Interrapidísimo",
+  validar: "📞 Validar con el cliente",
+} as const;
 // Transportadoras que usa el país (aprendidas de sus guías): id → nombre y cuántas guías tuvo en los últimos 10 días.
 export type Transportes = Record<string, { nombre?: string; guias?: number }>;
 type Paso = "ambas" | "remision" | "guia";
@@ -126,8 +138,11 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
   // Listas para crear: el agente ya sabe qué hacer (remisión y guía, o solo la guía de una remisión hecha a mano). No
   // son novedad aunque lleven rato esperando: salen con "Ejecutar ahora" o con "Ejecutar" en cada una.
   // Colombia: la entrega en oficina de Inter o Servientrega la crea el agente solo; no pasa por la lista.
+  // Si la ciudad tiene una condición de las asesoras, la orden no va sola (salvo "solo a oficina de Inter" yendo a Inter).
+  const cumpleCondicion = (o: OrdenAuto) =>
+    !o.restriccion || (o.restriccion.tipo === "inter_oficina" && oficinaCO(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0]) === 4);
   const vaSola = (o: OrdenAuto) => cuenta === "TIENDA_CO" && o.plan_estado === "lista" && o.estado === "sin_remision" &&
-    oficinaCO(o.plan?.remision?.direccion_cliente) !== null;
+    oficinaCO(o.plan?.remision?.direccion_cliente) !== null && cumpleCondicion(o);
   const paraCrear = (o: OrdenAuto) =>
     o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar" && !vaSola(o);
   // Una orden que ya tiene remisión y guía está resuelta: el error de un intento anterior (por ejemplo una guía que
@@ -150,6 +165,8 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
   const solas = ordenes.filter(vaSola);
   // Pedidos con abono (cliente con ** al inicio): el agente no los toca, se quedan en orden y los hace una persona.
   const conAbono = ordenes.filter((o) => o.estado === "sin_remision" && !!o.cliente?.trim().startsWith("**"));
+  // Órdenes sin remisión en una ciudad con condición de envío (pago anticipado, sin cobertura…): recordatorio.
+  const conCondicion = ordenes.filter((o) => o.estado === "sin_remision" && !cumpleCondicion(o));
 
   // El automático está montado para Guatemala y Ecuador; activarlo y pasarlo a manual piden confirmación en pantalla
   // (el navegador de la app bloquea las ventanas de confirmación). "Manual" = simular: arma lo que haría sin crear.
@@ -395,6 +412,20 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
         </div>
       )}
 
+      {conCondicion.length > 0 && (
+        <div className="card border border-red/40 p-4" style={{ background: "linear-gradient(90deg, rgb(255 92 92 / 0.10), transparent)" }}>
+          <div className="font-semibold text-red">📍 {entero(conCondicion.length)} {conCondicion.length === 1 ? "pedido va" : "pedidos van"} a una ciudad con condición de envío</div>
+          <div className="text-xs text-muted mt-0.5">Recordatorio de las asesoras logísticas: revisar con el cliente antes de despachar. Estas no se crean solas.</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {conCondicion.map((o) => (
+              <span key={`${o.sucursal}-${o.id}`} className="rounded-full border border-red/40 px-2.5 py-0.5 text-[11px]" title={o.restriccion?.motivo}>
+                OV {o.id} · {o.ciudad ?? "—"} · <b>{o.restriccion ? CONDICIONES[o.restriccion.tipo] : ""}</b> · hace {duracion(o.minutos)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()}
         completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o)).map((o) => o.id)}
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
@@ -479,6 +510,12 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                   {/* Ciudad - departamento y, debajo, la dirección de entrega (la del plan de remisión o de guía). */}
                   <td className="px-3 py-2 min-w-[12rem] max-w-[20rem] text-xs">
                     <div className="whitespace-nowrap font-semibold">{[o.ciudad, o.provincia].filter(Boolean).join(" - ") || "—"}</div>
+                    {o.restriccion && (
+                      <div className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${cumpleCondicion(o) ? "bg-green/15 text-green" : "bg-red/15 text-red"}`}
+                        title={`${o.restriccion.lugar}: ${o.restriccion.motivo}`}>
+                        {CONDICIONES[o.restriccion.tipo]}{cumpleCondicion(o) ? " ✓" : ""}
+                      </div>
+                    )}
                     {(() => {
                       const dir = String(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0] ?? "").trim();
                       return dir ? <div className="text-muted whitespace-normal">{dir}</div> : null;

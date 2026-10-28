@@ -569,9 +569,14 @@ async function guiasPendientes(cuenta: string, ahora = false) {
 // nueva, de a MAX_CREAR por corrida.
 async function oficinasCO(cuenta: string) {
   if (cuenta !== 'TIENDA_CO') return [];
-  const filas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&plan_estado=eq.lista&id_remision=is.null&select=sucursal,id,plan&order=id.asc&limit=300`);
+  const filas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&plan_estado=eq.lista&id_remision=is.null&select=sucursal,id,plan,ciudad,provincia&order=id.asc&limit=300`);
   const hechas: Json[] = [];
-  for (const f of filas.filter((x) => x.plan?.remision && !x.plan?.abono && oficinaCO(x.plan.remision.direccion_cliente)).slice(0, MAX_CREAR)) {
+  for (const f of filas.filter((x) => x.plan?.remision && !x.plan?.abono && oficinaCO(x.plan.remision.direccion_cliente))) {
+    if (hechas.length >= MAX_CREAR) break;
+    // Ciudad con condición de las asesoras (pago anticipado, sin cobertura…): no va sola, la ve la asesora con el aviso.
+    // Única excepción: "solo a oficina de Interrapidísimo" cuando la orden es justo a oficina de Inter.
+    const r = (await rpc('auto_restriccion', { p_cuenta: cuenta, p_ciudad: f.ciudad ?? '', p_dpto: f.provincia ?? '', p_direccion: f.plan.remision.direccion_cliente ?? '' })) as Json | null;
+    if (r && !(r.tipo === 'inter_oficina' && oficinaCO(f.plan.remision.direccion_cliente) === 4)) continue;
     hechas.push(await crear(cuenta, Number(f.sucursal), Number(f.id), true));
   }
   return hechas;
