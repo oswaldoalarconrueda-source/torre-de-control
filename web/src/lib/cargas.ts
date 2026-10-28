@@ -7,9 +7,9 @@ export type Celda = string | number | boolean | Date | null | undefined;
 export type Fila = Record<string, unknown>;
 
 export const NOMBRE_TIPO: Record<TipoCarga, string> = {
-  dropi_ordenes: "Dropi · Órdenes",
-  dropi_productos: "Dropi · Órdenes por producto",
-  dropi_cartera: "Dropi · Historial de cartera",
+  dropi_ordenes: "Órdenes",
+  dropi_productos: "Órdenes por producto",
+  dropi_cartera: "Historial de cartera",
   meta_bm: "Meta · CSV por BM",
 };
 
@@ -266,5 +266,5 @@ export function leerTabla(tabla: Celda[][]): Lectura {
   if (tipo === "dropi_productos") return dropiProductos(filas);
   if (tipo === "dropi_cartera") return dropiCartera(filas);
   if (tipo === "meta_bm") return metaBm(filas);
-  throw new Error("No reconozco el archivo: no es órdenes, órdenes por producto ni cartera de Dropi, ni un CSV de Meta.");
+  throw new Error("No reconozco el archivo: no es órdenes, órdenes por producto ni historial de cartera, ni un CSV de Meta.");
 }

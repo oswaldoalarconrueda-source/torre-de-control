@@ -37,7 +37,7 @@ export async function EstadoPyG({ f, plataforma }: { f: Filtros; plataforma: Pla
     <section className="card p-4 sm:p-5 min-w-0 mt-3">
       <header className="flex items-center gap-2 mb-4">
         <h2 className="font-display text-lg font-semibold tracking-tight">Estado de PyG según movimientos de wallet</h2>
-        <span title="Wallet de Effi y cartera de Dropi de las guías y órdenes montadas en el periodo: siempre por la fecha de origen de la guía. Los retiros y transferencias no son utilidad (van al Flujo de Caja). Marca o desmarca conceptos para recalcular." className="text-muted">
+        <span title="Wallet de Effi y cartera de las guías y órdenes montadas en el periodo: siempre por la fecha de origen de la guía. Los retiros y transferencias no son utilidad (van al Flujo de Caja). Marca o desmarca conceptos para recalcular." className="text-muted">
           <Info size={15} />
         </span>
       </header>

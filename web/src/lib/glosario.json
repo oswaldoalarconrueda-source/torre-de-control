@@ -9,15 +9,15 @@
  {
   "c": "Estados de una guía u orden",
   "t": "Entregado",
-  "d": "Guía u orden entregada al cliente. Es la única venta cuyo dinero se confirma en el wallet (Effi) o la cartera (Dropi).",
-  "f": "Effi: \"Entregada a destino\" · Dropi: ENTREGADO.",
+  "d": "Guía u orden entregada al cliente. Es la única venta cuyo dinero se confirma en el wallet (Effi) o la cartera.",
+  "f": "Effi: \"Entregada a destino\" · cartera: ENTREGADO.",
   "w": "Ventas, Productos, Global"
  },
  {
   "c": "Estados de una guía u orden",
   "t": "Devolución",
   "d": "Guía devuelta al origen. Cuesta el flete de ida y el de devolución; la mercancía regresa, por eso su costo de mercancía es 0.",
-  "f": "Effi: \"Devolución a origen\" · Dropi: DEVOLUCION.",
+  "f": "Effi: \"Devolución a origen\" · cartera: DEVOLUCION.",
   "w": "Ventas, Global"
  },
  {
@@ -31,21 +31,21 @@
   "c": "Estados de una guía u orden",
   "t": "Novedad",
   "d": "Guía con una incidencia reportada por la transportadora (cliente ausente, dirección, rechazo…). Puede terminar entregada o devuelta.",
-  "f": "Effi: Novedad · Dropi: incidencia validada o en ruta.",
+  "f": "Effi: Novedad · cartera: incidencia validada o en ruta.",
   "w": "Resumen diario por estados"
  },
  {
   "c": "Estados de una guía u orden",
   "t": "Pendiente (Generada)",
   "d": "Guía creada que la transportadora todavía no recoge. Aún no se considera enviada.",
-  "f": "Effi: \"Generada\" · Dropi: guía generada, pendiente, pendiente de confirmación o telemercadeo.",
+  "f": "Effi: \"Generada\" · cartera: guía generada, pendiente, pendiente de confirmación o telemercadeo.",
   "w": "Resumen diario por estados"
  },
  {
   "c": "Estados de una guía u orden",
   "t": "Disponible en oficina",
   "d": "Paquete en la oficina de la transportadora esperando que el cliente lo reclame. Puede terminar entregado o devuelto; mientras tanto es dinero sin cobrar.",
-  "f": "Effi: \"Disponible para retiro en oficina\" · Dropi: RECLAME EN OFICINA.",
+  "f": "Effi: \"Disponible para retiro en oficina\" · cartera: RECLAME EN OFICINA.",
   "w": "Disp. en Oficina, Resumen diario"
  },
  {
@@ -66,7 +66,7 @@
   "c": "Ventas y costos",
   "t": "Venta total (despachado)",
   "d": "Valor de todo lo montado en el período, en la moneda del país.",
-  "f": "Suma de la venta de todas las guías/órdenes. En Effi es el \"Total venta distribuidor\" (igual al valor a recaudar); en Dropi, el valor de compra en productos.",
+  "f": "Suma de la venta de todas las guías/órdenes. En Effi es el \"Total venta distribuidor\" (igual al valor a recaudar); en la cartera, el valor de compra en productos.",
   "w": "Ventas, Global, Publicidad"
  },
  {
@@ -80,7 +80,7 @@
   "c": "Ventas y costos",
   "t": "Costo mercancía",
   "d": "Lo que se paga al proveedor por los productos. En devoluciones es 0 porque la mercancía regresa.",
-  "f": "Effi: \"Total compra distribuidor\" · Dropi: total en precios de proveedor.",
+  "f": "Effi: \"Total compra distribuidor\" · cartera: total en precios de proveedor.",
   "w": "Ventas"
  },
  {
@@ -100,8 +100,8 @@
  {
   "c": "Ventas y costos",
   "t": "Fulfillment",
-  "d": "Cobro por bodegaje, alistamiento y empaque en la bodega (Guatemala: Bodega Efficaex · Ecuador: Bodega Effi Quito). Se cobra por guía; solo cuenta lo ya cobrado. Colombia no tiene fulfillment: ni Effi ni Dropi lo cobran allí.",
-  "f": "En Dropi se toma de la columna Comisión.",
+  "d": "Cobro por bodegaje, alistamiento y empaque en la bodega (Guatemala: Bodega Efficaex · Ecuador: Bodega Effi Quito). Se cobra por guía; solo cuenta lo ya cobrado. Colombia no tiene fulfillment: ninguna plataforma lo cobra allí.",
+  "f": "En la cartera se toma de la columna Comisión.",
   "w": "Ventas (tarjetas y PyG) y Proyección, en Guatemala y Ecuador"
  },
  {
@@ -121,7 +121,7 @@
  {
   "c": "Utilidad y proyección",
   "t": "PyG en base caja",
-  "d": "Solo incluye lo que el wallet (Effi) o la cartera (Dropi) ya confirmó. Una venta entregada pero aún no liquidada todavía no está en el PyG.",
+  "d": "Solo incluye lo que el wallet (Effi) o la cartera ya confirmó. Una venta entregada pero aún no liquidada todavía no está en el PyG.",
   "f": "Recaudo − costo − flete − fulfillment, por movimiento confirmado.",
   "w": "Ventas (Estado de PyG), Informes"
  },
@@ -225,8 +225,8 @@
  },
  {
   "c": "Caja y wallet",
-  "t": "Wallet (Effi) y cartera (Dropi)",
-  "d": "Saldo que cada plataforma tiene a tu favor por lo entregado. Effi lo llama wallet y Dropi cartera. Se actualiza a medida que las guías se entregan (Effi) y en la madrugada (Dropi).",
+  "t": "Wallet (Effi) y cartera",
+  "d": "Saldo que cada plataforma tiene a tu favor por lo entregado. En Effi se llama wallet; en la otra plataforma, cartera. El wallet se actualiza a medida que las guías se entregan y la cartera en la madrugada.",
   "f": "—",
   "w": "Ventas (PyG), Flujo de Caja"
  },
@@ -296,14 +296,14 @@
  {
   "c": "Control de datos",
   "t": "Guía sin liquidar",
-  "d": "Guía entregada cuyo dinero todavía no aparece: en Effi, sin movimiento de recaudo en el wallet; en Dropi, sin ganancia en la cartera.",
-  "f": "Entregada − con recaudo (Effi) o con ganancia (Dropi).",
+  "d": "Guía entregada cuyo dinero todavía no aparece: en Effi, sin movimiento de recaudo en el wallet; en la cartera, sin ganancia.",
+  "f": "Entregada − con recaudo (Effi) o con ganancia (cartera).",
   "w": "Guías sin liquidar"
  },
  {
   "c": "Control de datos",
   "t": "Inconsistencia",
-  "d": "Guía donde el dinero no coincide con lo esperado (por ejemplo, entregada pero con solo el cargo de devolución). Hay que reclamarla a Effi o Dropi.",
+  "d": "Guía donde el dinero no coincide con lo esperado (por ejemplo, entregada pero con solo el cargo de devolución). Hay que reclamarla a la plataforma.",
   "f": "Neto del wallet ≠ venta − costo − flete − fulfillment.",
   "w": "Ventas (Inconsistencias pendientes de pago)"
  },
@@ -323,8 +323,8 @@
  },
  {
   "c": "Control de datos",
-  "t": "Plataforma (Effi / Dropi)",
-  "d": "Origen de la guía: Effi es la plataforma de logística propia; Dropi es la de dropshipping. Cada una tiene su wallet o cartera y su ritmo de liquidación.",
+  "t": "Plataforma (Effi / Otra)",
+  "d": "Origen de la guía: Effi es la plataforma de logística propia; la otra es la de dropshipping. Cada una tiene su wallet o cartera y su ritmo de liquidación.",
   "f": "—",
   "w": "En todo el dashboard"
  }

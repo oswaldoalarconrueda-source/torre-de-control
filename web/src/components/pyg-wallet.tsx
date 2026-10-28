@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { dinero, entero } from "@/lib/formato";
+import { dinero, entero, nombrePlataforma } from "@/lib/formato";
 
 export type LineaPyg = {
   key: string;
@@ -107,7 +107,7 @@ function Tabla({ titulo, color, lineas, total, etiquetaTotal, incluida, alternar
                       <input type="checkbox" checked={on} onChange={() => alternar(l)} className="size-4 shrink-0 accent-[var(--blue)]" />
                       <span className={`font-semibold ${on ? "" : "line-through"}`}>{l.concepto}</span>
                       {(l.plataforma === "Ambas" || conPlataforma) && (
-                        <span className="rounded-full border px-2 py-0.5 text-[10px] font-mono font-semibold" style={{ color: c, borderColor: `color-mix(in srgb, ${c} 45%, transparent)` }}>{l.plataforma}</span>
+                        <span className="rounded-full border px-2 py-0.5 text-[10px] font-mono font-semibold" style={{ color: c, borderColor: `color-mix(in srgb, ${c} 45%, transparent)` }}>{nombrePlataforma(l.plataforma)}</span>
                       )}
                       {l.aFlujo && (
                         <Link href="/flujo-caja" className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted hover:text-text">ver detalle en Flujo de Caja ↗</Link>

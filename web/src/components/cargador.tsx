@@ -32,7 +32,7 @@ async function leerArchivo(f: File): Promise<Lectura> {
     return leerTabla(data);
   }
   if (/\.xlsx$/i.test(f.name)) return leerTabla((await readSheet(f)) as Celda[][]);
-  throw new Error("Solo se aceptan .xlsx (Dropi) y .csv (Meta).");
+  throw new Error("Solo se aceptan .xlsx (órdenes y cartera) y .csv (Meta).");
 }
 
 export function Cargador() {
@@ -104,7 +104,7 @@ export function Cargador() {
         <FileUp className="size-7 text-blue-2" aria-hidden />
         <div className="font-semibold">Arrastra aquí los archivos o haz clic para elegirlos</div>
         <div className="text-xs text-muted max-w-xl">
-          Dropi: <span className="font-mono">ordenes_*.xlsx</span>, <span className="font-mono">ordenes_productos_*.xlsx</span> e <span className="font-mono">historial de cartera-*.xlsx</span>.
+          Órdenes y cartera: <span className="font-mono">ordenes_*.xlsx</span>, <span className="font-mono">ordenes_productos_*.xlsx</span> e <span className="font-mono">historial de cartera-*.xlsx</span>.
           Meta: el CSV de cada Business Manager con país, cuenta, campaña, día y monto gastado en COP. Puedes subir varios a la vez.
         </div>
         <input id="archivos-carga" ref={input} type="file" multiple accept=".xlsx,.csv" className="sr-only"

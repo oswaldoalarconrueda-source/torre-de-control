@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Filtros } from "@/lib/filtros";
 import { kpiPendientes, kpiUtilidad, rangoDatos, type Plataforma } from "@/lib/datos";
-import { dinero, entero } from "@/lib/formato";
+import { dinero, entero, nombrePlataforma } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
 import { COLOR_ESTADO } from "./charts";
 
@@ -74,7 +74,7 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
   const total = p.reduce((a, i) => a + esperado(i), 0);
   return (
     <Recuadro titulo="Inconsistencias pendientes de pago"
-      ayuda="Guías entregadas sin recaudo en el wallet de Effi y órdenes entregadas sin ganancia en la cartera de Dropi, de cualquier fecha hasta el fin del periodo. Se reclaman sin esperar días de rezago. El costo es el real cobrado o, si no lo hay, el promedio del producto.">
+      ayuda="Guías entregadas sin recaudo en el wallet de Effi y órdenes entregadas sin ganancia en la cartera, de cualquier fecha hasta el fin del periodo. Se reclaman sin esperar días de rezago. El costo es el real cobrado o, si no lo hay, el promedio del producto.">
       {p.length ? (
         <table className="w-full border-separate border-spacing-y-1.5 text-sm">
           <thead>
@@ -89,7 +89,6 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
               <tr key={`${i.plataforma}-${i.guia}`}>
                 <td {...fila(COLOR_PLATAFORMA[i.plataforma])}>
                   <span className="font-mono font-semibold">{i.guia ?? "—"}</span>
-                  {i.plataforma === "Dropi" && <span className="ml-2 rounded-full border border-amber/40 px-1.5 text-[10px] text-amber">Dropi</span>}
                 </td>
                 <td className="bg-tinte/[0.03] px-3 whitespace-nowrap">{i.fecha}</td>
                 <td className="bg-tinte/[0.03] px-3">{i.transportadora ?? "—"}</td>
@@ -99,7 +98,7 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
                 <td className="bg-tinte/[0.03] px-3 text-right num font-semibold text-green">{$(esperado(i))}</td>
                 <td className="rounded-r-xl bg-tinte/[0.03] px-3 text-right text-xs max-w-[26rem]">
                   {i.plataforma === "Dropi"
-                    ? "Orden entregada sin ganancia en la cartera — pedir a Dropi que la liquide"
+                    ? "Orden entregada sin ganancia en la cartera — pedir que la liquiden"
                     : i.flete_dev > 0
                       ? `Wallet solo tiene el cargo de flete de devolución (−${$(i.flete_dev)}) y la guía figura entregada — pedir a Effi que retroceda la devolución y liquide la venta`
                       : "Guía entregada sin ningún movimiento de recaudo en el wallet — pedir a Effi que la liquide"}
@@ -138,7 +137,7 @@ function Proyeccion({ filas, $, bodega }: { filas: NonNullable<Awaited<ReturnTyp
             return (
               <tr key={`${x.plataforma}-${x.estado}`}>
                 <td {...fila(COLOR_PLATAFORMA[x.plataforma])}>
-                  <span className="inline-flex items-center gap-2 font-semibold"><span className="size-2 rounded-full" style={{ background: c, boxShadow: `0 0 8px ${c}` }} />{x.plataforma}</span>
+                  <span className="inline-flex items-center gap-2 font-semibold"><span className="size-2 rounded-full" style={{ background: c, boxShadow: `0 0 8px ${c}` }} />{nombrePlataforma(x.plataforma)}</span>
                 </td>
                 <td className="bg-tinte/[0.03] px-3 text-right">{NOMBRE_ESTADO[x.estado] ?? x.estado}</td>
                 <td className="bg-tinte/[0.03] px-3 text-right num">{entero(x.n)}</td>
@@ -184,7 +183,7 @@ function Gastos({ titulo, lineas, meses, $, totalLabel, nomina }: {
 
   return (
     <Recuadro titulo={titulo}
-      ayuda="Se cargan a mano o por Excel: estos gastos se pagan por fuera de Effi y Dropi. Se toman los meses completos que toca el calendario (no se prorratean por días). La nómina va por quincena: 1–15 y 16–fin de mes.">
+      ayuda="Se cargan a mano o por Excel: estos gastos se pagan por fuera de las plataformas. Se toman los meses completos que toca el calendario (no se prorratean por días). La nómina va por quincena: 1–15 y 16–fin de mes.">
       {lineas.length ? (
         <table className="w-full border-separate border-spacing-y-1 text-sm">
           <thead>

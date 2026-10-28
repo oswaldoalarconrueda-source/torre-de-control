@@ -22,15 +22,15 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
   const P = d.plataformas;
   const delWallet = tarifa == null && Number(d.fulfillment_wallet ?? 0) !== 0;
   const full = tarifa != null
-    ? { total: P.effi * tarifa + d.comision_dropi, label: P.effi ? "Fulfillment" : "Comisión Dropi" }
+    ? { total: P.effi * tarifa + d.comision_dropi, label: P.effi ? "Fulfillment" : "Comisión" }
     : delWallet
-      ? { total: Number(d.fulfillment_wallet) + d.x4 + d.comision_dropi, label: P.effi ? "Fulfillment" : "Comisión Dropi" }
-      : { total: d.x4 + d.comision_dropi, label: P.effi ? "4x1000" : "Comisión Dropi" };
+      ? { total: Number(d.fulfillment_wallet) + d.x4 + d.comision_dropi, label: P.effi ? "Fulfillment" : "Comisión" }
+      : { total: d.x4 + d.comision_dropi, label: P.effi ? "4x1000" : "Comisión" };
   const fullSub = [
     P.effi ? (tarifa != null ? `${entero(P.effi)} guías Effi × ${$(tarifa)} por despacho`
       : delWallet ? "Lo que Effi cobró en el wallet por fulfillment (bodegaje, alistamiento, empaque)"
       : "4x1000 cobrado en el wallet sobre el recaudo") : null,
-    P.dropi ? `Dropi: comisión ${$(d.comision_dropi)} sobre ${entero(P.dropi_entregadas)} entregadas` : null,
+    P.dropi ? `Comisión ${$(d.comision_dropi)} sobre ${entero(P.dropi_entregadas)} entregadas` : null,
   ].filter(Boolean).join(" · ");
   const D = d.despachado, E = d.entregado;
   const ads = u?.publicidad;
@@ -42,7 +42,7 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
   return (
     <section className="space-y-3">
       <Fila titulo="Despachado" detalle="Todo lo montado en el periodo, sin importar su estado (sin anuladas ni canceladas)">
-        <Tarjeta titulo="Ventas" valor={entero(D.n)} ayuda={P.effi && P.dropi ? `Effi ${entero(P.effi)} · Dropi ${entero(P.dropi)}` : undefined} />
+        <Tarjeta titulo="Ventas" valor={entero(D.n)} ayuda={P.effi && P.dropi ? `Effi ${entero(P.effi)} · Otra ${entero(P.dropi)}` : undefined} />
         <Tarjeta titulo="Venta total (despachado)" badge={pctDe(D.venta, D.venta)} valor={$(D.venta)} ayuda={`${entero(D.n)} guías despachadas`} pie={prom(D.venta, D.n)} />
         <Tarjeta titulo="Costo mercancía (despachado)" badge={pctDe(D.costo, D.venta)} valor={$(D.costo)}
           ayuda={D.costo_estimadas ? `Incluye ${entero(D.costo_estimadas)} guías aún sin cobro de mercancía (costo estimado por producto). Devoluciones en 0.` : "Devoluciones en 0."}
@@ -55,10 +55,10 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
       </Fila>
 
       <Fila titulo="Entregado" detalle="Solo lo entregado al cliente (el wallet manda: si hay recaudo, cuenta como entregada)">
-        <Tarjeta titulo="Ventas entregadas" valor={entero(E.n)} ayuda={P.effi_entregadas && P.dropi_entregadas ? `Effi ${entero(P.effi_entregadas)} · Dropi ${entero(P.dropi_entregadas)}` : undefined} />
+        <Tarjeta titulo="Ventas entregadas" valor={entero(E.n)} ayuda={P.effi_entregadas && P.dropi_entregadas ? `Effi ${entero(P.effi_entregadas)} · Otra ${entero(P.dropi_entregadas)}` : undefined} />
         <Tarjeta titulo="Venta total (entregado)" badge={pctDe(E.venta, E.venta)} valor={$(E.venta)} pie={prom(E.venta, E.n)} />
         <Tarjeta titulo="Costo mercancía (entregado)" badge={pctDe(E.costo, E.venta)} valor={$(E.costo)}
-          ayuda={E.costo_estimadas ? `${entero(E.costo_estimadas)} entregadas sin cobro de mercancía aún (estimado)` : "Costo real: wallet Effi y precio de proveedor Dropi"}
+          ayuda={E.costo_estimadas ? `${entero(E.costo_estimadas)} entregadas sin cobro de mercancía aún (estimado)` : "Costo real: wallet Effi y precio de proveedor"}
           pie={prom(E.costo, E.n)} />
         <Tarjeta titulo="Flete (entregado)" badge={pctDe(E.flete, E.venta)} valor={$(E.flete)} pie={prom(E.flete, E.n)}>
           <div className="mt-2 space-y-0.5">

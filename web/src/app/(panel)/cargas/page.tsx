@@ -22,7 +22,7 @@ export default async function CargasPage() {
       <div className="mb-6">
         <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">📤 Cargar archivos</h1>
         <p className="text-sm text-muted mt-1.5">
-          Dropi y Meta todavía no tienen API: sube aquí sus archivos. Se leen en tu navegador, se guarda solo lo necesario (sin nombres, teléfonos ni direcciones de clientes)
+          Sube aquí los archivos que todavía no llegan por API. Se leen en tu navegador, se guarda solo lo necesario (sin nombres, teléfonos ni direcciones de clientes)
           y si un dato ya existía se actualiza con el archivo más reciente.
         </p>
       </div>

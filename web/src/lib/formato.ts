@@ -66,3 +66,6 @@ export const minutosDesde = (iso: string | null | undefined, ahora = Date.now())
   const m = Math.max(0, Math.round((ahora - Date.parse(iso)) / 60_000));
   return m < 1440 ? `${m} min` : `${Math.floor(m / 1440)} d`;
 };
+
+// Regla del dueño (28-oct): el nombre de la segunda plataforma no se muestra en ninguna parte de la Torre; sus datos sí.
+export const nombrePlataforma = (p: string) => (p === "Dropi" ? "Otra" : p);

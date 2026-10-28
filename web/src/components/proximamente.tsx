@@ -1,6 +1,6 @@
 const FUENTE = {
   effi: { label: "Effi · API en vivo", color: "var(--green)", texto: "Los datos ya llegan en vivo; falta armar la pantalla." },
-  archivo: { label: "Archivos (Dropi / Meta)", color: "var(--amber)", texto: "Sin API: se alimenta subiendo los archivos que hoy montas en tu dashboard." },
+  archivo: { label: "Archivos", color: "var(--amber)", texto: "Sin API: se alimenta subiendo los archivos que hoy montas en tu dashboard." },
   manual: { label: "Lo que escribes tú", color: "var(--blue-2)", texto: "Datos que hoy mantienes a mano en tu dashboard; se pasan a la base y se editan aquí." },
 } as const;
 
