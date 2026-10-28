@@ -45,7 +45,8 @@ export type Transportes = Record<string, { nombre?: string; guias?: number }>;
 type Paso = "ambas" | "remision" | "guia";
 // Lo que el agente calcula en Colombia para cada orden (plan.resumen.recomendacion).
 type Recomendacion = {
-  asesora: { id: number; regla: string } | null;
+  asesora: { id: number; regla: string; deMatriz?: boolean } | null;
+  coincide?: number | null; // la regla de las asesoras y la ⭐ de la matriz dicen la misma: va sola
   // Matriz de entrega (nivel "matriz", desde el 28-oct): % de entrega y flete por ciudad. Los planes de antes traen el
   // % de devolución histórico de Effi y sus guías (nivel "ciudad" o "departamento").
   numeros: { nivel: string | null; recomendada: number | null; opciones: { id: number; guias?: number; devol: number; entrega?: number; flete?: number | null }[] };
@@ -145,14 +146,19 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
 
   // Listas para crear: el agente ya sabe qué hacer (remisión y guía, o solo la guía de una remisión hecha a mano). No
   // son novedad aunque lleven rato esperando: salen con "Ejecutar ahora" o con "Ejecutar" en cada una.
-  // Colombia: la entrega en oficina de Inter o Servientrega la crea el agente solo; no pasa por la lista.
+  // Colombia: va sola (la crea el agente en la próxima corrida) la entrega en oficina de Inter o Servientrega y la orden
+  // en que la regla de las asesoras y la ⭐ de la matriz coinciden (también la guía de una remisión hecha a mano).
   // Si la ciudad tiene una condición de las asesoras, la orden no va sola (salvo "solo a oficina de Inter" yendo a Inter).
   const cumpleCondicion = (o: OrdenAuto) =>
     !o.restriccion || (o.restriccion.tipo === "inter_oficina" && oficinaCO(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0]) === 4);
-  const vaSola = (o: OrdenAuto) => cuenta === "TIENDA_CO" && o.plan_estado === "lista" && o.estado === "sin_remision" &&
-    oficinaCO(o.plan?.remision?.direccion_cliente) !== null && cumpleCondicion(o);
+  const coincide = (o: OrdenAuto) =>
+    Number(((o.plan?.resumen as Record<string, unknown> | undefined)?.recomendacion as { coincide?: number } | undefined)?.coincide) || null;
+  const vaSola = (o: OrdenAuto) => cuenta === "TIENDA_CO" && o.plan_estado === "lista" && o.decision !== "descartar" && cumpleCondicion(o) && (
+    (o.estado === "sin_remision" && (oficinaCO(o.plan?.remision?.direccion_cliente) !== null || !!coincide(o))) ||
+    (o.estado === "sin_guia" && !!o.plan?.remision_existente && !!coincide(o)));
+  // Las de remisión → guía que van solas siguen en su lista (con el aviso) hasta que el agente haga la guía.
   const paraCrear = (o: OrdenAuto) =>
-    o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar" && !vaSola(o);
+    o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar" && !(vaSola(o) && o.estado === "sin_remision");
   // Una orden que ya tiene remisión y guía está resuelta: el error de un intento anterior (por ejemplo una guía que
   // falló y se hizo después) ya no cuenta como novedad ni se muestra. Igual el error de la remisión cuando alguien la
   // hizo a mano en Effi (la sincronización ya la trae) o cuando anularon la orden.
@@ -496,7 +502,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
             ? creaEnEffi
               ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una."
               : "Órdenes que el agente pasa a remisión (y a guía si quieres) cuando pulsas “Ejecutar” en cada una: ahí escoges el paso y la transportadora." +
-                (cuenta === "TIENDA_CO" ? ` La entrega en oficina de Interrapidísimo o Servientrega va sola${solas.length ? ` (${entero(solas.length)} en camino)` : ""}.` : "")
+                (cuenta === "TIENDA_CO" ? ` Van solas la entrega en oficina de Interrapidísimo o Servientrega y las que la asesora y la matriz mandan por la misma transportadora${solas.length ? ` (${entero(solas.length)} en camino)` : ""}.` : "")
             : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía.") },
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
@@ -610,7 +616,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                     {o.estado === "sin_remision" && esperandoAgente(o) && (
                       <div className="mt-1 text-[11px] text-blue-2">⏳ El agente la prepara en la próxima corrida</div>
                     )}
-                    {vaSola(o) && <div className="mt-1 text-[11px] text-green">🏢 Va sola a la oficina en la próxima corrida</div>}
+                    {vaSola(o) && (
+                      <div className="mt-1 text-[11px] text-green">
+                        {o.estado === "sin_remision" && oficinaCO(o.plan?.remision?.direccion_cliente) !== null
+                          ? "🏢 Va sola a la oficina en la próxima corrida"
+                          : `🤝 Va sola en la próxima corrida: asesora y matriz dicen ${String(o.plan?.resumen?.transportadora ?? "la misma").split("|")[0].trim()}`}
+                      </div>
+                    )}
                     {o.decision === "descartar" && <div className="mt-1 text-[11px] text-muted">Descartada por {o.decision_por ?? "una persona"}</div>}
                     {o.plan_estado === "creada" && (
                       <div className="mt-1 text-[11px] text-green">✓ Hecha por la Torre: sale de aquí cuando Effi lo confirme, en unos minutos</div>
