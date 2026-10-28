@@ -674,7 +674,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
     await resultado('error', motivo, { paso: 'remision' });
     return { creada: false, motivo };
   }
-  if (!remision?.id && !PAISES_REMISION.includes(cuenta) && !ofi && (automatico || !PAISES_POR_ORDEN.includes(cuenta))) {
+  if (!remision?.id && !PAISES_REMISION.includes(cuenta) && !ofi && !coincide && (automatico || !PAISES_POR_ORDEN.includes(cuenta))) {
     const motivo = 'En este país la Torre todavía no crea remisiones: hazla en Effi y la Torre hace la guía.';
     await ev('remision', false, motivo);
     await resultado('error', motivo, { paso: 'remision' });
