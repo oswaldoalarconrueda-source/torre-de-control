@@ -3,6 +3,7 @@ import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { infoCuenta, ordenCuenta } from "@/lib/paises";
 import { haceCuanto } from "@/lib/formato";
 import { TableroProveeduria, type DatosProveeduria } from "@/components/tablero-proveeduria";
+import { SeguimientoTiendas } from "@/components/seguimiento-tiendas";
 
 // 🏭 Proveeduría (Distrilatam): lo que nos compran las tiendas. Una empresa a la vez (DistriGuatemala, DistriLab,
 // DistriCostaRica): aunque dos sean de Guatemala, nunca se suman. Las cifras son los indicadores que Effi ya calcula,
@@ -53,6 +54,7 @@ export default async function ProveeduriaPage({ searchParams }: PageProps<"/prov
       ) : (
         <TableroProveeduria cuenta={cuenta} datos={datos} />
       )}
+      {cuenta && <SeguimientoTiendas key={cuenta} cuenta={cuenta} />}
     </div>
   );
 }

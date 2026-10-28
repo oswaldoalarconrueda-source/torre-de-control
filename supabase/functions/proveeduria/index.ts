@@ -7,7 +7,8 @@
 //   (se guardan solo con el periodo "mes").
 // Las empresas van en paralelo y dentro de cada una las consultas una tras otra (Effi limita las peticiones por llave).
 // Además trae sus remisiones de venta (prov_remisiones) por la API, para "Datos" de la proveeduría: las de los últimos
-// 2 días en cada pasada y, de a 20 días, el historial desde el 1 de enero (prov_sync.avance).
+// 2 días en cada pasada y, de a 30 días, el historial desde el 1 de enero (prov_sync.avance). Cada remisión trae su
+// centro de costos: así la pestaña separa por mayor y drop y sigue a cada tienda.
 // POST ...?solo=ventas  ← cron cada 10 min: solo las remisiones (sin indicadores).
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -108,6 +109,7 @@ async function ventas(cuenta: { slug: string; tz_offset_min: number }, key: stri
       transaccion_dropshipping: x.transaccion_dropshipping ? Number(x.transaccion_dropshipping) : null,
       empresa_distribuidor: x.empresa_distribuidor ? Number(x.empresa_distribuidor) : null, distribuidor: x.nombre_empresa_distribuidor ?? null,
       cliente: x.nombre_cliente ?? null, ciudad: x.nombre_ciudad ?? null, provincia: x.nombre_provincia ?? null,
+      centro_costos: x.centro_costos ? Number(x.centro_costos) : null, nombre_centro_costos: x.nombre_centro_costos ?? null,
       estado: x.estado ?? null, estado_dropshipping: x.estado_dropshipping ?? null, vigente: String(x.vigente) !== '0', actualizado_en: new Date().toISOString(),
     }));
     if (filas.length) await sb('prov_remisiones?on_conflict=cuenta,sucursal,id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify(filas) });
@@ -124,7 +126,7 @@ async function cargarVentas(cuenta: { slug: string; tz_offset_min: number }, key
   const [st] = await sb(`prov_sync?cuenta=eq.${cuenta.slug}&select=avance`);
   let historial = 0;
   if (st && Date.parse(st.avance) < reciente) {
-    const a = Date.parse(st.avance), b = Math.min(a + 20 * DAY_MS, reciente);
+    const a = Date.parse(st.avance), b = Math.min(a + 30 * DAY_MS, reciente);
     historial = await ventas(cuenta, key, a, b);
     await sb(`prov_sync?cuenta=eq.${cuenta.slug}`, { method: 'PATCH', body: JSON.stringify({ avance: new Date(b).toISOString() }) });
   }
