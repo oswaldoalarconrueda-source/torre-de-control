@@ -46,7 +46,9 @@ type Paso = "ambas" | "remision" | "guia";
 // Lo que el agente calcula en Colombia para cada orden (plan.resumen.recomendacion).
 type Recomendacion = {
   asesora: { id: number; regla: string } | null;
-  numeros: { nivel: string | null; recomendada: number | null; opciones: { id: number; guias: number; devol: number }[] };
+  // Matriz de entrega (nivel "matriz", desde el 28-oct): % de entrega y flete por ciudad. Los planes de antes traen el
+  // % de devolución histórico de Effi y sus guías (nivel "ciudad" o "departamento").
+  numeros: { nivel: string | null; recomendada: number | null; opciones: { id: number; guias?: number; devol: number; entrega?: number; flete?: number | null }[] };
 };
 const CO_HABILITADAS = [1, 4, 6, 10];
 // Igual que oficinaCO del agente (auto-convertir): entrega en oficina de Inter (4) o Servientrega (6).
@@ -263,8 +265,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
   const puedeEjecutar = (o: OrdenAuto) =>
     porOrden && (o.plan_estado === "lista" || o.plan_estado === "error") &&
     ((!!o.plan?.remision && creaRemision) || (!!o.plan?.remision_existente && !!o.plan?.guia));
-  // Colombia: lo que dice la asesora y la ⭐ por números (menor devolución saliendo de Bogotá, datos de Effi). Solo se
-  // ofrecen Envía, Inter, Servientrega y Coordinadora con recaudo, cada una con su % de devolución hacia ese destino.
+  // Colombia: lo que dice la asesora y la ⭐ de la matriz de entrega (mayor % de entrega a esa ciudad). Solo se ofrecen
+  // Envía, Inter, Servientrega y Coordinadora con recaudo, cada una con su % de entrega y su flete hacia ese destino.
   const recomendacion = (o: OrdenAuto) => (o.plan?.resumen as Record<string, unknown> | undefined)?.recomendacion as Recomendacion | undefined;
   const opcionesPara = (o: OrdenAuto) => {
     if (cuenta !== "TIENDA_CO") return opcionesTransporte.map((t) => ({ ...t, etiqueta: `${t.nombre} (${t.guias} guías)` }));
@@ -273,10 +275,14 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
       .map((t) => {
         const ruta = rec?.numeros.opciones.find((x) => Number(x.id) === t.id);
         const marcas = `${t.id === rec?.asesora?.id ? " · asesora" : ""}${t.id === rec?.numeros.recomendada ? " ⭐" : ""}`;
-        return { ...t, devol: ruta ? Number(ruta.devol) : 999,
-          etiqueta: `${t.nombre.split(" · ")[0].replace(" EFFI", "")}${marcas} — ${ruta ? `${pct(ruta.devol)} dev. (${entero(Number(ruta.guias))} guías)` : "sin datos"}` };
+        const matriz = ruta?.entrega != null;
+        const conDatos = matriz ? ruta.flete != null : !!ruta;
+        return { ...t, entrega: !conDatos ? -1 : matriz ? Number(ruta.entrega) : 100 - Number(ruta!.devol),
+          etiqueta: `${t.nombre.split(" · ")[0].replace(" EFFI", "")}${marcas} — ${!conDatos ? "sin datos"
+            : matriz ? `${pct(Number(ruta.entrega))} entrega · flete ${dinero(Number(ruta.flete), cuenta)}`
+            : `${pct(ruta!.devol)} dev. (${entero(Number(ruta!.guias))} guías)`}` };
       })
-      .sort((a, b) => a.devol - b.devol);
+      .sort((a, b) => b.entrega - a.entrega);
   };
   // Al pulsar "Ejecutar": por defecto los dos pasos (o solo la guía si la remisión ya existe) y la transportadora del plan.
   function abrirEjecutar(o: OrdenAuto) {
@@ -642,9 +648,15 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                                       <div><span className="text-muted">Asesora:</span>{" "}
                                         {rec.asesora ? <b>{nombre(rec.asesora.id)}</b> : <span className="text-muted">sin regla para esta ciudad</span>}
                                         {rec.asesora && <span className="text-muted"> ({rec.asesora.regla})</span>}</div>
-                                      <div><span className="text-muted">⭐ Números:</span>{" "}
-                                        {estrella ? <><b>{nombre(rec.numeros.recomendada)}</b> <span className="text-muted">{pct(estrella.devol)} dev. · {rec.numeros.nivel === "departamento" ? "por departamento" : "en la ciudad"}</span></>
-                                          : <span className="text-muted">pocos datos de esta ruta</span>}</div>
+                                      {rec.numeros.nivel === "matriz" || !rec.numeros.nivel ? (
+                                        <div><span className="text-muted">⭐ Matriz de entrega:</span>{" "}
+                                          {estrella?.entrega != null ? <><b>{nombre(rec.numeros.recomendada)}</b> <span className="text-muted">{pct(estrella.entrega)} entrega{estrella.flete != null ? ` · flete ${dinero(estrella.flete, cuenta)}` : ""}</span></>
+                                            : <span className="text-muted">esta ciudad no está en la matriz</span>}</div>
+                                      ) : (
+                                        <div><span className="text-muted">⭐ Números:</span>{" "}
+                                          {estrella ? <><b>{nombre(rec.numeros.recomendada)}</b> <span className="text-muted">{pct(estrella.devol)} dev. · {rec.numeros.nivel === "departamento" ? "por departamento" : "en la ciudad"}</span></>
+                                            : <span className="text-muted">pocos datos de esta ruta</span>}</div>
+                                      )}
                                     </div>
                                   )}
                                   <label className="text-[10px] text-muted">

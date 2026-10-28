@@ -64,7 +64,7 @@ const conAbono = (nombre: unknown) => String(nombre ?? '').trim().startsWith('**
 // Colombia (reglas del dueño, 27-oct; ver tools/propuestas/reglas-envio-colombia.md). La mercancía sale siempre de
 // Bogotá. Transportadoras habilitadas: 1 Envía, 4 Inter, 6 Servientrega, 10 Coordinadora (sin TCC ni Domina).
 // La persona escoge en "Ejecutar"; aquí solo se arma lo que se le muestra: la opción de la asesora logística y la ⭐
-// recomendada por números (menor devolución saliendo de Bogotá, datos de Effi en auto_rutas).
+// recomendada por la matriz de entrega (mayor % de entrega a esa ciudad, auto_matriz_entrega; desde el 28-oct).
 const CO_HABILITADAS = [1, 4, 6, 10];
 const VALLE_ABURRA = ['MEDELLIN', 'ENVIGADO', 'ITAGUI', 'SABANETA', 'LA ESTRELLA', 'CALDAS', 'COPACABANA', 'GIRARDOTA', 'BARBOSA'];
 // Entrega en oficina de Inter (4) o de Servientrega (6): en Colombia esas órdenes van solas, sin pasar por la lista
@@ -95,9 +95,9 @@ function asesoraCO(direccion: string, ciudad: string, dpto: string, soloInter: b
   return null;
 }
 async function recomendacionCO(direccion: string, ciudad: string, dpto: string) {
-  const r = (await rpc('auto_ruta', { p_destino: ciudad ?? '', p_dpto: dpto ?? '' })) as Json;
+  const r = (await rpc('auto_matriz_ruta', { p_destino: ciudad ?? '', p_dpto: dpto ?? '' })) as Json;
   const opciones = ((r?.opciones ?? []) as Json[]).filter((o) => CO_HABILITADAS.includes(Number(o.id)));
-  const recomendada = opciones.find((o) => Number(o.guias) >= 100)?.id ?? null;
+  const recomendada = CO_HABILITADAS.includes(Number(r?.recomendada)) ? Number(r.recomendada) : null;
   return { asesora: asesoraCO(direccion, ciudad, dpto, !!r?.solo_inter), numeros: { nivel: r?.nivel ?? null, recomendada, opciones } };
 }
 // Transportadora por defecto para Colombia: la de la asesora; si no hay, la ⭐; si no, la que traía el plan.
@@ -105,7 +105,7 @@ const escogerCO = (reglas: Json, rec: Awaited<ReturnType<typeof recomendacionCO>
   const id = rec.asesora?.id ?? rec.numeros.recomendada;
   const t = id ? reglas?.transportes?.[String(id)] : null;
   if (!t) return porDefecto;
-  return { t, motivo: rec.asesora ? `Asesora: ${rec.asesora.regla}` : '⭐ Menor devolución saliendo de Bogotá' };
+  return { t, motivo: rec.asesora ? `Asesora: ${rec.asesora.regla}` : '⭐ Mayor % de entrega a esa ciudad (matriz de entrega)' };
 };
 // Valor declarado en Colombia según la transportadora: Servientrega e Inter el valor del recaudo (Inter mínimo $45.000);
 // Envía $10.000; Coordinadora el valor del pedido hasta $100.000.
