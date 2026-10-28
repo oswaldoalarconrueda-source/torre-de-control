@@ -3,6 +3,7 @@ import { leerFiltros } from "@/lib/filtros";
 import { infoCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { Agente, type DatosAuto, type Transportes } from "@/components/agente";
+import { FabricaAgente, type DatosFabrica } from "@/components/fabrica-agente";
 
 // 🤖 Agente de órdenes de venta, país por país (empieza por Guatemala). Por ahora vigila: muestra cada orden con
 // su remisión y su guía, y marca lo que falta o no cumple las reglas. Crear en Effi se activa más adelante.
@@ -12,9 +13,10 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
   const f = leerFiltros({ ...sp, c: typeof sp.c === "string" ? sp.c : "TIENDA_GT" });
   const cuenta = f.cuentas?.[0] ?? "TIENDA_GT";
   const supabase = await createClient();
-  const [{ data: config }, { data, error }] = await Promise.all([
+  const [{ data: config }, { data, error }, { data: fabrica }] = await Promise.all([
     supabase.from("auto_config").select("cuenta,modo,transportes:reglas->transportes").eq("cuenta", cuenta).maybeSingle(),
     supabase.rpc("auto_lista", { p_cuenta: cuenta, p_dias: 3 }),
+    supabase.rpc("auto_fabrica", { p_cuenta: cuenta }),
   ]);
   const pais = infoCuenta(cuenta);
 
@@ -26,6 +28,8 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
         f={f}
         conFechas={false}
       />
+      {/* Fábrica de hoy (todos los países): orden → remisión → guía, por agente y por humano. */}
+      {fabrica && <div className="mb-4"><FabricaAgente d={fabrica as DatosFabrica} /></div>}
       {/* "vigilar" = solo se traen sus órdenes y remisiones (para En vivo); el agente de ese país sigue en prueba. */}
       {!config || config.modo === "vigilar" ? (
         <div className="space-y-4">
