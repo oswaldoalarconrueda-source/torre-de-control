@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { createClient, exigirSocio } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros, type Filtros } from "@/lib/filtros";
 import { diaCorto, entero, haceCuanto, pct } from "@/lib/formato";
@@ -28,6 +29,55 @@ type Resumen = {
 };
 
 const COLOR: Record<string, string> = { CO: "#f5c542", EC: "#2f7bff", GT: "#36c5f0", CR: "#ff5a6a" };
+
+// CPA real por día: gasto de Meta del día ÷ pedidos que entraron a LucidSales ese día (📝 Pedidos Lucid). Solo salen
+// los países con pedidos cargados; un día sin pedidos queda en blanco (no es CPA infinito).
+function CpaReal({ porDia, pedidos }: { porDia: Dia[]; pedidos: { cuenta: string; fecha: string; pedidos: number }[] }) {
+  const cuentas = [...new Set(pedidos.map((p) => p.cuenta))].sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
+  if (!cuentas.length) return null;
+  const gasto = new Map(porDia.map((d) => [`${d.cuenta}|${d.fecha}`, d]));
+  const ped = new Map(pedidos.map((p) => [`${p.cuenta}|${p.fecha}`, p.pedidos]));
+  const fechas = [...new Set(pedidos.map((p) => p.fecha))].sort().reverse();
+  const tot = (c: string) => fechas.reduce((s, f) => {
+    const n = ped.get(`${c}|${f}`); const g = gasto.get(`${c}|${f}`);
+    return n ? { pedidos: s.pedidos + n, cop: s.cop + Number(g?.monto ?? 0), local: s.local + Number(g?.local ?? 0) } : s;
+  }, { pedidos: 0, cop: 0, local: 0 });
+  const celda = (c: string, n: number | undefined, enCop: number, local: number | null) => (
+    <>
+      <td className="text-right num text-muted"><Doble local={local} enCop={enCop} cuenta={c} /></td>
+      <td className="text-right num">{n ? entero(n) : "—"}</td>
+      <td className="text-right num">{n ? <Doble local={local == null ? null : local / n} enCop={enCop / n} cuenta={c} fuerte /> : "—"}</td>
+    </>
+  );
+  return (
+    <Panel titulo="CPA real por día" detalle="Gasto en Meta del día ÷ pedidos que entraron a LucidSales ese día (los llena la encargada en 📝 Pedidos Lucid)" className="mb-3">
+      <TablaScroll>
+        <thead>
+          <tr>
+            <th>Día</th>
+            {cuentas.map((c) => <th key={c} colSpan={3} className="text-center">{infoCuenta(c).bandera} {infoCuenta(c).nombre}</th>)}
+          </tr>
+          <tr>
+            <th />
+            {cuentas.map((c) => <Fragment key={c}><th className="text-right">Gasto</th><th className="text-right">Pedidos</th><th className="text-right">CPA</th></Fragment>)}
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="font-semibold">
+            <td>Periodo</td>
+            {cuentas.map((c) => { const t = tot(c); return <Fragment key={c}>{celda(c, t.pedidos, t.cop, infoCuenta(c).divisa === "COP" ? null : t.local)}</Fragment>; })}
+          </tr>
+          {fechas.map((f) => (
+            <tr key={f}>
+              <td>{diaCorto(f)}</td>
+              {cuentas.map((c) => { const g = gasto.get(`${c}|${f}`); return <Fragment key={c}>{celda(c, ped.get(`${c}|${f}`), Number(g?.monto ?? 0), g?.local ?? null)}</Fragment>; })}
+            </tr>
+          ))}
+        </tbody>
+      </TablaScroll>
+    </Panel>
+  );
+}
 // La publicidad de la sociedad empieza en julio de 2026: lo anterior no es de Joalix AA Group.
 const INICIO_PUBLICIDAD = "2026-07-01";
 
@@ -42,7 +92,11 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
   const hasta = f.hasta > hoy ? hoy : f.hasta;
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("publicidad_resumen", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta });
+  const [{ data, error }, { data: pedidos }] = await Promise.all([
+    supabase.rpc("publicidad_resumen", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta }),
+    // Pedidos de LucidSales por día (📝 Pedidos Lucid): con el gasto del mismo día dan el CPA real.
+    supabase.from("app_pedidos_diarios").select("cuenta,fecha,pedidos").gte("fecha", f.desde).lte("fecha", hasta),
+  ]);
   const r = data as Resumen | null;
   const tiendas = [...(r?.por_tienda ?? [])].sort((a, b) => ordenCuenta(a.cuenta) - ordenCuenta(b.cuenta));
   const paises = tiendas.map((t) => ({ cuenta: t.cuenta, nombre: infoCuenta(t.cuenta).nombre, color: COLOR[infoCuenta(t.cuenta).pais] ?? "#8a94a8", divisa: infoCuenta(t.cuenta).divisa }));
@@ -89,6 +143,9 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
           ? <GastoPorDia filas={r.por_dia} paises={paises} />
           : <Vacio>Sin gasto en este periodo.</Vacio>}
       </Panel>
+
+      <CpaReal porDia={r?.por_dia ?? []} pedidos={(pedidos ?? []).filter((p) => !f.cuentas || f.cuentas.includes(p.cuenta as string))
+        .map((p) => ({ cuenta: p.cuenta as string, fecha: p.fecha as string, pedidos: Number(p.pedidos) }))} />
 
       {unica && r?.por_dia.length ? (
         <Panel

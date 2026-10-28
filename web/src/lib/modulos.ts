@@ -10,8 +10,11 @@ export const MODULOS = [
   { id: "dinero", nombre: "Dinero", detalle: "Wallet y PyG, Wallet en vivo y guías sin liquidar", rutas: ["/dinero", "/wallet-en-vivo", "/sin-liquidar"] },
   { id: "automatizacion", nombre: "Agente", detalle: "Órdenes de venta y novedades del agente", rutas: ["/agente"] },
   { id: "proveeduria", nombre: "Proveeduría", detalle: "Tablero de Distrilatam: ventas a las tiendas, inventario, compras y cartera", rutas: ["/proveeduria"] },
+  { id: "pedidos_lucid", nombre: "Pedidos Lucid", detalle: "Llenar cada día los pedidos de LucidSales por país (exclusivo: ni los socios lo ven si no se les marca)", rutas: ["/pedidos-lucid"], exclusivo: true },
 ] as const;
 export type ModuloId = (typeof MODULOS)[number]["id"];
+// Módulos exclusivos: solo el dueño y a quien se le marquen; a los socios no les llegan solos.
+const EXCLUSIVOS = new Set<string>(MODULOS.filter((m) => "exclusivo" in m && m.exclusivo).map((m) => m.id));
 
 export type Rol = "owner" | "socio" | "empleado" | "proveedor" | "pendiente" | "rechazado";
 export const ROLES: Record<"socio" | "empleado" | "proveedor", { nombre: string; detalle: string }> = {
@@ -23,7 +26,8 @@ export const ROLES: Record<"socio" | "empleado" | "proveedor", { nombre: string;
 export type Acceso = { rol: Rol; activo: boolean; modulos: string[] };
 
 export const tieneModulo = (u: Acceso, m: ModuloId) =>
-  u.activo && (u.rol === "owner" || u.rol === "socio" || ((u.rol === "empleado" || u.rol === "proveedor") && u.modulos.includes(m)));
+  u.activo && (u.rol === "owner" || (u.rol === "socio" && !EXCLUSIVOS.has(m)) ||
+    ((u.rol === "empleado" || u.rol === "proveedor") && u.modulos.includes(m)));
 
 // Dueño y socios: pantallas que no se le dan a empleados ni proveedores (p. ej. 📢 Publicidad).
 export const esSocio = (u: Acceso) => u.activo && (u.rol === "owner" || u.rol === "socio");

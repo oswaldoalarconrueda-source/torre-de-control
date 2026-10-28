@@ -23,6 +23,7 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/oficina", label: "Disp. en Oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
   { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades", noProveeduria: true },
   { href: "/agente", label: "Agente", emoji: "🤖", estado: "vivo", modulo: "automatizacion" },
+  { href: "/pedidos-lucid", label: "Pedidos Lucid", emoji: "📝", estado: "vivo", modulo: "pedidos_lucid", noProveeduria: true },
   { href: "/proveeduria", label: "Proveeduría", emoji: "🏭", estado: "vivo", modulo: "proveeduria", soloProveeduria: true },
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
   { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true, soloSocios: true },
