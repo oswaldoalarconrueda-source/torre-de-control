@@ -1,5 +1,6 @@
 -- Agente:
--- 1. Rutas por transportadora (datos de Effi de todos sus clientes, saliendo de Bogotá, con recaudo, may–ago 2026)
+-- 1. Rutas por transportadora (datos de Effi de todos sus clientes, saliendo de Bogotá, con recaudo). Meses comparables
+--    para octubre: junio y julio 2026 (agosto no, por el terremoto; septiembre Effi no lo trae por ciudad de destino)
 --    para la ⭐ "recomendada por números" en el Ejecutar de Colombia. Los datos se cargan aparte (no van al repo).
 -- 2. "Ejecutar" orden por orden lo puede pulsar cualquiera que tenga el módulo Agente de ese país (antes solo el dueño).
 create or replace function public.auto_norm(t text) returns text language sql immutable as $$
