@@ -55,9 +55,9 @@ La lista completa de eventos (unos 190, de todos los módulos) aparece en el sel
 | Cuenta | Estado |
 |---|---|
 | TIENDA_CO (NATURALFITT CO, ID 58004) | ✅ 13/13, el 2026-10-23 |
-| TIENDA_EC (NATURALFITT EC, ID 57380) | ✅ 13/13, el 2026-10-23 |
+| TIENDA_EC (NATURALFITT EC, ID 57380) | ✅ **151/151**: todos los eventos que Effi deja crear en esa empresa (13 del 2026-10-23 + 138 del 2026-10-28) |
 | TIENDA_GT (NATURALFITT GT, ID 56172) | ✅ **103/103**: todos los eventos que Effi deja crear en esa empresa (los 13 de siempre + 90 creados el 2026-10-28, pedido del dueño "aunque hoy no se usen") |
-| TIENDA_CR | pendiente |
+| TIENDA_CR (NATURALFITT CR, ID 59798) | ✅ **103/103**: todos los eventos que Effi deja crear (13 que ya estaban + 90 del 2026-10-28) |
 | VALKA_GT (VALKA GT, ID 58130, sociedad Valka) | ✅ 13/13, el 2026-10-25 (nombre "Torre Control - <evento>": Effi quita el "·") |
 | DISTRI_GT (DISTRIGUATEMALA, ID 25084, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
 | DISTRI_CR (DISTRICOSTARICA, ID 40014, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
@@ -129,3 +129,11 @@ Más 33 de inventario y compras (pedido del 2026-10-26):
   - La respuesta es `{respuesta: "OK", mensaje: <secreto>}`; el secreto no se guarda.
   - Con `fetch` sin la cabecera `X-Requested-With`, Effi redirige a `/app` y no crea nada.
 - Los eventos que la Torre todavía no usa solo se guardan en `effi_webhook_events` (`effi_webhook_aplicar` no los toca).
+
+**Costa Rica y Ecuador, todos los eventos (2026-10-28):**
+- Se hizo igual que en Guatemala.
+- **Costa Rica:** ya tenía los 13 de siempre hacia `TIENDA_CR`. Se crearon 90 más, para un total de 103.
+- **Ecuador:** permite 151 eventos porque tiene más módulos (nómina, ubicaciones de bodega…). Se crearon 138, para un total de 151.
+  - Effi estuvo lento: un intento falló por conexión y se repitió.
+- **Verificado en la lista de Effi:** un webhook por evento, sin repetidos, todos "Vigente - Activo".
+- **Ojo al leer la lista:** si se pide una página después de la última, Effi devuelve otra vez la última. Hay que cortar cuando los ids se repiten.
