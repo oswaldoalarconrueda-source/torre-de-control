@@ -1,17 +1,22 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
 import { FileText, ShoppingCart, Truck } from "lucide-react";
 import { entero } from "@/lib/formato";
 
-// 🤖 Agente en vivo: el camino de hoy orden → remisión → guía en una franja compacta. Entre cada etapa van dos carriles
-// rectos, arriba lo que hizo el Agente y abajo lo que hizo una persona (Humano), con paquetes que corren (más paquetes,
-// más volumen). Datos de auto_fabrica: quién lo hizo sale de la bitácora del agente.
+// 🤖 Agente en vivo: el camino de hoy orden → remisión → guía en una franja compacta. Entre cada etapa va una doble
+// hélice como la del ADN: una hebra es lo que hizo el Agente y la otra lo que hizo una persona (Humano); salen juntas
+// de una etapa, se enredan girando y se vuelven a unir al llegar a la siguiente. La hebra más gruesa es la que más
+// hizo y los paquetes que corren por cada una dicen cuánto volumen lleva. Datos de auto_fabrica: quién lo hizo sale de
+// la bitácora del agente.
 export type DatosFabrica = {
   ordenes_hoy: number; anuladas_hoy: number; sin_remision: number;
   rem_agente: number; rem_humano: number; sin_guia_agente: number; sin_guia_humano: number;
   guia_aa: number; guia_ah: number; guia_ha: number; guia_hh: number;
 };
 
-const C = { orden: "34 211 238", agenteRem: "90 162 255", humanoRem: "245 166 35", agenteGuia: "47 210 143", humanoGuia: "180 140 255" };
+// El humano siempre naranja; el agente azul hasta la remisión y verde hasta la guía.
+const C = { orden: "34 211 238", agenteRem: "90 162 255", agenteGuia: "47 210 143", humano: "255 145 40" };
 const pct = (a: number, b: number) => (a + b ? Math.round((a / (a + b)) * 100) : 0);
 
 function Etapa({ Icono, titulo, valor, sub, color, activa }: { Icono: typeof Truck; titulo: string; valor: number; sub: string; color: string; activa?: boolean }) {
@@ -31,26 +36,103 @@ function Etapa({ Icono, titulo, valor, sub, color, activa }: { Icono: typeof Tru
   );
 }
 
-// Un carril recto con su etiqueta encima (quién y cuántos); el detalle va en el globo al pasar el mouse.
-function Carril({ quien, n, color, detalle, rapido }: { quien: "Agente" | "Humano"; n: number; color: string; detalle?: string; rapido?: boolean }) {
-  const paquetes = n ? Math.min(4, Math.max(1, Math.ceil(n / 60))) : 0;
+// Doble hélice dibujada en un lienzo de 200 × 44 que se estira al ancho del conector. Cada cuadro gira la fase: la hebra
+// que pasa por delante se ve entera y la de atrás tenue, y los peldaños unen las dos (mitad de cada color).
+const W = 200, H = 44, MEDIO = H / 2, AMPLITUD = 15, PERIODO = 64;
+function Helice({ agente, humano, colorAgente, rapido }: { agente: number; humano: number; colorAgente: string; rapido?: boolean }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const total = agente + humano;
+  const grosor = (n: number) => (n ? 1.6 + (total ? (n / total) * 2.4 : 0) : 1.2);
+  const paquetes = (n: number) => (n ? Math.min(3, Math.max(1, Math.ceil(n / 80))) : 0);
+  const pa = paquetes(agente), ph = paquetes(humano);
+
+  useEffect(() => {
+    const svg = ref.current;
+    if (!svg) return;
+    const el = (k: string) => svg.querySelector<SVGPathElement>(`[data-k="${k}"]`);
+    const quieto = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const giro = rapido ? 1.2 : 3.2; // segundos por vuelta
+    const viaje = rapido ? 1.1 : 2.8; // segundos que tarda un paquete de una etapa a la otra
+    // Las hebras salen juntas de una etapa y se vuelven a unir en la siguiente (la apertura sigue una campana).
+    const abre = (x: number) => Math.pow(Math.sin((Math.PI * x) / W), 0.7);
+    const y = (x: number, fase: number, signo: 1 | -1) => MEDIO + signo * AMPLITUD * abre(x) * Math.sin((2 * Math.PI * x) / PERIODO + fase);
+    const p = (n: number) => n.toFixed(1);
+    let raf = 0;
+    const pintar = (t: number) => {
+      const fase = quieto ? 0 : ((t / 1000) * 2 * Math.PI) / giro;
+      // Hebras partidas en tramos de adelante y de atrás (cuando cos > 0 la hebra del agente va adelante).
+      const tramos = { af: "", ab: "", hf: "", hb: "" };
+      let previo: boolean | null = null;
+      for (let x = 0; x <= W; x += 2) {
+        const adelante = Math.cos((2 * Math.PI * x) / PERIODO + fase) > 0;
+        const ya = y(x, fase, 1), yh = y(x, fase, -1);
+        const cambio = adelante !== previo;
+        if (cambio && previo !== null) {
+          // Cierra el tramo anterior en este punto para que la hebra no quede cortada.
+          tramos[previo ? "af" : "ab"] += ` L${p(x)} ${p(ya)}`;
+          tramos[previo ? "hb" : "hf"] += ` L${p(x)} ${p(yh)}`;
+        }
+        const ka = adelante ? "af" : "ab", kh = adelante ? "hb" : "hf";
+        tramos[ka] += `${cambio ? " M" : " L"}${p(x)} ${p(ya)}`;
+        tramos[kh] += `${cambio ? " M" : " L"}${p(x)} ${p(yh)}`;
+        previo = adelante;
+      }
+      // Peldaños: de la hebra del agente al centro en su color y del centro a la del humano en naranja.
+      let pa1 = "", ph1 = "";
+      for (let x = 6; x < W; x += 7) {
+        const ya = y(x, fase, 1), yh = y(x, fase, -1);
+        if (Math.abs(ya - yh) < 3) continue;
+        pa1 += ` M${p(x)} ${p(ya)} L${p(x)} ${p(MEDIO)}`;
+        ph1 += ` M${p(x)} ${p(MEDIO)} L${p(x)} ${p(yh)}`;
+      }
+      el("af")?.setAttribute("d", tramos.af); el("ab")?.setAttribute("d", tramos.ab);
+      el("hf")?.setAttribute("d", tramos.hf); el("hb")?.setAttribute("d", tramos.hb);
+      el("pa")?.setAttribute("d", pa1); el("ph")?.setAttribute("d", ph1);
+      // Paquetes: un trazo corto y brillante que corre por cada hebra.
+      const correr = (k: string, n: number, signo: 1 | -1, desfase: number) => {
+        for (let i = 0; i < n; i++) {
+          const x = quieto ? ((i + 1) * W) / (n + 1) : ((((t / 1000) / viaje + i / n + desfase) % 1) * W);
+          const x2 = Math.min(W, x + 5);
+          el(`${k}${i}`)?.setAttribute("d", `M${p(x)} ${p(y(x, fase, signo))} L${p(x2)} ${p(y(x2, fase, signo))}`);
+        }
+      };
+      correr("qa", pa, 1, 0);
+      correr("qh", ph, -1, 0.5);
+      if (!quieto) raf = requestAnimationFrame(pintar);
+    };
+    raf = requestAnimationFrame(pintar);
+    return () => cancelAnimationFrame(raf);
+  }, [rapido, pa, ph]);
+
+  const ca = `rgb(${colorAgente})`, ch = `rgb(${C.humano})`;
+  const linea = { fill: "none", strokeLinecap: "round" as const, vectorEffect: "non-scaling-stroke" as const };
   return (
-    <div className="flex items-center gap-2" title={detalle}>
-      <span className="w-[5.5rem] shrink-0 whitespace-nowrap text-[11px] font-semibold" style={{ color: `rgb(${color})` }}>
-        {quien === "Agente" ? "🤖" : "👤"} {quien} <span className="num text-text">{entero(n)}</span>
-      </span>
-      <div className="relative h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: `rgb(${color} / ${n ? 0.3 : 0.1})` }}>
-        {Array.from({ length: paquetes }, (_, k) => (
-          <span key={k} className={`corre size-1.5 rounded-full ${rapido ? "corre-rapido" : ""}`}
-            style={{ animationDelay: `${(k * (rapido ? 0.85 : 2.6)) / paquetes}s`, background: `rgb(${color})`, boxShadow: `0 0 8px rgb(${color})` }} />
-        ))}
-      </div>
-    </div>
+    <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block h-11 w-full overflow-visible" aria-hidden>
+      <path data-k="pa" {...linea} stroke={ca} strokeOpacity={agente ? 0.28 : 0.1} strokeWidth={1} />
+      <path data-k="ph" {...linea} stroke={ch} strokeOpacity={humano ? 0.28 : 0.1} strokeWidth={1} />
+      <path data-k="ab" {...linea} stroke={ca} strokeOpacity={agente ? 0.35 : 0.12} strokeWidth={grosor(agente)} />
+      <path data-k="hb" {...linea} stroke={ch} strokeOpacity={humano ? 0.35 : 0.12} strokeWidth={grosor(humano)} />
+      <path data-k="af" {...linea} stroke={ca} strokeOpacity={agente ? 1 : 0.2} strokeWidth={grosor(agente)} style={{ filter: agente ? `drop-shadow(0 0 3px ${ca})` : undefined }} />
+      <path data-k="hf" {...linea} stroke={ch} strokeOpacity={humano ? 1 : 0.2} strokeWidth={grosor(humano)} style={{ filter: humano ? `drop-shadow(0 0 3px ${ch})` : undefined }} />
+      {Array.from({ length: pa }, (_, i) => <path key={`qa${i}`} data-k={`qa${i}`} {...linea} stroke="white" strokeWidth={3} style={{ filter: `drop-shadow(0 0 4px ${ca})` }} />)}
+      {Array.from({ length: ph }, (_, i) => <path key={`qh${i}`} data-k={`qh${i}`} {...linea} stroke="white" strokeWidth={3} style={{ filter: `drop-shadow(0 0 4px ${ch})` }} />)}
+    </svg>
   );
 }
 
-function Conector({ children }: { children: ReactNode }) {
-  return <div className="flex min-w-0 flex-col justify-center gap-2 px-1">{children}</div>;
+// Conector entre dos etapas: arriba cuántas hizo el agente, la hélice en medio y abajo cuántas hizo una persona.
+function Conector({ agente, humano, colorAgente, rapido, detalle }: { agente: number; humano: number; colorAgente: string; rapido?: boolean; detalle?: string }) {
+  return (
+    <div className="flex min-w-0 flex-col justify-center px-1" title={detalle}>
+      <div className="whitespace-nowrap text-center text-[11px] font-semibold" style={{ color: `rgb(${colorAgente})` }}>
+        🤖 Agente <span className="num text-text">{entero(agente)}</span>
+      </div>
+      <Helice agente={agente} humano={humano} colorAgente={colorAgente} rapido={rapido} />
+      <div className="whitespace-nowrap text-center text-[11px] font-semibold" style={{ color: `rgb(${C.humano})` }}>
+        👤 Humano <span className="num text-text">{entero(humano)}</span>
+      </div>
+    </div>
+  );
 }
 
 // `estado`: lo que está haciendo el agente ahora o su próxima corrida; `paso`: la etapa que está creando en este momento.
@@ -76,18 +158,12 @@ export function FabricaAgente({ d, estado, paso, enVivo = false }: { d: DatosFab
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.1fr)] md:gap-2">
         <Etapa Icono={ShoppingCart} titulo="Órdenes" valor={d.ordenes_hoy} color={C.orden}
           sub={`${entero(d.sin_remision)} sin remisión${d.anuladas_hoy ? ` · ${entero(d.anuladas_hoy)} anuladas` : ""}`} />
-        <Conector>
-          <Carril quien="Agente" n={d.rem_agente} color={C.agenteRem} rapido={paso === "remision"} />
-          <Carril quien="Humano" n={d.rem_humano} color={C.humanoRem} />
-        </Conector>
+        <Conector agente={d.rem_agente} humano={d.rem_humano} colorAgente={C.agenteRem} rapido={paso === "remision"} />
         <Etapa Icono={FileText} titulo="Remisiones" valor={rem} color={C.agenteRem} activa={paso === "remision"}
           sub={sinGuia ? `${entero(sinGuia)} esperando guía` : "todas con guía"} />
-        <Conector>
-          <Carril quien="Agente" n={guiaAgente} color={C.agenteGuia} rapido={paso === "guia"}
-            detalle={`${entero(d.guia_aa)} de remisiones del agente · ${entero(d.guia_ha)} de remisiones de humano`} />
-          <Carril quien="Humano" n={guiaHumano} color={C.humanoGuia}
-            detalle={`${entero(d.guia_ah)} de remisiones del agente · ${entero(d.guia_hh)} de remisiones de humano`} />
-        </Conector>
+        <Conector agente={guiaAgente} humano={guiaHumano} colorAgente={C.agenteGuia} rapido={paso === "guia"}
+          detalle={`Guías del agente: ${entero(d.guia_aa)} de remisiones del agente y ${entero(d.guia_ha)} de remisiones de humano. ` +
+            `Guías de humano: ${entero(d.guia_ah)} de remisiones del agente y ${entero(d.guia_hh)} de remisiones de humano.`} />
         <Etapa Icono={Truck} titulo="Guías" valor={guias} color={C.agenteGuia} activa={paso === "guia"} sub="listas para despacho" />
       </div>
     </div>
