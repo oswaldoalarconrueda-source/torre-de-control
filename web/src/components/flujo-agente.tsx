@@ -19,9 +19,10 @@ type Evento = { id: number; id_orden: number | null; paso: string; ok: boolean |
 type Resumen = { sin_remision: number; sin_guia: number; listas?: number; plan_revision?: number };
 
 
-export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
+export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas, remisionadas }: {
   cuenta: string; resumen: Resumen; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
-  completas?: number[]; // órdenes que ya tienen remisión y guía
+  completas?: number[]; // órdenes que ya tienen remisión y guía (o que se anularon)
+  remisionadas?: number[]; // órdenes que ya tienen remisión vigente, aunque falte la guía
 }) {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [delDia, setDelDia] = useState<Evento[]>([]); // aciertos y errores de las últimas 30 h, sin tope
@@ -75,10 +76,10 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas }: {
   }, [delDia, eventos, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
   const remisiones = hoy.filter((e) => e.paso === "remision" && e.ok === true).length;
   const guias = hoy.filter((e) => e.paso === "guia" && e.ok === true).length;
-  // Errores que siguen pendientes: no cuenta el de una orden que después quedó completa (la creó la Torre en un
-  // intento siguiente o alguien a mano).
+  // Errores que siguen pendientes: no cuenta el de una orden que después quedó completa o anulada (la creó la Torre en
+  // un intento siguiente o alguien a mano en Effi), ni el de la remisión de una orden que ya tiene remisión vigente.
   const pendientes = hoy.filter((e) => e.ok === false && !(e.id_orden != null && (
-    completas?.includes(e.id_orden) ||
+    completas?.includes(e.id_orden) || (e.paso !== "guia" && remisionadas?.includes(e.id_orden)) ||
     hoy.some((x) => x.id_orden === e.id_orden && x.id > e.id && x.ok === true && (x.paso === "fin" || x.paso === "guia")))));
   // Una línea por documento (el último error y cuántos intentos fallaron hoy). El error de la guía es de la remisión; el
   // de la remisión es de la orden de venta.

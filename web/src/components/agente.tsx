@@ -131,9 +131,13 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
   const paraCrear = (o: OrdenAuto) =>
     o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar" && !vaSola(o);
   // Una orden que ya tiene remisión y guía está resuelta: el error de un intento anterior (por ejemplo una guía que
-  // falló y se hizo después) ya no cuenta como novedad ni se muestra.
+  // falló y se hizo después) ya no cuenta como novedad ni se muestra. Igual el error de la remisión cuando alguien la
+  // hizo a mano en Effi (la sincronización ya la trae) o cuando anularon la orden.
+  const conRemision = (o: OrdenAuto) => o.id_remision != null && !o.motivos.some((m) => m.startsWith("La remisión está anulada"));
+  const errorDeRemision = (o: OrdenAuto) => /^(Effi no dej[oó] crear la remisi[oó]n|La orden ya tiene la remisi[oó]n)/i.test(o.plan_motivo ?? "");
   const ordenes = useMemo(() => datos.ordenes.map((o) =>
-    o.estado === "completa" && o.plan_estado === "error" ? { ...o, plan_estado: null, plan_motivo: null } : o), [datos.ordenes]);
+    o.plan_estado === "error" && (o.estado === "completa" || o.estado === "anulada" || (errorDeRemision(o) && conRemision(o)))
+      ? { ...o, plan_estado: null, plan_motivo: null } : o), [datos.ordenes]); // eslint-disable-line react-hooks/exhaustive-deps
   const lista = useMemo(() => ordenes.filter((o) => novedad(o) && !paraCrear(o) && !vaSola(o)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ordenes]);
@@ -392,7 +396,8 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
       )}
 
       <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()}
-        completas={ordenes.filter((o) => o.estado === "completa" || pendienteResuelto(o)).map((o) => o.id)} />
+        completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o)).map((o) => o.id)}
+        remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
 
       <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         {/* Mes como el listado de Effi; hoy: órdenes, cuántas ya tienen remisión y cuántas ya tienen guía. */}
