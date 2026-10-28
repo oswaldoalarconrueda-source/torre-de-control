@@ -13,6 +13,7 @@ import { infoCuenta } from "@/lib/paises";
 // la envía a Effi con Enter o con el botón. Las nuevas llegan solas: Effi se sincroniza cada minuto.
 // "📌 Hacer seguimiento" es interno (no va a Effi ni a la transportadora): se pone el día en que el cliente pidió que lo
 // llamen y, desde ese día, la novedad sube arriba resaltada hasta que se quite o la novedad se cierre en Effi.
+// Lo que se escribe en la línea se guarda como borrador (novedad_borrador) para que no se pierda al recargar.
 
 type Resultado = "contesto" | "no_contesto" | "telefono_malo";
 export type FilaNovedad = {
@@ -20,6 +21,7 @@ export type FilaNovedad = {
   novedad: string | null; aclaracion: string | null; llego: string; est_novedad: number; estado_novedad: string | null;
   cliente: string | null; telefono: string | null; direccion: string | null; ciudad: string | null; provincia: string | null;
   contenido: string | null; // lo que se vendió (contenido de la guía)
+  borrador: Borrador | null; // lo escrito en la línea y aún no enviado (se guarda mientras se escribe)
   seguimiento: { fecha: string; nota: string | null; u: string | null; en: string } | null; // interno, no va a Effi
   recaudo: number | null; estado_guia: string | null;
   llamadas: Record<string, { r: Resultado; u: string | null; en: string }>;
@@ -113,7 +115,23 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
     .sort((a, z) => (a.t ? 0 : 1) - (z.t ? 0 : 1) || (a.t && z.t ? a.t.localeCompare(z.t) : 0) || a.i - z.i)
     .map((x) => x.f);
 
-  const cambiar = (id: number, c: Borrador) => setBorr((b) => ({ ...b, [id]: { ...b[id], ...c } }));
+  // Borrador de la línea: lo de esta pantalla o, si no se ha tocado aquí, el guardado en la Torre.
+  const borrador = (f: FilaNovedad) => borr[f.id] ?? f.borrador ?? {};
+  const pendiente = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const guardar = useCallback((f: FilaNovedad, datos: Borrador | null, espera = 600) => {
+    clearTimeout(pendiente.current[f.id]);
+    pendiente.current[f.id] = setTimeout(async () => {
+      delete pendiente.current[f.id];
+      const limpio = Object.fromEntries(Object.entries(datos ?? {}).filter(([, v]) => v != null && v !== ""));
+      const { error } = await supabase.rpc("novedad_borrador", { p_cuenta: f.cuenta, p_empresa: f.empresa, p_novedad: f.id, p_datos: limpio });
+      if (error && vivo.current) setAviso((a) => ({ ...a, [f.id]: `No se guardó el borrador: ${error.message}` }));
+    }, espera);
+  }, [supabase]);
+  const cambiar = (f: FilaNovedad, c: Borrador) => {
+    const nuevo = { ...borrador(f), ...c };
+    setBorr((b) => ({ ...b, [f.id]: nuevo }));
+    guardar(f, nuevo);
+  };
 
   async function marcar(f: FilaNovedad, intento: number, r: string) {
     const antes = f.llamadas;
@@ -124,7 +142,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
 
   // Seguimiento interno: se guarda en la Torre (novedad_seguir), nunca se envía a Effi. Sin fecha = quitarlo.
   async function seguir(f: FilaNovedad, fecha: string | null) {
-    const b = borr[f.id] ?? {};
+    const b = borrador(f);
     if (fecha === undefined || (fecha !== null && !fecha)) return;
     setOcupada((o) => ({ ...o, [f.id]: true }));
     const nota = fecha ? (b.ges ?? "").trim() || null : null;
@@ -133,12 +151,12 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
     if (error) { setAviso((a) => ({ ...a, [f.id]: error.message })); return; }
     setAviso((a) => ({ ...a, [f.id]: "" }));
     setFilas((xs) => xs.map((x) => x.id === f.id ? { ...x, seguimiento: fecha ? { fecha, nota, u: email, en: new Date().toISOString() } : null } : x));
-    if (fecha) setBorr((x) => ({ ...x, [f.id]: {} }));
+    if (fecha) { setBorr((x) => ({ ...x, [f.id]: {} })); guardar(f, null, 0); }
   }
 
   async function enviar(f: FilaNovedad) {
     if (ocupada[f.id]) return;
-    const b = borr[f.id] ?? {};
+    const b = borrador(f);
     if (b.sol === SEGUIR) {
       if (!b.fecha) { setAviso((a) => ({ ...a, [f.id]: "¿Qué día lo llamamos?" })); return; }
       return seguir(f, b.fecha);
@@ -225,7 +243,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
           </thead>
           <tbody>
             {vista.map((f) => {
-              const b = borr[f.id] ?? {};
+              const b = borrador(f);
               const sols = catalogo.get(f.transportadora_id) ?? [];
               const s = sols.find((x) => String(x.id_solucion) === b.sol);
               const env = f.envio;
@@ -262,9 +280,9 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     <div className="line-clamp-2">{f.contenido ?? "—"}</div>
                   </td>
                   <td className="px-2 py-1.5 max-w-[11rem] truncate" title={f.cliente ?? ""}>{f.cliente}</td>
-                  <td className="px-2 py-1.5"><input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f.id, { tel: e.target.value })} className={`${inp} w-28`} /></td>
+                  <td className="px-2 py-1.5"><input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { tel: e.target.value })} className={`${inp} w-28`} /></td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{f.ciudad}</td>
-                  <td className="px-2 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f.id, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-48`} /></td>
+                  <td className="px-2 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-48`} /></td>
                   <td className="px-2 py-1.5 whitespace-nowrap num">{f.recaudo != null ? dinero(f.recaudo, f.cuenta) : "—"}</td>
                   {[1, 2, 3].map((i) => {
                     const l = f.llamadas[String(i)];
@@ -289,7 +307,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                       </div>
                     )}
                     {enviada ? <span className="font-semibold text-green">{env!.solucion}</span> : (
-                      <select value={b.sol ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f.id, { sol: e.target.value, fecha: undefined })} className={`${sel} w-44`}
+                      <select value={b.sol ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { sol: e.target.value, fecha: undefined })} className={`${sel} w-44`}
                         style={sigue ? { color: "#ffb347", borderColor: "#ffb347" } : undefined}>
                         <option value="" className="bg-bg">{sols.length ? "Elegir…" : "Elegir… (sin catálogo de Effi)"}</option>
                         <option value={SEGUIR} className="bg-bg">📌 Hacer seguimiento (interno)</option>
@@ -304,15 +322,15 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                   <td className="px-2 py-1.5">
                     {sigue && !enviada
                       ? <input type="date" value={b.fecha ?? ""} min={hoy} disabled={bloqueada} title="Día en que el cliente pidió que lo llamen"
-                          onChange={(e) => cambiar(f.id, { fecha: e.target.value })} className={`${inp} w-32 border-[#ffb347]/60`} />
+                          onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-32 border-[#ffb347]/60`} />
                       : s?.pide_entrega && !enviada
-                      ? <input type="date" value={b.fecha ?? ""} min={sumarDias(hoy, 1)} max={sumarDias(hoy, 5)} disabled={bloqueada} onChange={(e) => cambiar(f.id, { fecha: e.target.value })} className={`${inp} w-32`} />
+                      ? <input type="date" value={b.fecha ?? ""} min={sumarDias(hoy, 1)} max={sumarDias(hoy, 5)} disabled={bloqueada} onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-32`} />
                       : <span className="text-muted">—</span>}
                   </td>
                   <td className="px-2 py-1.5">
                     {enviada ? <span className="text-muted">{env!.estado === "enviando" ? "Enviando a Effi…" : env!.mensaje ?? "Recibida por Effi"}</span> : (
                       <input value={b.ges ?? ""} disabled={bloqueada} maxLength={sigue ? 500 : 1024} placeholder={sigue ? "Llámeme el martes en la tarde" : "Recibe el jueves en la tarde"}
-                        onChange={(e) => cambiar(f.id, { ges: e.target.value })} onKeyDown={(e) => e.key === "Enter" && enviar(f)} className={`${inp} w-56`} />
+                        onChange={(e) => cambiar(f, { ges: e.target.value })} onKeyDown={(e) => e.key === "Enter" && enviar(f)} className={`${inp} w-56`} />
                     )}
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
