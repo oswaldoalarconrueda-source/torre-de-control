@@ -194,10 +194,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
               <th className="sticky left-0 z-10 bg-[#0d2a22] px-2 py-3">Llegó</th>
               <th className="px-2 py-3">C. costos</th>
               <th className="px-2 py-3">Creada</th>
-              <th className="px-2 py-3">Remitente</th>
               <th className="px-2 py-3">Destinatario</th>
-              <th className="px-2 py-3">ID</th>
-              <th className="px-2 py-3">País</th>
               <th className="px-2 py-3">Depto.</th>
               <th className="px-2 py-3">Ciudad</th>
               <th className="px-2 py-3">Dirección</th>
@@ -231,10 +228,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                   </td>
                   <td className="px-2 py-2 whitespace-nowrap">{g.centro_costos ?? "—"}</td>
                   <td className="px-2 py-2 whitespace-nowrap text-xs text-muted">{g.fecha_trans ? hora(g.fecha_trans) : "—"}</td>
-                  <td className="px-2 py-2 whitespace-nowrap">{g.remitente ?? "—"}</td>
                   <td className="px-2 py-2 max-w-[9rem] truncate font-semibold" title={g.destinatario ?? ""}>{g.destinatario ?? "—"}</td>
-                  <td className="px-2 py-2 whitespace-nowrap font-mono text-xs text-muted">{g.id_destinatario ?? "—"}</td>
-                  <td className="px-2 py-2 whitespace-nowrap">{g.pais ?? "—"}</td>
                   <td className="px-2 py-2 max-w-[5.5rem] truncate" title={g.provincia ?? ""}>{g.provincia ?? "—"}</td>
                   <td className="px-2 py-2 max-w-[5.5rem] truncate" title={g.ciudad ?? ""}>{g.ciudad ?? "—"}</td>
                   <td className="px-2 py-2 min-w-[9rem] max-w-[11rem] text-xs text-muted"><div className="line-clamp-2" title={g.direccion ?? ""}>{g.direccion ?? "—"}</div></td>
