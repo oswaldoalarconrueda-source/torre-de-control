@@ -106,3 +106,17 @@ Más 33 de inventario y compras (pedido del 2026-10-26):
 - El receptor funciona: un POST de prueba sin clave respondió 200 en 0,5 s y quedó guardado (la fila de prueba se borró).
 - Pasa igual con lo creado por la API (remisiones y guías de la Torre) y con lo hecho en la pantalla de Effi.
 - Conclusión: Effi no está despachando webhooks. Hay que abrir caso con soporte de Effi antes de crear los de GT y CR.
+
+**2026-10-28 — Effi corrigió el despacho (aviso del ingeniero de Effi):**
+- Desde las 09:55 UTC (4:55 a. m. Colombia) llegan avisos por primera vez: en la primera hora, 108 en CO, EC y GT.
+  - `guia_transporte.tracking`: CO 61, EC 20, GT 15.
+  - `movimiento_dinero_effi.crear`: CO 11.
+  - `novedad_guia_transporte.crear`: EC 1.
+- **Están completos:** los avisos coinciden con lo que trae la sincronización por API en la misma hora (09:55–11:00 UTC).
+  - Cambios de estado de guía: CO 54, EC 18 y GT 15 por API; los avisos de tracking son esos mismos, más los del último minuto.
+  - Movimientos de wallet de CO: 11 por API y 11 avisos.
+  - Todos los avisos corresponden a guías que existen en `effi_guia_estados`.
+- **Demora:** unos 30 s entre `fecha_evento` y la llegada. Effi los manda en tandas, más o menos cada minuto.
+- **Forma del aviso:** `{ evento, empresa, entrega, fecha_evento, datos }`. En el tracking, `datos` es la guía completa (los mismos campos de `api/guia_transporte`, más `estado_anterior`).
+- **GT ya recibe avisos de tracking**, aunque la Torre no le había creado webhooks: los configuraron del lado de Effi.
+- **Ninguno tiene error, pero ninguno se procesa todavía** (`procesado_en` vacío): los datos en vivo siguen saliendo del `effi-sync` cada minuto.
