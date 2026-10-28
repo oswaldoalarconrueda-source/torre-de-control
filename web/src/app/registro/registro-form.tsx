@@ -17,17 +17,26 @@ export function RegistroForm() {
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setCargando(true); setError(null);
+    // Si la red se queda colgada (datos móviles, wifi débil), a los 25 s se suelta en vez de quedar "Enviando…" para
+    // siempre. Puede que la solicitud sí haya llegado: por eso se invita a probar entrar antes de reintentar.
+    const corte = new AbortController();
+    const reloj = setTimeout(() => corte.abort(), 25_000);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/registro`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! },
         body: JSON.stringify(datos),
+        signal: corte.signal,
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) setError(j.mensaje ?? "No se pudo enviar la solicitud. Intenta de nuevo.");
       else setListo(true);
     } catch {
-      setError("Sin conexión. Intenta de nuevo.");
+      setError(corte.signal.aborted
+        ? "La conexión está muy lenta y no hubo respuesta. Puede que tu solicitud sí haya llegado: intenta entrar con tu correo y clave; si no te deja, vuelve a enviarla."
+        : "Sin conexión. Revisa tu internet e intenta de nuevo.");
+    } finally {
+      clearTimeout(reloj);
     }
     setCargando(false);
   }
