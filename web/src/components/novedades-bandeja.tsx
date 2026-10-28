@@ -177,8 +177,8 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
   const m = med?.cuentas.find((c) => c.cuenta === cuenta);
   const asesoras = (med?.asesoras ?? []).filter((a) => verEquipo || a.email === email);
   const copiar = async (g: string) => { try { await navigator.clipboard.writeText(g); setCopiada(g); setTimeout(() => setCopiada(null), 1500); } catch { /* sin portapapeles */ } };
-  const sel = "h-7 rounded-md border border-line bg-white/[0.03] px-1.5 text-xs text-text";
-  const inp = "h-7 rounded-md border border-line bg-white/[0.03] px-2 text-xs text-text placeholder:text-muted/60";
+  const sel = "h-7 rounded-md border border-line bg-tinte/[0.03] px-1.5 text-xs text-text";
+  const inp = "h-7 rounded-md border border-line bg-tinte/[0.03] px-2 text-xs text-text placeholder:text-muted/60";
 
   return (
     <div className="space-y-4">
@@ -195,7 +195,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-xl border border-line bg-white/[0.02] p-0.5 text-xs">
+        <div className="inline-flex rounded-xl border border-line bg-tinte/[0.02] p-0.5 text-xs">
           {ESTADOS.map((e) => (
             <button key={e.id} onClick={() => setFiltro((x) => ({ ...x, estado: e.id }))}
               className={`rounded-lg px-3 py-1 font-semibold transition-colors ${filtro.estado === e.id ? "bg-blue/25 text-text" : "text-muted hover:text-text"}`}>{e.label}</button>
@@ -219,9 +219,9 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
       {/* Clientes que pidieron que los llamaran hoy (o antes) y la novedad sigue abierta: siempre a la vista. */}
       {porSeguir > 0 && (
         <button onClick={() => setFiltro((x) => ({ ...x, estado: "seguimiento" }))}
-          className="w-full flex flex-wrap items-center gap-3 rounded-2xl border border-[#ffb347]/50 bg-[#ffb347]/10 px-4 py-3 text-left hover:bg-[#ffb347]/15">
+          className="w-full flex flex-wrap items-center gap-3 rounded-2xl border border-naranja/50 bg-naranja/10 px-4 py-3 text-left hover:bg-naranja/15">
           <span className="text-2xl">📌</span>
-          <span className="font-display text-lg font-semibold text-[#ffb347]">
+          <span className="font-display text-lg font-semibold text-naranja">
             {porSeguir === 1 ? "1 novedad para hacer seguimiento hoy" : `${entero(porSeguir)} novedades para hacer seguimiento hoy`}
           </span>
           <span className="text-xs text-muted">Pidieron que los llamaran hoy o antes y la novedad sigue abierta. Van de primeras en la lista.</span>
@@ -249,10 +249,10 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
               const asesora = env?.usuario ?? Object.values(f.llamadas).sort((a, z) => z.en.localeCompare(a.en))[0]?.u ?? null;
               const seg = toca(f), sigue = b.sol === SEGUIR;
               return (
-                <tr key={`${f.empresa}-${f.id}`} className={`border-b border-line/60 align-middle ${seg ? "bg-[#ffb347]/[0.08] hover:bg-[#ffb347]/[0.12] shadow-[inset_3px_0_0_#ffb347]" : `hover:bg-white/[0.03] ${fondo}`}`}>
+                <tr key={`${f.empresa}-${f.id}`} className={`border-b border-line/60 align-middle ${seg ? "bg-naranja/[0.08] hover:bg-naranja/[0.12] shadow-[inset_3px_0_0_var(--naranja)]" : `hover:bg-tinte/[0.03] ${fondo}`}`}>
                   <td className="px-1.5 py-1.5 whitespace-nowrap text-muted" title={new Date(f.llego).toLocaleString("es-CO")} suppressHydrationWarning>
                     {seg && (
-                      <div className="mb-1 inline-block rounded-full bg-[#ffb347] px-2 py-0.5 text-[10px] font-bold text-black">
+                      <div className="mb-1 inline-block rounded-full bg-naranja px-2 py-0.5 text-[10px] font-bold text-black">
                         📌 {seg === hoy ? "Hoy" : ddmm(seg)}
                       </div>
                     )}
@@ -296,7 +296,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     {/* Seguimiento interno guardado: el día y la nota, con ✕ para quitarlo. */}
                     {f.seguimiento && (
                       <div className="mb-1 flex items-center gap-1" title={`${f.seguimiento.nota ?? ""}${f.seguimiento.u ? ` · ${f.seguimiento.u.split("@")[0]}` : ""}`}>
-                        <span className="rounded-full border border-[#ffb347]/60 bg-[#ffb347]/10 px-2 py-0.5 text-[10px] font-semibold text-[#ffb347]">
+                        <span className="rounded-full border border-naranja/60 bg-naranja/10 px-2 py-0.5 text-[10px] font-semibold text-naranja">
                           📌 Seguimiento {ddmm(f.seguimiento.fecha)}{f.seguimiento.nota ? ` · ${f.seguimiento.nota.slice(0, 24)}` : ""}
                         </span>
                         <button onClick={() => seguir(f, null)} disabled={ocupada[f.id]} title="Quitar el seguimiento" className="rounded p-0.5 text-muted hover:text-red"><X size={11} /></button>
@@ -304,7 +304,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     )}
                     {enviada ? <span className="font-semibold text-green">{env!.solucion}</span> : (
                       <select value={b.sol ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { sol: e.target.value, fecha: undefined })} className={`${sel} w-36`}
-                        style={sigue ? { color: "#ffb347", borderColor: "#ffb347" } : undefined}>
+                        style={sigue ? { color: "var(--naranja)", borderColor: "var(--naranja)" } : undefined}>
                         <option value="" className="bg-bg">{sols.length ? "Elegir…" : "Elegir… (sin catálogo de Effi)"}</option>
                         <option value={SEGUIR} className="bg-bg">📌 Hacer seguimiento (interno)</option>
                         {sols.map((x, i) => (
@@ -318,7 +318,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                   <td className="px-1.5 py-1.5">
                     {sigue && !enviada
                       ? <input type="date" value={b.fecha ?? ""} min={hoy} disabled={bloqueada} title="Día en que el cliente pidió que lo llamen"
-                          onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-28 border-[#ffb347]/60`} />
+                          onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-28 border-naranja/60`} />
                       : s?.pide_entrega && !enviada
                       ? <input type="date" value={b.fecha ?? ""} min={sumarDias(hoy, 1)} max={sumarDias(hoy, 5)} disabled={bloqueada} onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-28`} />
                       : <span className="text-muted">—</span>}
@@ -336,7 +336,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                         <div>
                           {sigue ? (
                             <button onClick={() => enviar(f)} disabled={ocupada[f.id]} title="Se guarda en la Torre; no se envía a Effi"
-                              className="inline-flex items-center gap-1 rounded-md bg-[#ffb347] px-2.5 py-1 text-[11px] font-bold text-black disabled:opacity-40">
+                              className="inline-flex items-center gap-1 rounded-md bg-naranja px-2.5 py-1 text-[11px] font-bold text-black disabled:opacity-40">
                               📌 Guardar
                             </button>
                           ) : (

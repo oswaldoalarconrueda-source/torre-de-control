@@ -15,6 +15,52 @@
   --green: #2fd28f;
   --amber: #ffb547;
   --red: #ff5a6a;
+  --naranja: #ffb347; /* seguimiento */
+  --verde-fondo: #0d2a22; /* encabezado fijo de Disp. en oficina */
+  --naranja-fondo: #2a2216; /* celda fija con seguimiento */
+  --tinte: #ffffff; /* fondos sutiles: bg-tinte/[0.03] */
+}
+
+/* ☀️ Modo claro (botón arriba a la derecha; se guarda en el navegador de cada empleado). */
+[data-theme="light"] {
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --panel-2: #f0f3f8;
+  --line: rgb(15 23 42 / 0.09);
+  --line-strong: rgb(15 23 42 / 0.16);
+  --text: #0f172a;
+  --muted: #5b6578;
+  --blue: #2563eb;
+  --blue-2: #1d5fd6;
+  --cyan: #0891b2;
+  --green: #12a36a;
+  --amber: #c77700;
+  --red: #e0394b;
+  --naranja: #d97706;
+  --verde-fondo: #dcf3e8;
+  --naranja-fondo: #fdf0dc;
+  --tinte: #0f172a;
+  color-scheme: light;
+}
+/* Vistas de monitoreo (En vivo) que se quedan oscuras también en modo claro. */
+[data-theme="light"] .oscuro {
+  --bg: #04060a;
+  --panel: #0a0e16;
+  --panel-2: #0e1420;
+  --line: rgb(255 255 255 / 0.07);
+  --line-strong: rgb(255 255 255 / 0.12);
+  --text: #eef2f8;
+  --muted: #8a94a8;
+  --blue: #2f7bff;
+  --blue-2: #5aa2ff;
+  --cyan: #45c8ff;
+  --green: #2fd28f;
+  --amber: #ffb547;
+  --red: #ff5a6a;
+  --naranja: #ffb347;
+  --tinte: #ffffff;
+  color: var(--text);
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -30,6 +76,10 @@
   --color-green: var(--green);
   --color-amber: var(--amber);
   --color-red: var(--red);
+  --color-naranja: var(--naranja);
+  --color-verde-fondo: var(--verde-fondo);
+  --color-naranja-fondo: var(--naranja-fondo);
+  --color-tinte: var(--tinte);
   --font-sans: var(--font-inter);
   --font-display: var(--font-grotesk);
   --font-mono: var(--font-space-mono);
@@ -46,6 +96,13 @@ body {
   min-height: 100dvh;
 }
 
+[data-theme="light"] .glow-bg {
+  background:
+    radial-gradient(60rem 28rem at 50% -8rem, rgb(37 99 235 / 0.10), transparent 70%),
+    radial-gradient(30rem 30rem at 100% 40%, rgb(8 145 178 / 0.04), transparent 70%),
+    var(--bg);
+}
+
 /* Brillo azul de fondo, como en la referencia. */
 .glow-bg {
   background:
@@ -60,6 +117,14 @@ body {
   border: 1px solid var(--line);
   border-radius: 1.1rem;
   box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 20px 40px -24px rgb(0 0 0 / 0.8);
+}
+[data-theme="light"] .card {
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05), 0 12px 32px -20px rgb(15 23 42 / 0.25);
+}
+[data-theme="light"] .oscuro .card, [data-theme="light"] .card.oscuro {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.035), rgb(255 255 255 / 0.01)), var(--panel);
+  box-shadow: 0 20px 40px -24px rgb(0 0 0 / 0.8);
 }
 
 .card-glow {
@@ -110,7 +175,7 @@ body {
   border-bottom: 0;
 }
 .tabla tbody tr:hover {
-  background: rgb(255 255 255 / 0.025);
+  background: color-mix(in srgb, var(--tinte) 2.5%, transparent);
 }
 
 @keyframes pulso {

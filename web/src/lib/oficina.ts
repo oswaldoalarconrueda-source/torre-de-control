@@ -9,7 +9,7 @@ export type CodigoObs =
 
 export const OBSERVACIONES: Record<CodigoObs, { label: string; color: string }> = {
   retira_fecha: { label: "El cliente realizará el retiro del producto el…", color: "var(--green)" },
-  seguimiento: { label: "Hacer seguimiento: llamar al cliente el…", color: "#ffb347" },
+  seguimiento: { label: "Hacer seguimiento: llamar al cliente el…", color: "var(--naranja)" },
   ya_retiro: { label: "El cliente ya realizó el retiro del producto en la oficina", color: "var(--green)" },
   sin_respuesta: { label: "Se realizan los intentos de llamada sin respuesta del cliente", color: "var(--amber)" },
   colgo: { label: "El cliente contestó y finalizó la llamada al informarle", color: "var(--amber)" },
@@ -18,7 +18,7 @@ export const OBSERVACIONES: Record<CodigoObs, { label: string; color: string }> 
   numero_incorrecto: { label: "El número proporcionado es incorrecto", color: "#b48cff" },
   numero_ajeno: { label: "El número proporcionado no le corresponde al cliente", color: "#b48cff" },
   numero_no_disponible: { label: "Número no disponible (suspendido o fuera de área)", color: "#b48cff" },
-  otro: { label: "Otro (escribir lo que dijo el cliente)", color: "#c9d3ea" },
+  otro: { label: "Otro (escribir lo que dijo el cliente)", color: "var(--muted)" },
 };
 export const PREFIJO_OTRO = "Otro: ";
 

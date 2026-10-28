@@ -46,7 +46,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         href={`${it.href}${qs}`}
         aria-current={activo ? "page" : undefined}
         className={`group flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors ${
-          activo ? "bg-blue/15 text-text shadow-[inset_2px_0_0_var(--blue-2)]" : "text-muted hover:text-text hover:bg-white/[0.04]"
+          activo ? "bg-blue/15 text-text shadow-[inset_2px_0_0_var(--blue-2)]" : "text-muted hover:text-text hover:bg-tinte/[0.04]"
         }`}
       >
         <span className="w-5 text-center text-base leading-none" aria-hidden>{it.emoji}</span>

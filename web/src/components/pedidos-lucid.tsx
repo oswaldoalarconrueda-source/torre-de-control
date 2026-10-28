@@ -80,7 +80,7 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = f
             const dia = new Date(`${f}T12:00:00`).toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" });
             const suma = cuentas.reduce((s, c) => s + (valores[`${c}|${f}`] ?? 0), 0);
             return (
-              <tr key={f} className={`border-b border-line/50 ${f === hoy ? "bg-white/[0.03]" : ""}`}>
+              <tr key={f} className={`border-b border-line/50 ${f === hoy ? "bg-tinte/[0.03]" : ""}`}>
                 <td className="px-4 py-1.5 whitespace-nowrap capitalize">{dia}{f === hoy && <span className="ml-2 text-[11px] text-muted normal-case">hoy (aún abierto)</span>}</td>
                 {cuentas.map((c) => {
                   const clave = `${c}|${f}`;
@@ -126,7 +126,7 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = f
             {pendiente.antes != null && <div className="mt-2 text-xs text-amber">Antes decía {entero(pendiente.antes)}</div>}
             <div className="mt-5 flex justify-center gap-3">
               <button onClick={confirmar} className="rounded-full bg-green px-6 py-2 font-bold text-black">Sí</button>
-              <button onClick={noGuardar} autoFocus className="rounded-full border border-line px-6 py-2 font-semibold hover:bg-white/5">No</button>
+              <button onClick={noGuardar} autoFocus className="rounded-full border border-line px-6 py-2 font-semibold hover:bg-tinte/5">No</button>
             </div>
           </div>
         </div>,

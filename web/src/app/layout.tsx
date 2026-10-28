@@ -13,7 +13,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es" className={`${inter.variable} ${grotesk.variable} ${mono.variable} h-full antialiased`}>
+    <html lang="es" className={`${inter.variable} ${grotesk.variable} ${mono.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        {/* Modo claro u oscuro de cada empleado (SelectorTema): se aplica antes de pintar para que no haya destello. */}
+        <script dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem("torre-tema")==="light")document.documentElement.dataset.theme="light"}catch(e){}` }} />
+      </head>
       <body className="glow-bg min-h-full">{children}</body>
     </html>
   );

@@ -65,7 +65,7 @@ export function TablaScroll({ children }: { children: ReactNode }) {
 
 export function Barra({ valor, color = "var(--blue)" }: { valor: number; color?: string }) {
   return (
-    <div className="h-1.5 w-20 rounded-full bg-white/5 overflow-hidden">
+    <div className="h-1.5 w-20 rounded-full bg-tinte/5 overflow-hidden">
       <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(1, valor)) * 100}%`, background: color }} />
     </div>
   );

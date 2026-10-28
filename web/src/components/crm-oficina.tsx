@@ -152,9 +152,9 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
       {/* Clientes que pidieron que los llamen hoy (o antes y siguen pendientes): siempre a la vista. */}
       {porSeguir > 0 && (
         <button onClick={() => { setFiltro("seguimiento"); setMostrar(POR_PAGINA); }}
-          className="w-full flex flex-wrap items-center gap-3 rounded-2xl border border-[#ffb347]/50 bg-[#ffb347]/10 px-4 py-3 text-left hover:bg-[#ffb347]/15">
+          className="w-full flex flex-wrap items-center gap-3 rounded-2xl border border-naranja/50 bg-naranja/10 px-4 py-3 text-left hover:bg-naranja/15">
           <span className="text-2xl">📌</span>
-          <span className="font-display text-lg font-semibold text-[#ffb347]">
+          <span className="font-display text-lg font-semibold text-naranja">
             {porSeguir === 1 ? "1 cliente para hacer seguimiento hoy" : `${entero(porSeguir)} clientes para hacer seguimiento hoy`}
           </span>
           <span className="text-xs text-muted">Pidieron que los llamaran hoy o antes y la guía sigue en oficina. Van de primeras en la lista.</span>
@@ -191,7 +191,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
         <table className="w-full min-w-max text-sm">
           <thead>
             <tr className="bg-green/15 text-left text-[11px] uppercase tracking-wider font-semibold whitespace-nowrap">
-              <th className="sticky left-0 z-10 bg-[#0d2a22] px-2 py-3">Llegó</th>
+              <th className="sticky left-0 z-10 bg-verde-fondo px-2 py-3">Llegó</th>
               <th className="px-2 py-3">C. costos</th>
               <th className="px-2 py-3">Creada</th>
               <th className="px-2 py-3">Destinatario</th>
@@ -217,10 +217,10 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
               const tels = telefonos(g.telefono);
               const seg = seguimiento(g);
               return (
-                <tr key={g.guia} className={`align-middle ${seg ? "bg-[#ffb347]/[0.07] hover:bg-[#ffb347]/[0.11]" : "hover:bg-white/[0.02]"}`}>
-                  <td className={`sticky left-0 z-10 px-2 py-2 whitespace-nowrap text-xs font-mono ${seg ? "bg-[#2a2216] shadow-[inset_3px_0_0_#ffb347]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`} title={g.llegada ? hora(g.llegada) : ""}>
+                <tr key={g.guia} className={`align-middle ${seg ? "bg-naranja/[0.07] hover:bg-naranja/[0.11]" : "hover:bg-tinte/[0.02]"}`}>
+                  <td className={`sticky left-0 z-10 px-2 py-2 whitespace-nowrap text-xs font-mono ${seg ? "bg-naranja-fondo shadow-[inset_3px_0_0_var(--naranja)]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`} title={g.llegada ? hora(g.llegada) : ""}>
                     {seg && (
-                      <div className="mb-1 inline-block rounded-full bg-[#ffb347] px-2 py-0.5 font-sans text-[10px] font-bold text-black">
+                      <div className="mb-1 inline-block rounded-full bg-naranja px-2 py-0.5 font-sans text-[10px] font-bold text-black">
                         📌 {seg === hoy ? "Hoy" : `${seg.slice(8, 10)}/${seg.slice(5, 7)}`}
                       </div>
                     )}
@@ -269,7 +269,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                           onChange={(e) => marcar(g, c.intento, c.canal, e.target.value as Resultado | "")}
                           title={l ? `${hora(l.creado_en)}${l.usuario ? ` · ${l.usuario}` : ""}` : habilitado ? `Marcar ${c.label}` : "Primero el contacto anterior"}
                           className="w-[7.5rem] rounded-full border px-2 py-1 text-xs font-semibold outline-none disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
-                          style={col ? { color: col, borderColor: `color-mix(in srgb, ${col} 50%, transparent)`, background: `color-mix(in srgb, ${col} 14%, transparent)` } : { borderColor: "var(--line)", background: "rgb(255 255 255 / 0.03)" }}>
+                          style={col ? { color: col, borderColor: `color-mix(in srgb, ${col} 50%, transparent)`, background: `color-mix(in srgb, ${col} 14%, transparent)` } : { borderColor: "var(--line)", background: "color-mix(in srgb, var(--tinte) 3%, transparent)" }}>
                           <option value="" className="bg-bg text-text">—</option>
                           {(Object.keys(RESULTADOS) as Resultado[]).map((r) => <option key={r} value={r} className="bg-bg text-text">{RESULTADOS[r].label}</option>)}
                         </select>
@@ -290,14 +290,14 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                           title={g.observacion?.usuario ? `Última edición: ${hora(g.observacion.actualizado_en)} · ${g.observacion.usuario}` : undefined}>
                           <select value={actual.codigo} onChange={(e) => guardarObs(g, e.target.value as CodigoObs | "", null)}
                             className="max-w-full rounded-lg border px-2 py-1 text-xs outline-none cursor-pointer"
-                            style={col ? { color: col, borderColor: `color-mix(in srgb, ${col} 45%, transparent)`, background: `color-mix(in srgb, ${col} 10%, transparent)` } : { borderColor: "var(--line)", background: "rgb(255 255 255 / 0.03)" }}>
+                            style={col ? { color: col, borderColor: `color-mix(in srgb, ${col} 45%, transparent)`, background: `color-mix(in srgb, ${col} 10%, transparent)` } : { borderColor: "var(--line)", background: "color-mix(in srgb, var(--tinte) 3%, transparent)" }}>
                             <option value="" className="bg-bg text-text">— Seleccionar observación —</option>
                             {(Object.keys(OBSERVACIONES) as CodigoObs[]).map((c) => <option key={c} value={c} className="bg-bg text-text">{OBSERVACIONES[c].label}</option>)}
                           </select>
                           {/* "Realizará el retiro" y "Hacer seguimiento" despliegan el calendario: de hoy en adelante. */}
                           {actual.codigo && CON_FECHA.includes(actual.codigo) && (
                             <input type="date" min={hoy} value={actual.fecha ?? ""} onChange={(e) => guardarObs(g, actual.codigo as CodigoObs, e.target.value || null)}
-                              className={`rounded-lg border px-2 py-1 text-xs outline-none [color-scheme:dark] ${actual.fecha ? "border-green/50 text-green" : "border-amber/60 text-amber"}`} />
+                              className={`rounded-lg border px-2 py-1 text-xs outline-none ${actual.fecha ? "border-green/50 text-green" : "border-amber/60 text-amber"}`} />
                           )}
                           {actual.codigo && CON_FECHA.includes(actual.codigo) && !actual.fecha && (
                             <span className="text-[10px] text-amber">{actual.codigo === "seguimiento" ? "¿Qué día lo llamamos?" : "Elige el día"}</span>
@@ -308,7 +308,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                               onChange={(e) => setObs((o) => ({ ...o, [g.guia]: { codigo: "otro", fecha: null, texto: e.target.value } }))}
                               onBlur={(e) => e.target.value.trim() !== guardado && guardarObs(g, "otro", null, e.target.value)}
                               onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                              className={`basis-full min-w-0 rounded-lg border bg-white/[0.03] px-2 py-1 text-xs outline-none ${(actual.texto ?? "").trim() ? "border-line text-text" : "border-amber/60"}`} />
+                              className={`basis-full min-w-0 rounded-lg border bg-tinte/[0.03] px-2 py-1 text-xs outline-none ${(actual.texto ?? "").trim() ? "border-line text-text" : "border-amber/60"}`} />
                           )}
                           {actual.codigo === "otro" && !(actual.texto ?? "").trim() && <span className="text-[10px] text-amber">Escribe lo que dijo el cliente</span>}
                           {guardando === `${g.guia}|obs` && <span className="text-[10px] text-muted">Guardando…</span>}

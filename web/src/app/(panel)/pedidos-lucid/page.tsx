@@ -45,10 +45,10 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
         </p>
       </div>
       <div className="flex items-center gap-3 mb-4">
-        <Link href={`/pedidos-lucid?mes=${otro(-1)}`} className="rounded-full border border-line px-3 py-1 text-sm hover:bg-white/5">‹ {MESES[(m + 10) % 12]}</Link>
+        <Link href={`/pedidos-lucid?mes=${otro(-1)}`} className="rounded-full border border-line px-3 py-1 text-sm hover:bg-tinte/5">‹ {MESES[(m + 10) % 12]}</Link>
         <span className="font-display text-lg font-semibold capitalize">{MESES[m - 1]} {a}</span>
         {mes < hoy.slice(0, 7) && (
-          <Link href={`/pedidos-lucid?mes=${otro(1)}`} className="rounded-full border border-line px-3 py-1 text-sm hover:bg-white/5">{MESES[m % 12]} ›</Link>
+          <Link href={`/pedidos-lucid?mes=${otro(1)}`} className="rounded-full border border-line px-3 py-1 text-sm hover:bg-tinte/5">{MESES[m % 12]} ›</Link>
         )}
       </div>
       {cuentas.length ? (
