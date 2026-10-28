@@ -10,8 +10,8 @@ export const MODULOS = [
   { id: "dinero", nombre: "Dinero", detalle: "Wallet y PyG, Wallet en vivo y guías sin liquidar", rutas: ["/dinero", "/wallet-en-vivo", "/sin-liquidar"] },
   { id: "automatizacion", nombre: "Agente", detalle: "Órdenes de venta y novedades del agente", rutas: ["/agente"] },
   { id: "proveeduria", nombre: "Proveeduría", detalle: "Tablero de Distrilatam: ventas a las tiendas, inventario, compras y cartera", rutas: ["/proveeduria"] },
-  // Los socios lo ven (solo consultar); llenarlo es del dueño y de quien tenga el módulo marcado.
-  { id: "pedidos_lucid", nombre: "Pedidos Lucid", detalle: "Llenar cada día los pedidos de LucidSales por país (los socios solo lo consultan)", rutas: ["/pedidos-lucid"] },
+  // Lo llenan el dueño, los socios y la empleada que tenga el módulo marcado.
+  { id: "pedidos_lucid", nombre: "Pedidos Lucid", detalle: "Llenar cada día los pedidos de LucidSales por país (los socios también lo llenan)", rutas: ["/pedidos-lucid"] },
 ] as const;
 export type ModuloId = (typeof MODULOS)[number]["id"];
 // Módulos exclusivos: solo el dueño y a quien se le marquen; a los socios no les llegan solos.

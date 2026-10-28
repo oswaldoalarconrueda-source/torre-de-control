@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { entero } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
@@ -111,9 +112,10 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = f
       </table>
 
       {/* "¿Está segura?": se ve el país, el día y el número antes de guardar. Escape = No. Enter no confirma, para que
-          un doble Enter no guarde sin mirar. */}
-      {pendiente && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true"
+          un doble Enter no guarde sin mirar. Va directo en el <body> (portal) para que salga siempre en el centro de la
+          pantalla: dentro del cuadro quedaba centrada en la tabla y, en pantallas grandes, fuera de la vista. */}
+      {pendiente && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true"
           onKeyDown={(e) => { if (e.key === "Escape") noGuardar(); }}>
           <div className="card w-full max-w-sm p-5 text-center">
             <div className="text-3xl">🤔</div>
@@ -127,7 +129,8 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = f
               <button onClick={noGuardar} autoFocus className="rounded-full border border-line px-6 py-2 font-semibold hover:bg-white/5">No</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
