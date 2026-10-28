@@ -5,9 +5,12 @@ import { createClient } from "@/lib/supabase/client";
 import { entero } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
 
-// Cuadro del mes como la hoja de la empleada, pero con los días hacia abajo y un país por columna. Cada casilla se
-// guarda sola al salir de ella (rpc pedidos_lucid_guardar); los días que ya no se pueden corregir quedan en solo lectura.
+// Cuadro del mes como la hoja de la empleada, pero con los días hacia abajo y un país por columna. Al dar Enter (o salir
+// de la casilla con un número distinto) sale "¿Está segura?" con el país, el día y el número: solo con "Sí" se guarda
+// (rpc pedidos_lucid_guardar); con "No" la casilla vuelve a lo que tenía para revisarla. Los días que ya no se pueden
+// corregir quedan en solo lectura.
 type Fila = { cuenta: string; fecha: string; pedidos: number; por: string | null };
+type Pendiente = { cuenta: string; fecha: string; nuevo: number | null; antes: number | null; el: HTMLInputElement };
 
 export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, filas }: {
   mes: string; dias: number; hoy: string; cuentas: string[]; esOwner: boolean; filas: Fila[];
@@ -21,11 +24,33 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, filas }: {
   const fechas = Array.from({ length: dias }, (_, i) => `${mes}-${String(i + 1).padStart(2, "0")}`).filter((f) => f <= hoy).reverse();
   const total = (c: string) => fechas.reduce((s, f) => s + (valores[`${c}|${f}`] ?? 0), 0);
 
-  async function guardar(cuenta: string, fecha: string, texto: string) {
-    const clave = `${cuenta}|${fecha}`;
-    const limpio = texto.replace(/\D/g, "");
+  const [pendiente, setPendiente] = useState<Pendiente | null>(null);
+  const diaLargo = (f: string) => new Date(`${f}T12:00:00`).toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" });
+
+  // Enter o salir de la casilla: si el número cambió, se pregunta antes de guardar.
+  function preguntar(cuenta: string, fecha: string, el: HTMLInputElement) {
+    if (pendiente) return;
+    const limpio = el.value.replace(/\D/g, "");
     const nuevo = limpio === "" ? null : Number(limpio);
-    if (nuevo === (valores[clave] ?? null)) return;
+    const antes = valores[`${cuenta}|${fecha}`] ?? null;
+    if (nuevo === antes) return;
+    setPendiente({ cuenta, fecha, nuevo, antes, el });
+  }
+  function noGuardar() {
+    if (!pendiente) return;
+    pendiente.el.value = pendiente.antes == null ? "" : String(pendiente.antes);
+    pendiente.el.focus();
+    setPendiente(null);
+  }
+  async function confirmar() {
+    if (!pendiente) return;
+    const p = pendiente;
+    setPendiente(null);
+    await guardar(p.cuenta, p.fecha, p.nuevo);
+  }
+
+  async function guardar(cuenta: string, fecha: string, nuevo: number | null) {
+    const clave = `${cuenta}|${fecha}`;
     setEstado((e) => ({ ...e, [clave]: "guardando" })); setError(null);
     const { error: e } = await createClient().rpc("pedidos_lucid_guardar", { p_cuenta: cuenta, p_fecha: fecha, p_pedidos: nuevo });
     if (e) { setEstado((s) => ({ ...s, [clave]: "error" })); setError(e.message); return; }
@@ -67,8 +92,8 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, filas }: {
                           inputMode="numeric"
                           defaultValue={v ?? ""}
                           placeholder="—"
-                          onBlur={(e) => guardar(c, f, e.currentTarget.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                          onBlur={(e) => preguntar(c, f, e.currentTarget)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); preguntar(c, f, e.currentTarget); } }}
                           className={`w-24 rounded-lg border bg-bg px-2 py-1 text-right num outline-none focus:border-blue-2 ${st === "error" ? "border-red" : st === "ok" ? "border-green/60" : "border-line"}`}
                           aria-label={`Pedidos de ${infoCuenta(c).nombre} el ${f}`}
                         />
@@ -84,6 +109,26 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, filas }: {
           })}
         </tbody>
       </table>
+
+      {/* "¿Está segura?": se ve el país, el día y el número antes de guardar. Escape = No. Enter no confirma, para que
+          un doble Enter no guarde sin mirar. */}
+      {pendiente && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true"
+          onKeyDown={(e) => { if (e.key === "Escape") noGuardar(); }}>
+          <div className="card w-full max-w-sm p-5 text-center">
+            <div className="text-3xl">🤔</div>
+            <div className="mt-2 font-display text-xl font-semibold">¿Está segura?</div>
+            <div className="mt-3 text-sm text-muted capitalize">{infoCuenta(pendiente.cuenta).bandera} {infoCuenta(pendiente.cuenta).nombre} · {diaLargo(pendiente.fecha)}</div>
+            <div className="mt-1 num text-4xl font-bold">{pendiente.nuevo == null ? "Vacío" : entero(pendiente.nuevo)}</div>
+            <div className="text-sm text-muted">{pendiente.nuevo == null ? "se borra el dato de ese día" : "pedidos"}</div>
+            {pendiente.antes != null && <div className="mt-2 text-xs text-amber">Antes decía {entero(pendiente.antes)}</div>}
+            <div className="mt-5 flex justify-center gap-3">
+              <button onClick={confirmar} className="rounded-full bg-green px-6 py-2 font-bold text-black">Sí</button>
+              <button onClick={noGuardar} autoFocus className="rounded-full border border-line px-6 py-2 font-semibold hover:bg-white/5">No</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
