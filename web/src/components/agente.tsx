@@ -269,7 +269,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
   // Envía, Inter, Servientrega y Coordinadora con recaudo, cada una con su % de entrega y su flete hacia ese destino.
   const recomendacion = (o: OrdenAuto) => (o.plan?.resumen as Record<string, unknown> | undefined)?.recomendacion as Recomendacion | undefined;
   const opcionesPara = (o: OrdenAuto) => {
-    if (cuenta !== "TIENDA_CO") return opcionesTransporte.map((t) => ({ ...t, etiqueta: `${t.nombre} (${t.guias} guías)` }));
+    if (cuenta !== "TIENDA_CO") return opcionesTransporte.map((t) => ({ ...t, etiqueta: t.nombre }));
     const rec = recomendacion(o);
     return opcionesTransporte.filter((t) => CO_HABILITADAS.includes(t.id))
       .map((t) => {
@@ -280,7 +280,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
         return { ...t, entrega: !conDatos ? -1 : matriz ? Number(ruta.entrega) : 100 - Number(ruta!.devol),
           etiqueta: `${t.nombre.split(" · ")[0].replace(" EFFI", "")}${marcas} — ${!conDatos ? "sin datos"
             : matriz ? `${pct(Number(ruta.entrega))} entrega · flete ${dinero(Number(ruta.flete), cuenta)}`
-            : `${pct(ruta!.devol)} dev. (${entero(Number(ruta!.guias))} guías)`}` };
+            : `${pct(ruta!.devol)} dev.`}` };
       })
       .sort((a, b) => b.entrega - a.entrega);
   };
