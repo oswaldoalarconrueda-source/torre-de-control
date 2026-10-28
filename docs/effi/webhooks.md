@@ -56,7 +56,7 @@ La lista completa de eventos (unos 190, de todos los módulos) aparece en el sel
 |---|---|
 | TIENDA_CO (NATURALFITT CO, ID 58004) | ✅ 13/13, el 2026-10-23 |
 | TIENDA_EC (NATURALFITT EC, ID 57380) | ✅ 13/13, el 2026-10-23 |
-| TIENDA_GT (NATURALFITT GT, ID 56172) | ✅ 13/13: ya estaban creados y activos al revisar el 2026-10-28; el tracking llega desde ese día |
+| TIENDA_GT (NATURALFITT GT, ID 56172) | ✅ **103/103**: todos los eventos que Effi deja crear en esa empresa (los 13 de siempre + 90 creados el 2026-10-28, pedido del dueño "aunque hoy no se usen") |
 | TIENDA_CR | pendiente |
 | VALKA_GT (VALKA GT, ID 58130, sociedad Valka) | ✅ 13/13, el 2026-10-25 (nombre "Torre Control - <evento>": Effi quita el "·") |
 | DISTRI_GT (DISTRIGUATEMALA, ID 25084, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
@@ -120,3 +120,12 @@ Más 33 de inventario y compras (pedido del 2026-10-26):
 - **Forma del aviso:** `{ evento, empresa, entrega, fecha_evento, datos }`. En el tracking, `datos` es la guía completa (los mismos campos de `api/guia_transporte`, más `estado_anterior`).
 - **GT ya recibe avisos de tracking**, aunque la Torre no le había creado webhooks: los configuraron del lado de Effi.
 - **Ninguno tiene error, pero ninguno se procesa todavía** (`procesado_en` vacío): los datos en vivo siguen saliendo del `effi-sync` cada minuto.
+
+**Guatemala, todos los eventos (2026-10-28):**
+- Effi deja crear 103 eventos en NATURALFITT GT. Son menos que los ~190 de la lista general, porque depende de los módulos de la empresa.
+- Se crearon los 90 que faltaban: terceros, CRM, inventario, compras, ventas, logística, wallet y contabilidad. Todos se llaman "Torre Control · <evento>", usan la plataforma "Otra" y apuntan a `?cuenta=TIENDA_GT`.
+- Verificado en la lista de Effi (3 páginas): 103 webhooks, 103 eventos distintos, todos "Vigente - Activo".
+- **Cómo se crean en lote:** desde la página de Webhooks con la sesión en la empresa correcta, con `jQuery.ajax` POST a `webhook/crear`, con los mismos campos del formulario (`nombre`, `t_evento_webhook`, `api=default`, `url`, `cabeceras`, `session_empresa`, `session_usuario`).
+  - La respuesta es `{respuesta: "OK", mensaje: <secreto>}`; el secreto no se guarda.
+  - Con `fetch` sin la cabecera `X-Requested-With`, Effi redirige a `/app` y no crea nada.
+- Los eventos que la Torre todavía no usa solo se guardan en `effi_webhook_events` (`effi_webhook_aplicar` no los toca).
