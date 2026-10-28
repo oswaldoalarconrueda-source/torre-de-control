@@ -56,7 +56,7 @@ La lista completa de eventos (unos 190, de todos los módulos) aparece en el sel
 |---|---|
 | TIENDA_CO (NATURALFITT CO, ID 58004) | ✅ 13/13, el 2026-10-23 |
 | TIENDA_EC (NATURALFITT EC, ID 57380) | ✅ 13/13, el 2026-10-23 |
-| TIENDA_GT | pendiente |
+| TIENDA_GT (NATURALFITT GT, ID 56172) | ✅ 13/13: ya estaban creados y activos al revisar el 2026-10-28; el tracking llega desde ese día |
 | TIENDA_CR | pendiente |
 | VALKA_GT (VALKA GT, ID 58130, sociedad Valka) | ✅ 13/13, el 2026-10-25 (nombre "Torre Control - <evento>": Effi quita el "·") |
 | DISTRI_GT (DISTRIGUATEMALA, ID 25084, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
