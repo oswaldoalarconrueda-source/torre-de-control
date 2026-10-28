@@ -12,15 +12,15 @@ import { infoCuenta } from "@/lib/paises";
 type Fila = { cuenta: string; fecha: string; pedidos: number; por: string | null };
 type Pendiente = { cuenta: string; fecha: string; nuevo: number | null; antes: number | null; el: HTMLInputElement };
 
-export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, filas }: {
-  mes: string; dias: number; hoy: string; cuentas: string[]; esOwner: boolean; filas: Fila[];
+export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = false, filas }: {
+  mes: string; dias: number; hoy: string; cuentas: string[]; esOwner: boolean; soloLectura?: boolean; filas: Fila[];
 }) {
   const [valores, setValores] = useState<Record<string, number | null>>(() =>
     Object.fromEntries(filas.map((f) => [`${f.cuenta}|${f.fecha}`, f.pedidos])));
   const [estado, setEstado] = useState<Record<string, "guardando" | "ok" | "error">>({});
   const [error, setError] = useState<string | null>(null);
   const limite = new Date(Date.parse(`${hoy}T12:00:00`) - 7 * 86_400_000).toISOString().slice(0, 10);
-  const editable = (fecha: string) => fecha <= hoy && (esOwner || fecha >= limite);
+  const editable = (fecha: string) => !soloLectura && fecha <= hoy && (esOwner || fecha >= limite);
   const fechas = Array.from({ length: dias }, (_, i) => `${mes}-${String(i + 1).padStart(2, "0")}`).filter((f) => f <= hoy).reverse();
   const total = (c: string) => fechas.reduce((s, f) => s + (valores[`${c}|${f}`] ?? 0), 0);
 

@@ -21,10 +21,14 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
 
   const supabase = await createClient();
   const esOwner = u.rol === "owner";
-  // Tiendas que llena: el dueño, las de Joalix; los demás, las que tengan con este módulo.
+  // Los socios solo miran (las tiendas de su sociedad); llenan el dueño y la empleada que tenga el módulo.
+  const soloLectura = u.rol === "socio";
+  // Tiendas: el dueño, las de Joalix; los socios, las tiendas que ven; los empleados, las que tengan con este módulo.
   const { data: tiendas } = esOwner
     ? await supabase.from("effi_accounts").select("slug").eq("tipo", "tienda").eq("sociedad", "Joalix AA Group").eq("activa", true)
-    : await supabase.from("app_permisos").select("slug:cuenta").eq("user_id", u.id).contains("modulos", ["pedidos_lucid"]);
+    : soloLectura
+      ? await supabase.from("effi_accounts").select("slug").eq("tipo", "tienda").eq("activa", true)
+      : await supabase.from("app_permisos").select("slug:cuenta").eq("user_id", u.id).contains("modulos", ["pedidos_lucid"]);
   const cuentas = (tiendas ?? []).map((t) => t.slug as string).sort((x, y) => ordenCuenta(x) - ordenCuenta(y));
   const { data: filas } = cuentas.length
     ? await supabase.from("app_pedidos_diarios").select("cuenta,fecha,pedidos,actualizado_por,actualizado_en")
@@ -36,8 +40,8 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
       <div className="pt-8 mb-6">
         <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">📝 Pedidos Lucid</h1>
         <p className="text-sm text-muted mt-1.5">
-          Cuántos pedidos entraron a LucidSales cada día en cada país. Se guarda solo al salir de la casilla.
-          {esOwner ? " Tú puedes corregir cualquier día." : " Se pueden corregir los últimos 7 días."}
+          Cuántos pedidos entraron a LucidSales cada día en cada país.
+          {soloLectura ? " Los llena la encargada; aquí solo se consultan." : esOwner ? " Al dar Enter pide confirmar. Tú puedes corregir cualquier día." : " Al dar Enter pide confirmar. Se pueden corregir los últimos 7 días."}
         </p>
       </div>
       <div className="flex items-center gap-3 mb-4">
@@ -48,7 +52,7 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
         )}
       </div>
       {cuentas.length ? (
-        <PedidosLucid key={mes} mes={mes} dias={dias} hoy={hoy} cuentas={cuentas} esOwner={esOwner}
+        <PedidosLucid key={mes} mes={mes} dias={dias} hoy={hoy} cuentas={cuentas} esOwner={esOwner} soloLectura={soloLectura}
           filas={(filas ?? []).map((f) => ({ cuenta: f.cuenta as string, fecha: f.fecha as string, pedidos: Number(f.pedidos), por: (f.actualizado_por as string | null) ?? null }))} />
       ) : (
         <p className="text-sm text-muted">No tienes tiendas asignadas para llenar pedidos. Pídele al dueño que te las marque en Usuarios y permisos.</p>
