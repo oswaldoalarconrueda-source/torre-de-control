@@ -92,6 +92,8 @@ function proxima(zona: string, cadaMin: number, cortes: string[], antesMin: numb
   }
   return null;
 }
+// Errores pasajeros de Effi: se arreglan reintentando, y eso lo hace el agente solo (auto_reintentar_automatico).
+const pasajero = (m: string) => /transacci[oó]n Dropshipping|demasiadas peticiones|no respondi[oó]|HTTP 5\d\d/i.test(m);
 const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1440 ? `${Math.round(min / 60)} h` : `${Math.floor(min / 1440)} d`);
 
 export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; datos: DatosAuto; transportes?: Transportes }) {
@@ -130,7 +132,10 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
   // guía: sale de aquí sin que nadie lo borre.
   const pendienteResuelto = (o: OrdenAuto) =>
     !!o.plan_motivo?.startsWith("Pendiente:") && (o.estado === "completa" || o.motivos.some((m) => m.startsWith("La remisión está anulada")));
-  const novedad = (o: OrdenAuto) => !pendienteResuelto(o) && (
+  // No son novedad: lo que la Torre ya creó (sale solo cuando la sincronización trae la remisión y la guía, en minutos)
+  // ni lo que el agente todavía no alcanza a preparar (se prepara en la próxima vuelta, de a 15 cada 10 minutos).
+  const esperandoAgente = (o: OrdenAuto) => !o.plan_estado && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.minutos < 180;
+  const novedad = (o: OrdenAuto) => !pendienteResuelto(o) && o.plan_estado !== "creada" && !esperandoAgente(o) && (
     o.plan_estado === "error" || o.estado === "revision" ||
     (o.estado === "sin_remision" && (o.plan_estado === "revision" || o.minutos >= alerta)) ||
     (o.estado === "sin_guia" && (o.plan_estado === "revision" || o.minutos >= alerta)));
@@ -150,10 +155,16 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
   // hizo a mano en Effi (la sincronización ya la trae) o cuando anularon la orden.
   const conRemision = (o: OrdenAuto) => o.id_remision != null && !o.motivos.some((m) => m.startsWith("La remisión está anulada"));
   const errorDeRemision = (o: OrdenAuto) => /^(Effi no dej[oó] crear la remisi[oó]n|La orden ya tiene la remisi[oó]n)/i.test(o.plan_motivo ?? "");
+  // Si anularon la remisión, el error de un intento anterior ya no aplica: queda solo el aviso de la anulación.
+  const remisionAnulada = (o: OrdenAuto) => o.motivos.some((m) => m.startsWith("La remisión está anulada"));
   const ordenes = useMemo(() => datos.ordenes.map((o) =>
-    o.plan_estado === "error" && (o.estado === "completa" || o.estado === "anulada" || (errorDeRemision(o) && conRemision(o)))
+    o.plan_estado === "error" && (o.estado === "completa" || o.estado === "anulada" || remisionAnulada(o) || (errorDeRemision(o) && conRemision(o)))
       ? { ...o, plan_estado: null, plan_motivo: null } : o), [datos.ordenes]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lista = useMemo(() => ordenes.filter((o) => novedad(o) && !paraCrear(o) && !vaSola(o)),
+  const lista = useMemo(() => ordenes.filter((o) => novedad(o) && !paraCrear(o) && !vaSola(o) && !remisionAnulada(o)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ordenes]);
+  // Remisión anulada (el proveedor rechazó el dropshipping o alguien la anuló): no es novedad del agente, va aparte.
+  const anuladasRem = useMemo(() => ordenes.filter((o) => remisionAnulada(o) && o.estado !== "completa" && o.estado !== "anulada"),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ordenes]);
   const listas = useMemo(() => ordenes.filter(paraCrear),
@@ -430,7 +441,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
       )}
 
       <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
-        completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o)).map((o) => o.id)}
+        completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o) || remisionAnulada(o)).map((o) => o.id)}
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
 
       <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
@@ -464,7 +475,9 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
         { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.", conRemision: true, conGuia: true,
-          texto: "Lo que el agente no pudo resolver solo. Se corrige a mano en Effi (por ejemplo, cambiar de proveedor) y sale de aquí al quedar con remisión y guía." },
+          texto: "Solo lo que necesita una persona. Se concilia sola con Effi cada minuto: sale de aquí apenas la orden tenga remisión y guía (las haga la Torre o alguien a mano) o si la anulan. Al ejecutar o reintentar, el resultado sale en Estado: ✓ hecha, ↻ Effi falló de paso (el agente reintenta solo) o ⚠ requiere verificación humana." },
+        { titulo: "Remisión anulada", filas: anuladasRem, vacio: "Ninguna remisión anulada pendiente.", conRemision: true, conGuia: true,
+          texto: "Effi anuló la remisión (el proveedor rechazó el dropshipping o alguien la anuló). No es novedad del agente: queda aquí para decidir si se anula la orden o se hace con otro proveedor, y sale sola cuando eso pase." },
       ].map((s) => (
       <Fragment key={s.titulo}>
       <div className="flex flex-wrap items-baseline gap-2 pt-2">
@@ -551,16 +564,25 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                     {o.motivos.map((m) => (
                       <div key={m} className="text-[11px] text-amber mt-0.5">{m}</div>
                     ))}
-                    {o.plan_estado === "error" && o.plan_motivo && (
-                      <div className="mt-1 min-w-[26rem] max-w-[44rem] rounded-lg border border-red/40 bg-red/10 px-2 py-1 text-[11px] text-red whitespace-normal">
-                        ⚠ {o.plan_motivo}
+                    {/* Resultado de lo que se ejecutó: un tropiezo de Effi lo reintenta el agente solo; lo demás lo
+                        revisa una persona. */}
+                    {o.plan_estado === "error" && o.plan_motivo && (pasajero(o.plan_motivo) ? (
+                      <div className="mt-1 min-w-[26rem] max-w-[44rem] rounded-lg border border-amber/40 bg-amber/10 px-2 py-1 text-[11px] text-amber whitespace-normal">
+                        ↻ Effi falló de paso ({o.plan_motivo.replace(/^Effi no dej[oó] crear la remisi[oó]n: /, "")}). El agente lo reintenta solo cada 5 minutos, hasta 3 veces al día.
                         {datos.es_owner && o.plan?.resultado && (
                           <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
                         )}
                       </div>
-                    )}
+                    ) : (
+                      <div className="mt-1 min-w-[26rem] max-w-[44rem] rounded-lg border border-red/40 bg-red/10 px-2 py-1 text-[11px] text-red whitespace-normal">
+                        ⚠ Requiere verificación humana: {o.plan_motivo}
+                        {datos.es_owner && o.plan?.resultado && (
+                          <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
+                        )}
+                      </div>
+                    ))}
                     {o.plan_estado === "creada" && (
-                      <div className="mt-1 text-[11px] text-green">✓ Creada por la Torre</div>
+                      <div className="mt-1 text-[11px] text-green">✓ Hecha por la Torre: sale de aquí cuando Effi lo confirme, en unos minutos</div>
                     )}
                   </td>
                   <td className="px-3 py-2 min-w-[15rem]">
@@ -705,7 +727,7 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
         <button onClick={onAlternar} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-red bg-tinte/5 hover:bg-tinte/10">
           {abierto ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Falló al crear
         </button>
-        <div className="text-muted mt-1">Mira el error en Estado y las variables al desplegar</div>
+        <div className="text-muted mt-1">El detalle del error está en Estado</div>
       </div>
     );
   }

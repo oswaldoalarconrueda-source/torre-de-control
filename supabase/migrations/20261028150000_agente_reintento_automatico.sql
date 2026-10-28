@@ -18,7 +18,8 @@ begin
       and a.guia is null and (a.id_remision is null or a.plan ? 'remision_existente')
       and (a.plan_motivo ilike '%crear la transacción Dropshipping%'
         or a.plan_motivo ilike '%demasiadas peticiones%'
-        or a.plan_motivo ilike '%no respondió%')
+        or a.plan_motivo ilike '%no respondió%'
+        or a.plan_motivo ~* 'HTTP 5[0-9]{2}')
       and (select count(*) from public.auto_eventos e
            where e.cuenta = a.cuenta and e.id_orden = a.id and e.ok is false and e.paso in ('remision', 'guia')
              and e.creado_en > date_trunc('day', now())) < 4
