@@ -39,7 +39,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
     if (it.soloProveeduria && !conProveeduria) return null;
     if (it.noProveeduria && soloProveeduria && !esOwner) return null;
     if (it.modulo && !tieneModulo(acceso, it.modulo)) return null;
-    const activo = it.href === "/" ? path === "/" : path.startsWith(it.href);
+    const activo = it.href === "/" ? path === "/" : path === it.href || path.startsWith(`${it.href}/`);
     return (
       <Link
         key={it.href}

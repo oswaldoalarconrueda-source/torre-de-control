@@ -28,6 +28,7 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
   { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true, soloSocios: true },
   { href: "/sin-liquidar", label: "Guías sin liquidar", emoji: "⏳", estado: "vivo", modulo: "dinero" },
+  { href: "/agente-admin", label: "Agente admin", emoji: "🧾", estado: "vivo", soloOwner: true },
   { href: "/sync", label: "Estado de los datos", emoji: "🔄", estado: "vivo", soloOwner: true },
   { href: "/cargas", label: "Cargar archivos", emoji: "📤", estado: "vivo", soloOwner: true },
   { href: "/usuarios", label: "Usuarios y permisos", emoji: "👥", estado: "vivo", soloOwner: true },
