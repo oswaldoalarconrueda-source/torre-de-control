@@ -429,7 +429,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
         </div>
       )}
 
-      <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()}
+      <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
         completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o)).map((o) => o.id)}
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
 
@@ -554,7 +554,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                     {o.plan_estado === "error" && o.plan_motivo && (
                       <div className="mt-1 min-w-[26rem] max-w-[44rem] rounded-lg border border-red/40 bg-red/10 px-2 py-1 text-[11px] text-red whitespace-normal">
                         ⚠ {o.plan_motivo}
-                        {o.plan?.resultado && (
+                        {datos.es_owner && o.plan?.resultado && (
                           <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
                         )}
                       </div>
@@ -642,7 +642,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                 {abierto && o.plan && (
                   <tr>
                     <td colSpan={8 + Number(s.conRemision) + Number(s.conGuia)} className="px-3 pb-4 bg-tinte/[0.015]">
-                      {o.plan.resultado && (
+                      {datos.es_owner && o.plan.resultado && (
                         <div className="grid lg:grid-cols-2 gap-3 pt-2">
                           <Envio titulo={`Lo que se envió a Effi (${String(o.plan.resultado.paso ?? "")})`} datos={(o.plan.resultado.enviado as Record<string, unknown>) ?? undefined} />
                           <Envio titulo="Lo que respondió Effi" datos={(o.plan.resultado.respuesta as Record<string, unknown>) ?? (o.plan.resultado as Record<string, unknown>)} />

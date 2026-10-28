@@ -19,8 +19,9 @@ type Evento = { id: number; id_orden: number | null; paso: string; ok: boolean |
 type Resumen = { sin_remision: number; sin_guia: number; listas?: number; plan_revision?: number };
 
 
-export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas, remisionadas }: {
+export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas, remisionadas, esDueno = false }: {
   cuenta: string; resumen: Resumen; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
+  esDueno?: boolean; // "ver variables" (lo que se envió y respondió Effi) es solo para el dueño
   completas?: number[]; // órdenes que ya tienen remisión y guía (o que se anularon)
   remisionadas?: number[]; // órdenes que ya tienen remisión vigente, aunque falte la guía
 }) {
@@ -213,13 +214,13 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas, remi
                       <RotateCw size={11} /> Reintentar
                     </button>
                   ))}
-                  {e.datos && (
+                  {esDueno && e.datos && (
                     <button onClick={() => setAbierto(abierto === e.id ? null : e.id)} className="whitespace-nowrap text-blue-2 underline">
                       {abierto === e.id ? "ocultar variables" : "ver variables"}
                     </button>
                   )}
                 </div>
-                {abierto === e.id && e.datos && (
+                {esDueno && abierto === e.id && e.datos && (
                   <pre className="sube mt-2 max-h-72 overflow-auto rounded-lg border border-line bg-black/30 p-2 text-[11px] whitespace-pre-wrap break-all font-mono">{JSON.stringify(e.datos, null, 2)}</pre>
                 )}
               </div>
