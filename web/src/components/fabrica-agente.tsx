@@ -15,11 +15,15 @@ export type DatosFabrica = {
   guia_aa: number; guia_ah: number; guia_ha: number; guia_hh: number;
 };
 
+// Órdenes de hoy contadas del mismo listado que las tablas del agente: "sin remisión" son exactamente las filas de la
+// lista "Órdenes sin remisión" (incluye las de días anteriores que siguen pendientes).
+export type ConteoOrdenes = { total: number; remisionadas: number; sinRemision: number; sinRemisionAntes: number; anuladas: number };
+
 // El humano siempre naranja; el agente azul hasta la remisión y verde hasta la guía.
 const C = { orden: "34 211 238", agenteRem: "90 162 255", agenteGuia: "47 210 143", humano: "255 145 40" };
 const pct = (a: number, b: number) => (a + b ? Math.round((a / (a + b)) * 100) : 0);
 
-function Etapa({ Icono, titulo, valor, sub, color, activa }: { Icono: typeof Truck; titulo: string; valor: number; sub: string; color: string; activa?: boolean }) {
+function Etapa({ Icono, titulo, valor, sub, color, activa }: { Icono: typeof Truck; titulo: string; valor: number; sub: ReactNode; color: string; activa?: boolean }) {
   return (
     <div className="relative flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2.5 transition-shadow"
       style={{ borderColor: `rgb(${color} / ${activa ? 0.8 : 0.3})`, background: `linear-gradient(180deg, rgb(${color} / 0.10), rgb(${color} / 0.02))`, boxShadow: activa ? `0 0 28px -8px rgb(${color} / 0.8)` : undefined }}>
@@ -30,7 +34,7 @@ function Etapa({ Icono, titulo, valor, sub, color, activa }: { Icono: typeof Tru
       <div className="min-w-0">
         <div key={valor} className="sube num text-2xl font-bold leading-none tracking-tight" style={{ color: `rgb(${color})` }}>{entero(valor)}</div>
         <div className="mt-1 truncate text-[10px] uppercase tracking-widest font-mono text-text/80">{titulo}</div>
-        <div className="text-[11px] leading-snug text-muted">{sub}</div>
+        {typeof sub === "string" ? <div className="text-[11px] leading-snug text-muted">{sub}</div> : sub}
       </div>
     </div>
   );
@@ -136,7 +140,10 @@ function Conector({ agente, humano, colorAgente, rapido, detalle }: { agente: nu
 }
 
 // `estado`: lo que está haciendo el agente ahora o su próxima corrida; `paso`: la etapa que está creando en este momento.
-export function FabricaAgente({ d, estado, paso, enVivo = false }: { d: DatosFabrica; estado?: ReactNode; paso?: string | null; enVivo?: boolean }) {
+export function FabricaAgente({ d, ordenes, estado, paso, enVivo = false }: {
+  d: DatosFabrica; ordenes?: ConteoOrdenes; estado?: ReactNode; paso?: string | null; enVivo?: boolean;
+}) {
+  const o = ordenes ?? { total: d.ordenes_hoy + d.anuladas_hoy, remisionadas: Math.max(0, d.ordenes_hoy - d.sin_remision), sinRemision: d.sin_remision, sinRemisionAntes: 0, anuladas: d.anuladas_hoy };
   const rem = d.rem_agente + d.rem_humano;
   const guiaAgente = d.guia_aa + d.guia_ha, guiaHumano = d.guia_ah + d.guia_hh, guias = guiaAgente + guiaHumano;
   const sinGuia = d.sin_guia_agente + d.sin_guia_humano;
@@ -156,8 +163,23 @@ export function FabricaAgente({ d, estado, paso, enVivo = false }: { d: DatosFab
         {estado && <div className="text-xs text-muted">{estado}</div>}
       </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.1fr)] md:gap-2">
-        <Etapa Icono={ShoppingCart} titulo="Órdenes" valor={d.ordenes_hoy} color={C.orden}
-          sub={`${entero(d.sin_remision)} sin remisión${d.anuladas_hoy ? ` · ${entero(d.anuladas_hoy)} anuladas` : ""}`} />
+        <Etapa Icono={ShoppingCart} titulo="Órdenes de hoy" valor={o.total} color={C.orden} sub={
+          <div className="mt-0.5 space-y-px text-[11px] leading-snug">
+            <div className="text-muted"><span className="num font-semibold text-text">{entero(o.remisionadas)}</span> remisionadas</div>
+            {/* Las que palpitan son las que están en la lista "Órdenes sin remisión", una por una. */}
+            <div className="flex items-center gap-1.5" style={{ color: o.sinRemision ? "rgb(255 181 71)" : "var(--muted)" }}
+              title={o.sinRemisionAntes ? `${entero(o.sinRemisionAntes)} son de días anteriores` : undefined}>
+              {o.sinRemision > 0 && (
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full onda" style={{ background: "rgb(255 181 71)" }} />
+                  <span className="relative inline-flex size-2 rounded-full" style={{ background: "rgb(255 181 71)" }} />
+                </span>
+              )}
+              <span><span className="num font-bold">{entero(o.sinRemision)}</span> sin remisión{o.sinRemisionAntes ? ` (${entero(o.sinRemisionAntes)} de antes)` : ""}</span>
+            </div>
+            <div className={o.anuladas ? "text-red" : "text-muted"}><span className="num font-semibold">{entero(o.anuladas)}</span> anuladas</div>
+          </div>
+        } />
         <Conector agente={d.rem_agente} humano={d.rem_humano} colorAgente={C.agenteRem} rapido={paso === "remision"} />
         <Etapa Icono={FileText} titulo="Remisiones" valor={rem} color={C.agenteRem} activa={paso === "remision"}
           sub={sinGuia ? `${entero(sinGuia)} esperando guía` : "todas con guía"} />

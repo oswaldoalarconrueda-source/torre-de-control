@@ -161,7 +161,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
   const ordenes = useMemo(() => datos.ordenes.map((o) =>
     o.plan_estado === "error" && (o.estado === "completa" || o.estado === "anulada" || remisionAnulada(o) || (errorDeRemision(o) && conRemision(o)))
       ? { ...o, plan_estado: null, plan_motivo: null } : o), [datos.ordenes]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lista = useMemo(() => ordenes.filter((o) => novedad(o) && !paraCrear(o) && !vaSola(o) && !remisionAnulada(o)),
+  const requierePersona = (o: OrdenAuto) => novedad(o) && !paraCrear(o) && !vaSola(o) && !remisionAnulada(o);
+  // Las órdenes sin remisión van todas en su lista (la que cuenta "sin remisión" en Agente en vivo): las que necesitan
+  // a una persona, de primeras y con su aviso. Novedad queda para las que ya tienen remisión.
+  const lista = useMemo(() => ordenes.filter((o) => requierePersona(o) && o.estado !== "sin_remision"),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ordenes]);
   // Remisión anulada (el proveedor rechazó el dropshipping o alguien la anuló): no es novedad del agente, va aparte.
@@ -173,6 +176,21 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
     [ordenes]);
   // Dos listas: órdenes que pasan a remisión (y luego a guía) y remisiones ya hechas que solo esperan la guía.
   const listasRemision = listas.filter((o) => o.estado === "sin_remision");
+  const sinRemision = useMemo(() => {
+    const t = ordenes.filter((o) => o.estado === "sin_remision");
+    return [...t.filter(requierePersona), ...t.filter((o) => !requierePersona(o))];
+  }, [ordenes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sinRemisionRevisar = sinRemision.filter(requierePersona).length;
+  // Órdenes de hoy (hora local del país) para Agente en vivo, del mismo listado que las tablas de abajo.
+  const diaLocal = (iso: string | number) => new Intl.DateTimeFormat("en-CA", { timeZone: zona }).format(new Date(iso));
+  const hoyOrdenes = ordenes.filter((o) => diaLocal(o.fecha) === diaLocal(Date.now()));
+  const conteoOrdenes = {
+    total: hoyOrdenes.length,
+    remisionadas: hoyOrdenes.filter((o) => o.id_remision != null).length,
+    anuladas: hoyOrdenes.filter((o) => o.estado === "anulada").length,
+    sinRemision: sinRemision.length,
+    sinRemisionAntes: sinRemision.filter((o) => diaLocal(o.fecha) !== diaLocal(Date.now())).length,
+  };
   const listasGuia = listas.filter((o) => o.estado === "sin_guia");
   const solas = ordenes.filter(vaSola);
   // Pedidos con abono (cliente con ** al inicio): el agente no los toca, se quedan en orden y los hace una persona.
@@ -414,7 +432,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
       )}
 
       {/* Agente en vivo (orden → remisión → guía de hoy, por agente y por humano) y, debajo, los errores de hoy. */}
-      <FlujoAgente cuenta={cuenta} fabrica={fabrica} proxima={sig} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
+      <FlujoAgente cuenta={cuenta} fabrica={fabrica} conteoOrdenes={conteoOrdenes} proxima={sig} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
         completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o) || remisionAnulada(o)).map((o) => o.id)}
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
 
@@ -457,7 +475,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
           sub={(r.hoy_total ?? 0) > (r.hoy_remisiones ?? 0) ? `${entero((r.hoy_total ?? 0) - (r.hoy_remisiones ?? 0))} sin remisionar` : undefined} />
         <Indicador titulo="Guías hoy" valor={entero(r.hoy_guias ?? 0)} color="var(--green)"
           sub={(r.hoy_remisiones ?? 0) > (r.hoy_guias ?? 0) ? `${entero((r.hoy_remisiones ?? 0) - (r.hoy_guias ?? 0))} sin guía` : undefined} />
-        <Indicador titulo="Requieren revisión" valor={entero(lista.length)} color="var(--amber)" />
+        <Indicador titulo="Requieren revisión" valor={entero(lista.length + sinRemisionRevisar)} color="var(--amber)" />
         <Indicador titulo="Listas para crear" valor={entero(listas.length)} color="var(--green)"
           sub={`${entero(listasRemision.length)} a remisión · ${entero(listasGuia.length)} a guía`} />
       </div>
@@ -467,13 +485,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
       {/* Columnas Remisión y Guía solo donde dicen algo: en "orden → remisión" siempre están vacías y empujaban "Acción"
           fuera de la pantalla; en "remisión → guía" la guía todavía no existe. */}
       {[
-        { titulo: "Listas: orden → remisión", filas: listasRemision, vacio: "Ninguna orden esperando remisión.", conRemision: false, conGuia: false,
-          texto: creaRemision
+        { titulo: "Órdenes sin remisión", filas: sinRemision, vacio: "Ninguna orden sin remisión.", conRemision: false, conGuia: false,
+          texto: (sinRemisionRevisar ? `Primero las ${entero(sinRemisionRevisar)} que necesitan a una persona (con su aviso en Estado). ` : "") + (creaRemision
             ? creaEnEffi
               ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una."
               : "Órdenes que el agente pasa a remisión (y a guía si quieres) cuando pulsas “Ejecutar” en cada una: ahí escoges el paso y la transportadora." +
                 (cuenta === "TIENDA_CO" ? ` La entrega en oficina de Interrapidísimo o Servientrega va sola${solas.length ? ` (${entero(solas.length)} en camino)` : ""}.` : "")
-            : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía." },
+            : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía.") },
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
         { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.", conRemision: true, conGuia: true,
@@ -583,6 +601,11 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                         )}
                       </div>
                     ))}
+                    {o.estado === "sin_remision" && esperandoAgente(o) && (
+                      <div className="mt-1 text-[11px] text-blue-2">⏳ El agente la prepara en la próxima corrida</div>
+                    )}
+                    {vaSola(o) && <div className="mt-1 text-[11px] text-green">🏢 Va sola a la oficina en la próxima corrida</div>}
+                    {o.decision === "descartar" && <div className="mt-1 text-[11px] text-muted">Descartada por {o.decision_por ?? "una persona"}</div>}
                     {o.plan_estado === "creada" && (
                       <div className="mt-1 text-[11px] text-green">✓ Hecha por la Torre: sale de aquí cuando Effi lo confirme, en unos minutos</div>
                     )}

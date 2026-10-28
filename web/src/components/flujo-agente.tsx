@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, RotateCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { infoCuenta } from "@/lib/paises";
-import { FabricaAgente, type DatosFabrica } from "./fabrica-agente";
+import { FabricaAgente, type ConteoOrdenes, type DatosFabrica } from "./fabrica-agente";
 
 // Agente en vivo y Errores de hoy. Arriba, la franja orden → remisión → guía de hoy, por agente y por humano
 // (auto_fabrica); cuando el agente está creando algo, la etapa activa late y se ve la orden y el paso. Abajo, los errores
@@ -16,8 +16,8 @@ import { FabricaAgente, type DatosFabrica } from "./fabrica-agente";
 type Evento = { id: number; id_orden: number | null; paso: string; ok: boolean | null; mensaje: string; datos: Record<string, unknown> | null; creado_en: string };
 
 
-export function FlujoAgente({ cuenta, fabrica, proxima, onNuevo, completas, remisionadas, esDueno = false }: {
-  cuenta: string; fabrica?: DatosFabrica | null; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
+export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, completas, remisionadas, esDueno = false }: {
+  cuenta: string; fabrica?: DatosFabrica | null; conteoOrdenes?: ConteoOrdenes; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
   esDueno?: boolean; // "ver variables" (lo que se envió y respondió Effi) es solo para el dueño
   completas?: number[]; // órdenes que ya tienen remisión y guía (o que se anularon)
   remisionadas?: number[]; // órdenes que ya tienen remisión vigente, aunque falte la guía
@@ -123,7 +123,7 @@ export function FlujoAgente({ cuenta, fabrica, proxima, onNuevo, completas, remi
   return (
     <>
       {fabrica && (
-        <FabricaAgente d={fabrica} paso={activo?.paso} enVivo={!!activo} estado={activo ? (
+        <FabricaAgente d={fabrica} ordenes={conteoOrdenes} paso={activo?.paso} enVivo={!!activo} estado={activo ? (
           <span className="text-blue-2 font-semibold">Trabajando en la OV {activo.id_orden}: {activo.mensaje}</span>
         ) : proxima ? (
           <>Próxima corrida {proxima.hora}{proxima.corte ? ` · antes del corte de las ${proxima.corte}` : ""} · en {proxima.en} min</>
