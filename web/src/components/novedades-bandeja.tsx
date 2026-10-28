@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { dinero, entero } from "@/lib/formato";
+import { dinero, entero, minutosDesde, transCorta } from "@/lib/formato";
 import { sumarDias } from "@/lib/filtros";
 import { BarraHorizontal } from "./barra-horizontal";
 import { infoCuenta } from "@/lib/paises";
@@ -38,10 +38,6 @@ const RESULTADOS: Record<Resultado, { label: string; color: string }> = {
   telefono_malo: { label: "No aplica", color: "#b48cff" },
 };
 const hoyLocal = (cuenta: string) => new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date());
-const hace = (iso: string, ahora: number) => {
-  const m = Math.max(0, Math.round((ahora - Date.parse(iso)) / 60_000));
-  return m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / 1440)} d`;
-};
 const minutos = (m: number | null) => (m == null ? "—" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
 const ESTADOS = [{ id: "pendientes", label: "Por solucionar" }, { id: "seguimiento", label: "📌 Seguimiento hoy" }, { id: "enviadas", label: "Enviadas hoy" }, { id: "todas", label: "Todas" }];
 const SEGUIR = "seguir"; // valor de "Hacer seguimiento" en la lista de soluciones
@@ -236,8 +232,8 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
         <table className="w-full min-w-max text-xs">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wider text-muted border-b border-line">
-              {["Llegó", "Transportadora", "Guía", "Novedad", "Contenido", "Cliente", "Teléfono", "Ciudad", "Dirección", "Recaudo", "Contacto 1", "Contacto 2", "Contacto 3", "Solución", "Nueva entrega", "Qué se habló", "", "Asesora"].map((h, i) => (
-                <th key={i} className="px-2 py-2 font-semibold whitespace-nowrap">{h}</th>
+              {["Llegó", "Trans.", "Guía", "Novedad", "Contenido", "Cliente", "Teléfono", "Ciudad", "Dirección", "Recaudo", "C1", "C2", "C3", "Solución", "Entrega", "Qué se habló", "", "Asesora"].map((h, i) => (
+                <th key={i} className="px-1.5 py-2 font-semibold whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
@@ -254,49 +250,49 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
               const seg = toca(f), sigue = b.sol === SEGUIR;
               return (
                 <tr key={`${f.empresa}-${f.id}`} className={`border-b border-line/60 align-middle ${seg ? "bg-[#ffb347]/[0.08] hover:bg-[#ffb347]/[0.12] shadow-[inset_3px_0_0_#ffb347]" : `hover:bg-white/[0.03] ${fondo}`}`}>
-                  <td className="px-2 py-1.5 whitespace-nowrap text-muted" title={new Date(f.llego).toLocaleString("es-CO")} suppressHydrationWarning>
+                  <td className="px-1.5 py-1.5 whitespace-nowrap text-muted" title={new Date(f.llego).toLocaleString("es-CO")} suppressHydrationWarning>
                     {seg && (
                       <div className="mb-1 inline-block rounded-full bg-[#ffb347] px-2 py-0.5 text-[10px] font-bold text-black">
-                        📌 {seg === hoy ? "Llamar hoy" : `Seguimiento del ${ddmm(seg)}`}
+                        📌 {seg === hoy ? "Hoy" : ddmm(seg)}
                       </div>
                     )}
-                    <div>{hace(f.llego, ahora)}</div>
+                    <div suppressHydrationWarning>{minutosDesde(f.llego, ahora)}</div>
                   </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{f.transportadora}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">
+                  <td className="px-1.5 py-1.5 whitespace-nowrap" title={f.transportadora ?? ""}>{transCorta(f.transportadora)}</td>
+                  <td className="px-1.5 py-1.5 whitespace-nowrap">
                     {f.guia && (
                       <button onClick={() => copiar(f.guia!)} title="Copiar guía" className="group inline-flex items-center gap-1 font-mono font-semibold hover:text-blue-2">
                         {f.guia}<Copy size={10} className="opacity-40 group-hover:opacity-100" />
                         {copiada === f.guia && <span className="text-[10px] text-green font-sans">copiada</span>}
                       </button>
                     )}
-                    <div className="text-[10px] text-muted">{f.estado_guia}</div>
+                    <div className="max-w-[7.5rem] truncate text-[10px] text-muted" title={f.estado_guia ?? ""}>{f.estado_guia}</div>
                   </td>
-                  <td className="px-2 py-1.5 max-w-[15rem]">
+                  <td className="px-1.5 py-1.5 max-w-[10rem]">
                     <div className="font-semibold truncate" title={f.novedad ?? ""}>{f.novedad}</div>
                     <div className="text-muted truncate" title={f.aclaracion ?? ""}>{f.aclaracion}</div>
                   </td>
-                  <td className="px-2 py-1.5 min-w-[10rem] max-w-[14rem] font-semibold text-blue-2" title={f.contenido ?? ""}>
+                  <td className="px-1.5 py-1.5 min-w-[6rem] max-w-[8.5rem] font-semibold text-blue-2" title={f.contenido ?? ""}>
                     <div className="line-clamp-2">{f.contenido ?? "—"}</div>
                   </td>
-                  <td className="px-2 py-1.5 max-w-[11rem] truncate" title={f.cliente ?? ""}>{f.cliente}</td>
-                  <td className="px-2 py-1.5"><input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { tel: e.target.value })} className={`${inp} w-28`} /></td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{f.ciudad}</td>
-                  <td className="px-2 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-48`} /></td>
-                  <td className="px-2 py-1.5 whitespace-nowrap num">{f.recaudo != null ? dinero(f.recaudo, f.cuenta) : "—"}</td>
+                  <td className="px-1.5 py-1.5 max-w-[7rem] truncate" title={f.cliente ?? ""}>{f.cliente}</td>
+                  <td className="px-1.5 py-1.5"><input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { tel: e.target.value })} className={`${inp} w-24`} /></td>
+                  <td className="px-1.5 py-1.5 max-w-[4.5rem] truncate" title={[f.ciudad, f.provincia].filter(Boolean).join(", ")}>{f.ciudad}</td>
+                  <td className="px-1.5 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-32`} /></td>
+                  <td className="px-1.5 py-1.5 whitespace-nowrap num">{f.recaudo != null ? dinero(f.recaudo, f.cuenta) : "—"}</td>
                   {[1, 2, 3].map((i) => {
                     const l = f.llamadas[String(i)];
                     return (
-                      <td key={i} className="px-2 py-1.5">
+                      <td key={i} className="px-1.5 py-1.5">
                         <select value={l?.r ?? ""} onChange={(e) => marcar(f, i, e.target.value)} title={l?.u ?? ""}
-                          className={sel} style={l ? { color: RESULTADOS[l.r].color, borderColor: RESULTADOS[l.r].color } : undefined}>
+                          className={`${sel} w-[4.75rem]`} style={l ? { color: RESULTADOS[l.r].color, borderColor: RESULTADOS[l.r].color } : undefined}>
                           <option value="" className="bg-bg text-text">—</option>
                           {(Object.keys(RESULTADOS) as Resultado[]).map((r) => <option key={r} value={r} className="bg-bg text-text">{RESULTADOS[r].label}</option>)}
                         </select>
                       </td>
                     );
                   })}
-                  <td className="px-2 py-1.5">
+                  <td className="px-1.5 py-1.5">
                     {/* Seguimiento interno guardado: el día y la nota, con ✕ para quitarlo. */}
                     {f.seguimiento && (
                       <div className="mb-1 flex items-center gap-1" title={`${f.seguimiento.nota ?? ""}${f.seguimiento.u ? ` · ${f.seguimiento.u.split("@")[0]}` : ""}`}>
@@ -307,7 +303,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                       </div>
                     )}
                     {enviada ? <span className="font-semibold text-green">{env!.solucion}</span> : (
-                      <select value={b.sol ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { sol: e.target.value, fecha: undefined })} className={`${sel} w-44`}
+                      <select value={b.sol ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { sol: e.target.value, fecha: undefined })} className={`${sel} w-36`}
                         style={sigue ? { color: "#ffb347", borderColor: "#ffb347" } : undefined}>
                         <option value="" className="bg-bg">{sols.length ? "Elegir…" : "Elegir… (sin catálogo de Effi)"}</option>
                         <option value={SEGUIR} className="bg-bg">📌 Hacer seguimiento (interno)</option>
@@ -319,21 +315,21 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                       </select>
                     )}
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-1.5 py-1.5">
                     {sigue && !enviada
                       ? <input type="date" value={b.fecha ?? ""} min={hoy} disabled={bloqueada} title="Día en que el cliente pidió que lo llamen"
-                          onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-32 border-[#ffb347]/60`} />
+                          onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-28 border-[#ffb347]/60`} />
                       : s?.pide_entrega && !enviada
-                      ? <input type="date" value={b.fecha ?? ""} min={sumarDias(hoy, 1)} max={sumarDias(hoy, 5)} disabled={bloqueada} onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-32`} />
+                      ? <input type="date" value={b.fecha ?? ""} min={sumarDias(hoy, 1)} max={sumarDias(hoy, 5)} disabled={bloqueada} onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-28`} />
                       : <span className="text-muted">—</span>}
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-1.5 py-1.5">
                     {enviada ? <span className="text-muted">{env!.estado === "enviando" ? "Enviando a Effi…" : env!.mensaje ?? "Recibida por Effi"}</span> : (
                       <input value={b.ges ?? ""} disabled={bloqueada} maxLength={sigue ? 500 : 1024} placeholder={sigue ? "Llámeme el martes en la tarde" : "Recibe el jueves en la tarde"}
-                        onChange={(e) => cambiar(f, { ges: e.target.value })} onKeyDown={(e) => e.key === "Enter" && enviar(f)} className={`${inp} w-56`} />
+                        onChange={(e) => cambiar(f, { ges: e.target.value })} onKeyDown={(e) => e.key === "Enter" && enviar(f)} className={`${inp} w-40`} />
                     )}
                   </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">
+                  <td className="px-1.5 py-1.5 whitespace-nowrap">
                     {env?.estado === "enviada" ? <span className="font-semibold text-green">✓ En Effi</span>
                       : env?.estado === "enviando" ? <span className="text-amber">Enviando…</span>
                       : (
@@ -353,7 +349,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                         </div>
                       )}
                   </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap text-muted">{asesora ? asesora.split("@")[0] : "—"}</td>
+                  <td className="px-1.5 py-1.5 whitespace-nowrap text-muted">{asesora ? asesora.split("@")[0] : "—"}</td>
                 </tr>
               );
             })}

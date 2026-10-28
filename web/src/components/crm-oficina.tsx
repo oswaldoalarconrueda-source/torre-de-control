@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, MessageCircle, PhoneCall, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { dinero, entero } from "@/lib/formato";
+import { dinero, entero, minutosDesde, transCorta } from "@/lib/formato";
 import { CON_FECHA, OBSERVACIONES, PREFIJO_OTRO, textoObservacion, type CodigoObs } from "@/lib/oficina";
 import { infoCuenta } from "@/lib/paises";
 import { BarraHorizontal } from "./barra-horizontal";
@@ -35,9 +35,9 @@ export const RESULTADOS: Record<Resultado, { label: string; color: string }> = {
   telefono_malo: { label: "NO APLICA", color: "#b48cff" },
 };
 const CONTACTOS = [
-  { intento: 1, label: "Contacto 1", canal: "llamada" },
-  { intento: 2, label: "Contacto 2", canal: "llamada" },
-  { intento: 3, label: "Contacto 3", canal: "llamada" },
+  { intento: 1, label: "C1", canal: "llamada" },
+  { intento: 2, label: "C2", canal: "llamada" },
+  { intento: 3, label: "C3", canal: "llamada" },
 ] as const;
 const FILTROS = [
   { id: "todas", label: "Todas" },
@@ -50,13 +50,6 @@ const FILTROS = [
 const POR_PAGINA = 60;
 // Hora local de cada tienda e indicativo para abrir WhatsApp.
 
-const hace = (iso: string | null) => {
-  if (!iso) return "—";
-  const m = Math.max(0, (Date.now() - Date.parse(iso)) / 60_000);
-  if (m < 60) return `${Math.round(m)} min`;
-  if (m < 1440) return `${Math.round(m / 60)} h`;
-  return `${Math.floor(m / 1440)} d`;
-};
 // Un campo puede traer varios teléfonos: "300 123 4567 / 311..." → cada uno con su botón (sin repetir).
 const telefonos = (t: string | null) => [...new Set((t ?? "").split(/[,;/|]| - /).map((x) => x.replace(/[^\d+]/g, "")).filter((x) => x.length >= 7))];
 const whatsapp = (tel: string, cuenta: string) => {
@@ -198,26 +191,26 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
         <table className="w-full min-w-max text-sm">
           <thead>
             <tr className="bg-green/15 text-left text-[11px] uppercase tracking-wider font-semibold whitespace-nowrap">
-              <th className="sticky left-0 z-10 bg-[#0d2a22] px-3 py-3">Llegó</th>
-              <th className="px-3 py-3">Centro de costos</th>
-              <th className="px-3 py-3">Fecha de creación</th>
-              <th className="px-3 py-3">Remitente</th>
-              <th className="px-3 py-3">Destinatario</th>
-              <th className="px-3 py-3">ID destinatario</th>
-              <th className="px-3 py-3">País</th>
-              <th className="px-3 py-3">Departamento</th>
-              <th className="px-3 py-3">Ciudad</th>
-              <th className="px-3 py-3">Dirección</th>
-              <th className="px-3 py-3">Teléfonos</th>
-              <th className="px-3 py-3">Transportadora</th>
-              <th className="px-3 py-3">Guía</th>
-              <th className="px-3 py-3 text-right">Valor recaudo</th>
-              <th className="px-3 py-3">Contenido</th>
-              <th className="px-3 py-3">Estado guía</th>
-              <th className="px-3 py-3">Estado global</th>
+              <th className="sticky left-0 z-10 bg-[#0d2a22] px-2 py-3">Llegó</th>
+              <th className="px-2 py-3">C. costos</th>
+              <th className="px-2 py-3">Creada</th>
+              <th className="px-2 py-3">Remitente</th>
+              <th className="px-2 py-3">Destinatario</th>
+              <th className="px-2 py-3">ID</th>
+              <th className="px-2 py-3">País</th>
+              <th className="px-2 py-3">Depto.</th>
+              <th className="px-2 py-3">Ciudad</th>
+              <th className="px-2 py-3">Dirección</th>
+              <th className="px-2 py-3">Teléfonos</th>
+              <th className="px-2 py-3">Trans.</th>
+              <th className="px-2 py-3">Guía</th>
+              <th className="px-2 py-3 text-right">Recaudo</th>
+              <th className="px-2 py-3">Contenido</th>
+              <th className="px-2 py-3">Est. guía</th>
+              <th className="px-2 py-3">Est. global</th>
               {CONTACTOS.map((c) => <th key={c.intento} className="px-2 py-3">{c.label}</th>)}
-              <th className="px-3 py-3 min-w-[18rem]">Observación</th>
-              {esDueno && <th className="px-3 py-3">Quién lo hizo</th>}
+              <th className="px-2 py-3 min-w-[14rem]">Observación</th>
+              {esDueno && <th className="px-2 py-3">Quién lo hizo</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -228,25 +221,24 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
               const seg = seguimiento(g);
               return (
                 <tr key={g.guia} className={`align-middle ${seg ? "bg-[#ffb347]/[0.07] hover:bg-[#ffb347]/[0.11]" : "hover:bg-white/[0.02]"}`}>
-                  <td className={`sticky left-0 z-10 px-3 py-2 whitespace-nowrap text-xs font-mono ${seg ? "bg-[#2a2216] shadow-[inset_3px_0_0_#ffb347]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`} title={g.llegada ? hora(g.llegada) : ""}>
+                  <td className={`sticky left-0 z-10 px-2 py-2 whitespace-nowrap text-xs font-mono ${seg ? "bg-[#2a2216] shadow-[inset_3px_0_0_#ffb347]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`} title={g.llegada ? hora(g.llegada) : ""}>
                     {seg && (
                       <div className="mb-1 inline-block rounded-full bg-[#ffb347] px-2 py-0.5 font-sans text-[10px] font-bold text-black">
-                        📌 {seg === hoy ? "Llamar hoy" : `Seguimiento del ${seg.slice(8, 10)}/${seg.slice(5, 7)}`}
+                        📌 {seg === hoy ? "Hoy" : `${seg.slice(8, 10)}/${seg.slice(5, 7)}`}
                       </div>
                     )}
-                    <div>{g.llegada ? hora(g.llegada) : "—"}</div>
-                    <div className="text-[10px] opacity-80">hace {hace(g.llegada)}</div>
+                    <div suppressHydrationWarning>{minutosDesde(g.llegada)}</div>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{g.centro_costos ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs text-muted">{g.fecha_trans ? hora(g.fecha_trans) : "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{g.remitente ?? "—"}</td>
-                  <td className="px-3 py-2 min-w-[11rem] font-semibold">{g.destinatario ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap font-mono text-xs text-muted">{g.id_destinatario ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{g.pais ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{g.provincia ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{g.ciudad ?? "—"}</td>
-                  <td className="px-3 py-2 min-w-[14rem] max-w-[18rem] text-xs text-muted">{g.direccion ?? "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-2 whitespace-nowrap">{g.centro_costos ?? "—"}</td>
+                  <td className="px-2 py-2 whitespace-nowrap text-xs text-muted">{g.fecha_trans ? hora(g.fecha_trans) : "—"}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">{g.remitente ?? "—"}</td>
+                  <td className="px-2 py-2 max-w-[9rem] truncate font-semibold" title={g.destinatario ?? ""}>{g.destinatario ?? "—"}</td>
+                  <td className="px-2 py-2 whitespace-nowrap font-mono text-xs text-muted">{g.id_destinatario ?? "—"}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">{g.pais ?? "—"}</td>
+                  <td className="px-2 py-2 max-w-[5.5rem] truncate" title={g.provincia ?? ""}>{g.provincia ?? "—"}</td>
+                  <td className="px-2 py-2 max-w-[5.5rem] truncate" title={g.ciudad ?? ""}>{g.ciudad ?? "—"}</td>
+                  <td className="px-2 py-2 min-w-[9rem] max-w-[11rem] text-xs text-muted"><div className="line-clamp-2" title={g.direccion ?? ""}>{g.direccion ?? "—"}</div></td>
+                  <td className="px-2 py-2">
                     <div className="flex flex-col gap-1">
                       {tels.map((t) => (
                         <span key={t} className="inline-flex items-center gap-1">
@@ -261,17 +253,17 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                       {!tels.length && <span className="text-xs text-red">Sin teléfono</span>}
                     </div>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{g.transportadora ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-2 py-2 whitespace-nowrap" title={g.transportadora ?? ""}>{transCorta(g.transportadora)}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">
                     <button onClick={() => copiar(g.guia)} title="Copiar guía" className="group inline-flex items-center gap-1 font-mono font-semibold hover:text-blue-2">
                       {g.guia}<Copy size={11} className="opacity-40 group-hover:opacity-100" />
                     </button>
                     {copiada === g.guia && <span className="ml-1 text-[10px] text-green">copiada</span>}
                   </td>
-                  <td className="px-3 py-2 text-right num whitespace-nowrap">{dinero(g.valor, cuenta)}</td>
-                  <td className="px-3 py-2 min-w-[12rem] font-semibold text-blue-2">{g.contenido ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">{g.estado ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">{g.estado_efficommerce ?? "—"}</td>
+                  <td className="px-2 py-2 text-right num whitespace-nowrap">{dinero(g.valor, cuenta)}</td>
+                  <td className="px-2 py-2 min-w-[7rem] max-w-[10rem] font-semibold text-blue-2"><div className="line-clamp-2" title={g.contenido ?? ""}>{g.contenido ?? "—"}</div></td>
+                  <td className="px-2 py-2 max-w-[7rem] truncate text-xs" title={g.estado ?? ""}>{g.estado ?? "—"}</td>
+                  <td className="px-2 py-2 max-w-[7rem] truncate text-xs" title={g.estado_efficommerce ?? ""}>{g.estado_efficommerce ?? "—"}</td>
                   {CONTACTOS.map((c) => {
                     const l = ls.find((x) => x.intento === c.intento);
                     // Se llena en orden: el contacto 2 se habilita cuando ya hay contacto 1, y así.
@@ -282,16 +274,16 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                         <select value={l?.resultado ?? ""} disabled={!habilitado || guardando === `${g.guia}|${c.intento}`}
                           onChange={(e) => marcar(g, c.intento, c.canal, e.target.value as Resultado | "")}
                           title={l ? `${hora(l.creado_en)}${l.usuario ? ` · ${l.usuario}` : ""}` : habilitado ? `Marcar ${c.label}` : "Primero el contacto anterior"}
-                          className="w-[9.5rem] rounded-full border px-3 py-1 text-xs font-semibold outline-none disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
+                          className="w-[7.5rem] rounded-full border px-2 py-1 text-xs font-semibold outline-none disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
                           style={col ? { color: col, borderColor: `color-mix(in srgb, ${col} 50%, transparent)`, background: `color-mix(in srgb, ${col} 14%, transparent)` } : { borderColor: "var(--line)", background: "rgb(255 255 255 / 0.03)" }}>
                           <option value="" className="bg-bg text-text">—</option>
                           {(Object.keys(RESULTADOS) as Resultado[]).map((r) => <option key={r} value={r} className="bg-bg text-text">{RESULTADOS[r].label}</option>)}
                         </select>
-                        {esDueno && l?.usuario && <div className="mt-0.5 text-center text-[10px] text-muted">{quien(l.usuario)} · {hora(l.creado_en)}</div>}
+                        {esDueno && l?.usuario && <div className="mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] text-muted">{quien(l.usuario)} · {hora(l.creado_en)}</div>}
                       </td>
                     );
                   })}
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-2">
                     {(() => {
                       const actual = obs[g.guia] ?? {
                         codigo: g.observacion?.codigo ?? "", fecha: g.observacion?.fecha ?? null,
@@ -300,10 +292,10 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                       const guardado = g.observacion?.codigo === "otro" ? (g.observacion.texto ?? "").replace(PREFIJO_OTRO, "") : "";
                       const col = actual.codigo ? OBSERVACIONES[actual.codigo].color : null;
                       return (
-                        <div className="flex flex-wrap items-center gap-1.5"
+                        <div className="flex max-w-[17rem] flex-wrap items-center gap-1.5"
                           title={g.observacion?.usuario ? `Última edición: ${hora(g.observacion.actualizado_en)} · ${g.observacion.usuario}` : undefined}>
                           <select value={actual.codigo} onChange={(e) => guardarObs(g, e.target.value as CodigoObs | "", null)}
-                            className="max-w-[20rem] rounded-lg border px-2 py-1 text-xs outline-none cursor-pointer"
+                            className="max-w-full rounded-lg border px-2 py-1 text-xs outline-none cursor-pointer"
                             style={col ? { color: col, borderColor: `color-mix(in srgb, ${col} 45%, transparent)`, background: `color-mix(in srgb, ${col} 10%, transparent)` } : { borderColor: "var(--line)", background: "rgb(255 255 255 / 0.03)" }}>
                             <option value="" className="bg-bg text-text">— Seleccionar observación —</option>
                             {(Object.keys(OBSERVACIONES) as CodigoObs[]).map((c) => <option key={c} value={c} className="bg-bg text-text">{OBSERVACIONES[c].label}</option>)}
@@ -322,7 +314,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                               onChange={(e) => setObs((o) => ({ ...o, [g.guia]: { codigo: "otro", fecha: null, texto: e.target.value } }))}
                               onBlur={(e) => e.target.value.trim() !== guardado && guardarObs(g, "otro", null, e.target.value)}
                               onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                              className={`basis-full min-w-[16rem] rounded-lg border bg-white/[0.03] px-2 py-1 text-xs outline-none ${(actual.texto ?? "").trim() ? "border-line text-text" : "border-amber/60"}`} />
+                              className={`basis-full min-w-0 rounded-lg border bg-white/[0.03] px-2 py-1 text-xs outline-none ${(actual.texto ?? "").trim() ? "border-line text-text" : "border-amber/60"}`} />
                           )}
                           {actual.codigo === "otro" && !(actual.texto ?? "").trim() && <span className="text-[10px] text-amber">Escribe lo que dijo el cliente</span>}
                           {guardando === `${g.guia}|obs` && <span className="text-[10px] text-muted">Guardando…</span>}
@@ -336,7 +328,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                     const u = g.observacion?.usuario ? { email: g.observacion.usuario, en: g.observacion.actualizado_en }
                       : ultimo?.usuario ? { email: ultimo.usuario, en: ultimo.creado_en } : null;
                     return (
-                      <td className="px-3 py-2 whitespace-nowrap text-xs">
+                      <td className="px-2 py-2 whitespace-nowrap text-xs">
                         {u ? <><div className="font-semibold">{quien(u.email)}</div><div className="text-[10px] text-muted">{hora(u.en)}</div></> : <span className="text-muted">—</span>}
                       </td>
                     );

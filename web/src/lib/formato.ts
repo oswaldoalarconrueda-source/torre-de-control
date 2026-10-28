@@ -48,3 +48,21 @@ export const fechaHora = (iso: string | null | undefined) =>
 // "2026-10-20" → "20 oct"
 export const diaCorto = (iso: string | null | undefined) =>
   iso ? new Intl.DateTimeFormat("es-CO", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(`${iso}T12:00:00Z`)).replace(".", "") : "—";
+
+// Nombre corto de la transportadora para las tablas de trabajo (Gintracom → Gintra, Servientrega → Servi).
+const TRANS_CORTA: Record<string, string> = {
+  GINTRACOM: "Gintra", SERVIENTREGA: "Servi", "INTER RAPIDÍSIMO": "Inter", COORDINADORA: "Coordi",
+  "ENVÍA COLVANES": "Envía", "CARGO EXPRESO": "Cargo", LAARCOURIER: "Laar", "RED LOGISTIC": "Red Log",
+};
+export const transCorta = (t: string | null | undefined) => {
+  if (!t) return "—";
+  const p = t.trim().split(/\s+/)[0];
+  return TRANS_CORTA[t.trim().toUpperCase()] ?? p.charAt(0).toUpperCase() + p.slice(1, 8).toLowerCase();
+};
+
+// Cuánto lleva algo, en minutos (desde un día, en días): "45 min", "380 min", "2 d".
+export const minutosDesde = (iso: string | null | undefined, ahora = Date.now()) => {
+  if (!iso) return "—";
+  const m = Math.max(0, Math.round((ahora - Date.parse(iso)) / 60_000));
+  return m < 1440 ? `${m} min` : `${Math.floor(m / 1440)} d`;
+};
