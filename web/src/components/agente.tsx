@@ -296,10 +296,13 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-          {/* Ejecutar ahora: crea ya en Effi lo que esté listo, sin esperar el horario. */}
-          {datos.es_owner && creaEnEffi && (confirmarAhora ? (
+          {/* Ejecutar ahora: crea ya en Effi lo que esté listo, sin esperar el horario. En Colombia (creación orden por
+              orden) trae y prepara ya las órdenes y manda las de oficina que van solas. */}
+          {datos.es_owner && (creaEnEffi || cuenta === "TIENDA_CO") && (confirmarAhora ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted">¿Crear ya en Effi lo que está listo ({entero(listas.length)})?</span>
+              <span className="text-xs text-muted">
+                {creaEnEffi ? `¿Crear ya en Effi lo que está listo (${entero(listas.length)})?` : "¿Traer y preparar ya las órdenes? Las de oficina que van solas se crean en Effi."}
+              </span>
               <button onClick={ejecutarAhora} disabled={guardando === "ahora"} className="rounded-full bg-green px-4 py-2 text-sm font-bold text-black">Sí, ejecutar</button>
               <button onClick={() => setConfirmarAhora(false)} className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-muted hover:text-text">No</button>
             </div>

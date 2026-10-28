@@ -361,7 +361,21 @@ async function convertir(cuenta: string, ahora = false) {
   const hoy = new Date(Date.now() + off * 60_000);
   const desde = new Date(hoy.getTime() - 3 * DAY_MS).toISOString().slice(0, 10);
   const hasta = new Date(hoy.getTime() + DAY_MS).toISOString().slice(0, 10);
-  const pendientes = (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => !o.id_remision_v).slice(0, MAX_ORDENES);
+  // Van primero las que nunca se han preparado y luego las preparadas hace más tiempo: con muchas órdenes (Colombia, ~40
+  // por hora) tomar siempre las 15 primeras de la lista dejaba el resto sin preparar (28-oct).
+  const sinRemision = (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => !o.id_remision_v);
+  const preparadas = new Map<string, number>();
+  for (let i = 0; i < sinRemision.length; i += 150) {
+    const ids = sinRemision.slice(i, i + 150).map((o) => o.id).join(',');
+    for (const g of await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id=in.(${ids})&plan_en=not.is.null&select=sucursal,id,plan_en`)) {
+      preparadas.set(`${g.sucursal}-${g.id}`, Date.parse(g.plan_en));
+    }
+  }
+  const pendientes = sinRemision
+    .map((o, i) => ({ o, i, t: preparadas.get(`${o.sucursal}-${o.id}`) ?? 0 }))
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .slice(0, MAX_ORDENES)
+    .map((x) => x.o);
   const planesGuia = await planearGuias(api, cuenta, reglas, memoria, await sinCoberturaTotal(cuenta), desde, hasta);
   if (!pendientes.length) {
     await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: planesGuia, p_reglas: reglasNuevas });
