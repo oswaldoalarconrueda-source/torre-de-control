@@ -412,17 +412,19 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
 
       {error && <p className="text-sm text-red">{error}</p>}
 
+      {/* Columnas Remisión y Guía solo donde dicen algo: en "orden → remisión" siempre están vacías y empujaban "Acción"
+          fuera de la pantalla; en "remisión → guía" la guía todavía no existe. */}
       {[
-        { titulo: "Listas: orden → remisión", filas: listasRemision, vacio: "Ninguna orden esperando remisión.",
+        { titulo: "Listas: orden → remisión", filas: listasRemision, vacio: "Ninguna orden esperando remisión.", conRemision: false, conGuia: false,
           texto: creaRemision
             ? creaEnEffi
               ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una."
               : "Órdenes que el agente pasa a remisión (y a guía si quieres) cuando pulsas “Ejecutar” en cada una: ahí escoges el paso y la transportadora." +
                 (cuenta === "TIENDA_CO" ? ` La entrega en oficina de Interrapidísimo o Servientrega va sola${solas.length ? ` (${entero(solas.length)} en camino)` : ""}.` : "")
             : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía." },
-        { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.",
+        { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
-        { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.",
+        { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.", conRemision: true, conGuia: true,
           texto: "Lo que el agente no pudo resolver solo. Se corrige a mano en Effi (por ejemplo, cambiar de proveedor) y sale de aquí al quedar con remisión y guía." },
       ].map((s) => (
       <Fragment key={s.titulo}>
@@ -441,8 +443,8 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
               <th className="px-3 py-3">Ciudad</th>
               <th className="px-3 py-3 text-right">Total</th>
               <th className="px-3 py-3">Convenio</th>
-              <th className="px-3 py-3">Remisión</th>
-              <th className="px-3 py-3">Guía</th>
+              {s.conRemision && <th className="px-3 py-3">Remisión</th>}
+              {s.conGuia && <th className="px-3 py-3">Guía</th>}
               <th className="px-3 py-3">Estado</th>
               <th className="px-3 py-3">Lo que haría el agente</th>
               <th className="px-3 py-3">Acción</th>
@@ -482,7 +484,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                   <td className="px-3 py-2 whitespace-nowrap text-xs">
                     {o.convenio ? <span className="text-green">✓ Con convenio</span> : <span className="font-semibold text-red">Sin convenio</span>}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">
+                  {s.conRemision && <td className="px-3 py-2 whitespace-nowrap text-xs">
                     {o.id_remision ? (
                       <>
                         <div className="font-mono font-semibold text-sm">RV {o.id_remision}</div>
@@ -494,8 +496,8 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                     ) : (
                       <span className="text-muted">—</span>
                     )}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{o.guia ?? "—"}</td>
+                  </td>}
+                  {s.conGuia && <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{o.guia ?? "—"}</td>}
                   <td className="px-3 py-2 min-w-[12rem]">
                     <span className="inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ color: est.color, background: "rgba(255,255,255,.05)" }}>
                       {o.estado === "sin_remision" && !atrasada(o) ? "Esperando remisión" : est.label}
@@ -594,7 +596,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
                 </tr>
                 {abierto && o.plan && (
                   <tr>
-                    <td colSpan={10} className="px-3 pb-4 bg-white/[0.015]">
+                    <td colSpan={8 + Number(s.conRemision) + Number(s.conGuia)} className="px-3 pb-4 bg-white/[0.015]">
                       {o.plan.resultado && (
                         <div className="grid lg:grid-cols-2 gap-3 pt-2">
                           <Envio titulo={`Lo que se envió a Effi (${String(o.plan.resultado.paso ?? "")})`} datos={(o.plan.resultado.enviado as Record<string, unknown>) ?? undefined} />
@@ -613,7 +615,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
             })}
             {!s.filas.length && (
               <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-sm text-muted">
+                <td colSpan={8 + Number(s.conRemision) + Number(s.conGuia)} className="px-3 py-10 text-center text-sm text-muted">
                   {s.vacio}
                 </td>
               </tr>
