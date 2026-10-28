@@ -15,6 +15,7 @@ export const CUENTAS: Record<string, InfoCuenta> = {
   TIENDA_CR: { pais: "CR", nombre: "Costa Rica", bandera: "🇨🇷", divisa: "CRC", decimales: 0, verde: 0.25, naranja: 0.35, zona: "America/Costa_Rica", indicativo: "506" },
   // Valka: sociedad aparte, con su propia cuenta de Effi en Guatemala.
   VALKA_GT: { pais: "GT", nombre: "Valka", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
+  AUNCLIC_GT: { pais: "GT", nombre: "A un clic", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
   // Distrilatam (proveeduría): tres empresas de Effi, cada una por separado aunque dos sean de Guatemala.
   DISTRI_GT: { pais: "GT", nombre: "DistriGuatemala", bandera: "🇬🇹", divisa: "GTQ", decimales: 2, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
   DISTRI_LAB: { pais: "GT", nombre: "DistriLab", bandera: "🇬🇹", divisa: "GTQ", decimales: 2, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
