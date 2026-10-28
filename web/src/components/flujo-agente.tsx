@@ -1,26 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, FileText, RotateCw, ShoppingCart, Truck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RotateCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { entero } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
+import { FabricaAgente, type DatosFabrica } from "./fabrica-agente";
 
-// Flujo en vivo del Agente, en horizontal: órdenes por convertir → remisiones creadas → guías creadas (hoy, hora
-// local del país). Los paquetes corren por las conexiones; cuando el agente está creando algo, la etapa activa late
-// y una etiqueta muestra la orden y el paso. Abajo, los errores de hoy: una línea por documento, diciendo si el error
-// es de la remisión (no se pudo hacer la guía) o de la orden (no se pudo hacer la remisión) y por qué, con sus
-// variables (lo enviado y lo respondido por Effi), o el aviso verde de que no hubo errores. Consulta los últimos
-// movimientos cada 3 segundos (para ver qué está haciendo) y los aciertos y errores del día completo cada 15 s: los
-// conteos de hoy no pueden salir solo de los últimos movimientos (un día con mucho trabajo pasa de 300 y el número se
-// quedaba quieto).
+// Agente en vivo y Errores de hoy. Arriba, la franja orden → remisión → guía de hoy, por agente y por humano
+// (auto_fabrica); cuando el agente está creando algo, la etapa activa late y se ve la orden y el paso. Abajo, los errores
+// de hoy: una línea por documento, diciendo si el error es de la remisión (no se pudo hacer la guía) o de la orden (no
+// se pudo hacer la remisión) y por qué, con sus variables (lo enviado y lo respondido por Effi), o el aviso verde de que
+// no hubo errores. Consulta los últimos movimientos cada 3 segundos (para ver qué está haciendo) y los aciertos y
+// errores del día completo cada 15 s.
 
 type Evento = { id: number; id_orden: number | null; paso: string; ok: boolean | null; mensaje: string; datos: Record<string, unknown> | null; creado_en: string };
-type Resumen = { sin_remision: number; sin_guia: number; listas?: number; plan_revision?: number };
 
 
-export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas, remisionadas, esDueno = false }: {
-  cuenta: string; resumen: Resumen; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
+export function FlujoAgente({ cuenta, fabrica, proxima, onNuevo, completas, remisionadas, esDueno = false }: {
+  cuenta: string; fabrica?: DatosFabrica | null; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
   esDueno?: boolean; // "ver variables" (lo que se envió y respondió Effi) es solo para el dueño
   completas?: number[]; // órdenes que ya tienen remisión y guía (o que se anularon)
   remisionadas?: number[]; // órdenes que ya tienen remisión vigente, aunque falte la guía
@@ -75,8 +72,6 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas, remi
     for (const e of [...delDia, ...eventos]) if (e.ok !== null && dia(Date.parse(e.creado_en)) === dia(ahora)) m.set(e.id, e);
     return [...m.values()].sort((a, b) => b.id - a.id);
   }, [delDia, eventos, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
-  const remisiones = hoy.filter((e) => e.paso === "remision" && e.ok === true).length;
-  const guias = hoy.filter((e) => e.paso === "guia" && e.ok === true).length;
   // Errores que siguen pendientes: no cuenta el de una orden que después quedó completa o anulada (la creó la Torre en
   // un intento siguiente o alguien a mano en Effi), ni el de la remisión de una orden que ya tiene remisión vigente.
   const pendientes = hoy.filter((e) => e.ok === false && !(e.id_orden != null && (
@@ -125,61 +120,19 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas, remi
     return termino ? null : e;
   }, [eventos, ahora]);
 
-  const etapas = [
-    { id: "orden", titulo: "Órdenes por convertir", valor: resumen.sin_remision, sub: `${entero(resumen.listas ?? 0)} listas · ${entero(resumen.plan_revision ?? 0)} en revisión`, color: "255 181 71", Icono: ShoppingCart },
-    { id: "remision", titulo: "Remisiones creadas hoy", valor: remisiones, sub: "con su convenio y centro de costos", color: "90 162 255", Icono: FileText },
-    { id: "guia", titulo: "Guías creadas hoy", valor: guias, sub: resumen.sin_guia ? `${entero(resumen.sin_guia)} remisiones esperan guía` : "listas para despacho", color: "47 210 143", Icono: Truck },
-  ];
-
   return (
-    <div className="card p-5 overflow-hidden relative">
-      <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: "radial-gradient(60% 120% at 50% 0%, rgb(47 123 255 / 0.10), transparent 70%)" }} />
-      <div className="relative flex flex-wrap items-center justify-between gap-2 mb-5">
-        <div className="flex items-center gap-2">
-          <span className="relative flex size-2.5">
-            <span className={`absolute inline-flex h-full w-full rounded-full ${activo ? "bg-blue-2 onda" : "bg-green/60 onda"}`} />
-            <span className={`relative inline-flex size-2.5 rounded-full ${activo ? "bg-blue-2" : "bg-green"}`} />
-          </span>
-          <span className="font-display font-semibold">Agente en vivo</span>
-          <span className="text-xs text-muted">· hoy</span>
-        </div>
-        <div className="text-xs text-muted">
-          {activo ? (
-            <span className="text-blue-2 font-semibold">Trabajando en la OV {activo.id_orden}: {activo.mensaje}</span>
-          ) : proxima ? (
-            <>Próxima corrida {proxima.hora}{proxima.corte ? ` · antes del corte de las ${proxima.corte}` : ""} · en {proxima.en} min</>
-          ) : (
-            "En espera"
-          )}
-        </div>
-      </div>
+    <>
+      {fabrica && (
+        <FabricaAgente d={fabrica} paso={activo?.paso} enVivo={!!activo} estado={activo ? (
+          <span className="text-blue-2 font-semibold">Trabajando en la OV {activo.id_orden}: {activo.mensaje}</span>
+        ) : proxima ? (
+          <>Próxima corrida {proxima.hora}{proxima.corte ? ` · antes del corte de las ${proxima.corte}` : ""} · en {proxima.en} min</>
+        ) : "En espera"} />
+      )}
 
-      {/* Flujo horizontal: tres etapas unidas por conexiones con paquetes en movimiento. */}
-      <div className="relative grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-3 md:gap-0">
-        {etapas.map((et, i) => {
-          const enEtapa = activo && ((et.id === "remision" && activo.paso === "remision") || (et.id === "guia" && activo.paso === "guia"));
-          return (
-            <FragmentoEtapa key={et.id} conector={i > 0} rapido={!!activo && ((i === 1 && activo.paso === "remision") || (i === 2 && activo.paso === "guia"))}
-              color={etapas[i - 1]?.color ?? et.color} colorFin={et.color}>
-              <div className="relative rounded-2xl border px-4 py-4 text-center transition-colors"
-                style={{ borderColor: `rgb(${et.color} / ${enEtapa ? 0.8 : 0.3})`, background: `linear-gradient(180deg, rgb(${et.color} / 0.10), rgb(${et.color} / 0.02))`, boxShadow: enEtapa ? `0 0 40px -8px rgb(${et.color} / 0.8)` : `0 0 24px -14px rgb(${et.color} / 0.6)` }}>
-                {enEtapa && <span className="absolute inset-0 rounded-2xl border-2 onda" style={{ borderColor: `rgb(${et.color} / 0.7)` }} />}
-                <div className="mx-auto mb-2 flex size-10 items-center justify-center rounded-xl" style={{ background: `rgb(${et.color} / 0.15)`, color: `rgb(${et.color})` }}>
-                  <et.Icono size={20} />
-                </div>
-                <div key={et.valor} className="sube num text-4xl font-bold tracking-tight" style={{ color: `rgb(${et.color})`, textShadow: `0 0 24px rgb(${et.color} / 0.45)` }}>
-                  {entero(et.valor)}
-                </div>
-                <div className="mt-1 text-[11px] uppercase tracking-widest font-mono text-text/80">{et.titulo}</div>
-                <div className="mt-0.5 text-[11px] text-muted">{et.sub}</div>
-              </div>
-            </FragmentoEtapa>
-          );
-        })}
-      </div>
-
+    <div className="card p-4">
       {/* Errores de hoy, con lo enviado y lo respondido por Effi para corregir. */}
-      <div className="relative mt-6">
+      <div>
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-widest font-mono text-muted">
           Errores de hoy
           <span className={`rounded-full px-2 py-0.5 text-[10px] ${errores.length ? "bg-red/15 text-red" : "bg-green/15 text-green"}`}>{errores.length}</span>
@@ -233,22 +186,6 @@ export function FlujoAgente({ cuenta, resumen, proxima, onNuevo, completas, remi
         )}
       </div>
     </div>
-  );
-}
-
-// Una etapa con su conexión de entrada: una línea con brillo y paquetes que corren (rápido si hay trabajo en curso).
-function FragmentoEtapa({ conector, rapido, color, colorFin, children }: { conector: boolean; rapido: boolean; color: string; colorFin: string; children: React.ReactNode }) {
-  return (
-    <>
-      {conector && (
-        <div className="relative mx-auto h-10 w-1 md:h-1 md:w-16 lg:w-24 rounded-full" style={{ background: `linear-gradient(90deg, rgb(${color} / 0.5), rgb(${colorFin} / 0.5))` }}>
-          {[0, 1, 2].map((k) => (
-            <span key={k} className={`corre hidden md:block size-2 rounded-full ${rapido ? "corre-rapido" : ""}`}
-              style={{ animationDelay: `${k * (rapido ? 0.28 : 0.85)}s`, background: `rgb(${colorFin})`, boxShadow: `0 0 10px rgb(${colorFin})` }} />
-          ))}
-        </div>
-      )}
-      {children}
     </>
   );
 }

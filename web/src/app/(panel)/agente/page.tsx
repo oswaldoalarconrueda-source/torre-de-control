@@ -28,8 +28,6 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
         f={f}
         conFechas={false}
       />
-      {/* Fábrica de hoy (todos los países): orden → remisión → guía, por agente y por humano. */}
-      {fabrica && <div className="mb-4"><FabricaAgente d={fabrica as DatosFabrica} /></div>}
       {/* "vigilar" = solo se traen sus órdenes y remisiones (para En vivo); el agente de ese país sigue en prueba. */}
       {!config || config.modo === "vigilar" ? (
         <div className="space-y-4">
@@ -53,6 +51,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
               </button>
             </div>
           </div>
+          {fabrica && <FabricaAgente d={fabrica as DatosFabrica} />}
           <div className="card p-10 text-center">
             <div className="text-4xl">{pais.bandera}</div>
             <p className="font-display text-xl font-semibold mt-3">El agente de {pais.nombre} está en prueba</p>
@@ -62,7 +61,8 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
       ) : (
         <>
           {error && <p className="text-sm text-red mb-4">{error.message}</p>}
-          {data && <Agente key={cuenta} cuenta={cuenta} datos={data as DatosAuto} transportes={(config?.transportes ?? {}) as Transportes} />}
+          {data && <Agente key={cuenta} cuenta={cuenta} datos={data as DatosAuto} transportes={(config?.transportes ?? {}) as Transportes}
+            fabrica={fabrica as DatosFabrica | null} />}
         </>
       )}
     </>

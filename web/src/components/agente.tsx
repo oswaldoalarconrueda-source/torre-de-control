@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
 import { FlujoAgente } from "./flujo-agente";
+import type { DatosFabrica } from "./fabrica-agente";
 
 // Agente de órdenes de venta: la Torre vigila cada orden de venta (remisión con su convenio, guía, centro de costos
 // Recuperado si el cliente empieza con *). En "Simular" arma, cada X minutos y antes de cada corte de despacho, la
@@ -96,7 +97,7 @@ function proxima(zona: string, cadaMin: number, cortes: string[], antesMin: numb
 const pasajero = (m: string) => /transacci[oó]n Dropshipping|demasiadas peticiones|no respondi[oó]|HTTP 5\d\d/i.test(m);
 const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1440 ? `${Math.round(min / 60)} h` : `${Math.floor(min / 1440)} d`);
 
-export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; datos: DatosAuto; transportes?: Transportes }) {
+export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null }) {
   const router = useRouter();
   const [confirmarModo, setConfirmarModo] = useState(false);
   const [confirmarOrden, setConfirmarOrden] = useState<string | null>(null);
@@ -412,6 +413,11 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
         </div>
       )}
 
+      {/* Agente en vivo (orden → remisión → guía de hoy, por agente y por humano) y, debajo, los errores de hoy. */}
+      <FlujoAgente cuenta={cuenta} fabrica={fabrica} proxima={sig} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
+        completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o) || remisionAnulada(o)).map((o) => o.id)}
+        remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
+
       {conAbono.length > 0 && (
         <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
           <div className="font-semibold text-amber">💰 {entero(conAbono.length)} {conAbono.length === 1 ? "pedido con abono" : "pedidos con abono"}: hacer el proceso</div>
@@ -439,10 +445,6 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
           </div>
         </div>
       )}
-
-      <FlujoAgente cuenta={cuenta} resumen={r} proxima={sig} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
-        completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o) || remisionAnulada(o)).map((o) => o.id)}
-        remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
 
       <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         {/* Mes como el listado de Effi; hoy: órdenes, cuántas ya tienen remisión y cuántas ya tienen guía. */}
