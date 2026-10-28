@@ -67,10 +67,18 @@ const conAbono = (nombre: unknown) => String(nombre ?? '').trim().startsWith('**
 // recomendada por números (menor devolución saliendo de Bogotá, datos de Effi en auto_rutas).
 const CO_HABILITADAS = [1, 4, 6, 10];
 const VALLE_ABURRA = ['MEDELLIN', 'ENVIGADO', 'ITAGUI', 'SABANETA', 'LA ESTRELLA', 'CALDAS', 'COPACABANA', 'GIRARDOTA', 'BARBOSA'];
+// Entrega en oficina de Inter (4) o de Servientrega (6): en Colombia esas órdenes van solas, sin pasar por la lista
+// (regla del dueño, 27-oct). Las demás siguen siendo manuales.
+const oficinaCO = (direccion: unknown) => {
+  const d = norm(String(direccion ?? ''));
+  if (!/OFICINA|\bOF\b|RECLAM/.test(d)) return null;
+  return /INTER ?RAPIDISIMO/.test(d) ? 4 : /SERVIENTREGA/.test(d) ? 6 : null;
+};
 function asesoraCO(direccion: string, ciudad: string, dpto: string, soloInter: boolean): { id: number; regla: string } | null {
   const d = norm(direccion ?? ''), c = norm(ciudad ?? '').replace(/\s*D\.?\s*C\.?$/, ''), dp = norm(dpto ?? '');
-  if (/INTER ?RAPIDISIMO/.test(d) && /OFICINA|\bOF\b|RECLAM/.test(d)) return { id: 4, regla: 'Reclama en oficina Interrapidísimo' };
-  if (/SERVIENTREGA/.test(d) && /OFICINA|\bOF\b|RECLAM/.test(d)) return { id: 6, regla: 'Reclama en oficina Servientrega' };
+  const ofi = oficinaCO(direccion);
+  if (ofi === 4) return { id: 4, regla: 'Reclama en oficina Interrapidísimo' };
+  if (ofi === 6) return { id: 6, regla: 'Reclama en oficina Servientrega' };
   if (VALLE_ABURRA.includes(c) && dp === 'ANTIOQUIA') {
     if (/\bENCISO\b|SANTO DOMINGO|BELENCITO|\bPOPULAR\b|SAN JAVIER|ROBLEDO|MORAVIA/.test(d)) return { id: 1, regla: 'Medellín: barrio popular (Coordinadora genera devoluciones)' };
     return { id: 10, regla: 'Medellín y Valle de Aburrá' };
@@ -556,6 +564,19 @@ async function guiasPendientes(cuenta: string, ahora = false) {
   return hechas;
 }
 
+// Colombia: las órdenes listas con entrega en oficina de Inter o Servientrega se crean solas (remisión y guía por esa
+// transportadora), aunque el país esté en Manual. Se toman las que la Torre ya tiene listas, de la más antigua a la más
+// nueva, de a MAX_CREAR por corrida.
+async function oficinasCO(cuenta: string) {
+  if (cuenta !== 'TIENDA_CO') return [];
+  const filas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&plan_estado=eq.lista&id_remision=is.null&select=sucursal,id,plan&order=id.asc&limit=300`);
+  const hechas: Json[] = [];
+  for (const f of filas.filter((x) => x.plan?.remision && !x.plan?.abono && oficinaCO(x.plan.remision.direccion_cliente)).slice(0, MAX_CREAR)) {
+    hechas.push(await crear(cuenta, Number(f.sucursal), Number(f.id), true));
+  }
+  return hechas;
+}
+
 // Crea en Effi la remisión y la guía de UNA orden que el dueño mandó a ejecutar.
 async function crear(cuenta: string, sucursal: number, id: number, automatico = false) {
   const ev = (paso: string, ok: boolean | null, mensaje: string, datos: Json | null = null) =>
@@ -563,8 +584,11 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   const resultado = (estado: 'creada' | 'error', motivo: string | null, datos: Json) =>
     rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_estado: estado, p_motivo: motivo, p_resultado: datos });
 
-  if (!(automatico ? PAISES_CREACION : PAISES_POR_ORDEN).includes(cuenta)) throw new Error('La creación no está montada para este país');
+  if (!(automatico ? [...PAISES_CREACION, 'TIENDA_CO'] : PAISES_POR_ORDEN).includes(cuenta)) throw new Error('La creación no está montada para este país');
   const [fila] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id=eq.${id}&select=plan,plan_estado,decision`);
+  // Colombia en automático: solo entrega en oficina, y siempre por la transportadora de esa oficina.
+  const ofi = automatico && cuenta === 'TIENDA_CO' ? oficinaCO(fila?.plan?.remision?.direccion_cliente) : null;
+  if (automatico && cuenta === 'TIENDA_CO' && !ofi) return { creada: false, motivo: 'Colombia solo crea sola la entrega en oficina' };
   // Orden recién llegada que la vigilancia (cada 2 minutos) aún no registra: no es error, se crea en la próxima corrida.
   if (automatico && !fila) return { creada: false, motivo: 'aún no registrada' };
   const autorizada = automatico ? fila?.plan_estado === 'lista' : fila?.decision === 'ejecutar';
@@ -576,12 +600,12 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
     await ev('fin', false, 'Pedido con abono: el agente no lo toca, se hace a mano en Effi');
     return { creada: false, motivo: 'con abono' };
   }
-  if (automatico) await ev('inicio', null, `Automático: convirtiendo la OV ${id} (${fila.plan?.resumen?.cantidad ?? ''} × ${fila.plan?.resumen?.producto ?? ''})`);
+  if (automatico) await ev('inicio', null, `${ofi ? `Entrega en oficina ${ofi === 4 ? 'Interrapidísimo' : 'Servientrega'}, va sola` : 'Automático'}: convirtiendo la OV ${id} (${fila.plan?.resumen?.cantidad ?? ''} × ${fila.plan?.resumen?.producto ?? ''})`);
   const plan = fila.plan as Json;
   const previo = (plan.resultado ?? {}) as Json;
   // Elección del dueño al pulsar "Ejecutar": qué paso hacer y por qué transportadora (sin elección: los dos pasos con la
   // transportadora del plan).
-  const eleccion = (automatico ? {} : plan.eleccion ?? {}) as { paso?: 'ambas' | 'remision' | 'guia'; transportadora?: number | null };
+  const eleccion = (ofi ? { paso: 'ambas', transportadora: ofi } : automatico ? {} : plan.eleccion ?? {}) as { paso?: 'ambas' | 'remision' | 'guia'; transportadora?: number | null };
   const paso = eleccion.paso ?? 'ambas';
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
   const key = keys.find((k) => k.slug === cuenta)?.api_key;
@@ -613,7 +637,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
     await resultado('error', motivo, { paso: 'remision' });
     return { creada: false, motivo };
   }
-  if (!remision?.id && !PAISES_REMISION.includes(cuenta) && (automatico || !PAISES_POR_ORDEN.includes(cuenta))) {
+  if (!remision?.id && !PAISES_REMISION.includes(cuenta) && !ofi && (automatico || !PAISES_POR_ORDEN.includes(cuenta))) {
     const motivo = 'En este país la Torre todavía no crea remisiones: hazla en Effi y la Torre hace la guía.';
     await ev('remision', false, motivo);
     await resultado('error', motivo, { paso: 'remision' });
@@ -726,6 +750,8 @@ Deno.serve(async (req) => {
       } else {
         // Si la parte de órdenes falla (p. ej. Effi pide esperar), las guías de las remisiones hechas se hacen igual.
         try { await convertir(cuenta, ahora); }
+        catch (e) { await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {}); }
+        try { await oficinasCO(cuenta); }
         catch (e) { await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {}); }
         await guiasPendientes(cuenta, ahora);
       }

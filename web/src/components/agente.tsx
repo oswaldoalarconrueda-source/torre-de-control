@@ -36,6 +36,12 @@ type Recomendacion = {
   numeros: { nivel: string | null; recomendada: number | null; opciones: { id: number; guias: number; devol: number }[] };
 };
 const CO_HABILITADAS = [1, 4, 6, 10];
+// Igual que oficinaCO del agente (auto-convertir): entrega en oficina de Inter (4) o Servientrega (6).
+const oficinaCO = (direccion: unknown) => {
+  const d = String(direccion ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  if (!/OFICINA|\bOF\b|RECLAM/.test(d)) return null;
+  return /INTER ?RAPIDISIMO/.test(d) ? 4 : /SERVIENTREGA/.test(d) ? 6 : null;
+};
 const pct = (n: number) => `${Number(n).toLocaleString("es-CO", { maximumFractionDigits: 1 })} %`;
 export type DatosAuto = {
   config: {
@@ -119,13 +125,16 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
 
   // Listas para crear: el agente ya sabe qué hacer (remisión y guía, o solo la guía de una remisión hecha a mano). No
   // son novedad aunque lleven rato esperando: salen con "Ejecutar ahora" o con "Ejecutar" en cada una.
+  // Colombia: la entrega en oficina de Inter o Servientrega la crea el agente solo; no pasa por la lista.
+  const vaSola = (o: OrdenAuto) => cuenta === "TIENDA_CO" && o.plan_estado === "lista" && o.estado === "sin_remision" &&
+    oficinaCO(o.plan?.remision?.direccion_cliente) !== null;
   const paraCrear = (o: OrdenAuto) =>
-    o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar";
+    o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar" && !vaSola(o);
   // Una orden que ya tiene remisión y guía está resuelta: el error de un intento anterior (por ejemplo una guía que
   // falló y se hizo después) ya no cuenta como novedad ni se muestra.
   const ordenes = useMemo(() => datos.ordenes.map((o) =>
     o.estado === "completa" && o.plan_estado === "error" ? { ...o, plan_estado: null, plan_motivo: null } : o), [datos.ordenes]);
-  const lista = useMemo(() => ordenes.filter((o) => novedad(o) && !paraCrear(o)),
+  const lista = useMemo(() => ordenes.filter((o) => novedad(o) && !paraCrear(o) && !vaSola(o)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ordenes]);
   const listas = useMemo(() => ordenes.filter(paraCrear),
@@ -134,6 +143,7 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
   // Dos listas: órdenes que pasan a remisión (y luego a guía) y remisiones ya hechas que solo esperan la guía.
   const listasRemision = listas.filter((o) => o.estado === "sin_remision");
   const listasGuia = listas.filter((o) => o.estado === "sin_guia");
+  const solas = ordenes.filter(vaSola);
   // Pedidos con abono (cliente con ** al inicio): el agente no los toca, se quedan en orden y los hace una persona.
   const conAbono = ordenes.filter((o) => o.estado === "sin_remision" && !!o.cliente?.trim().startsWith("**"));
 
@@ -407,7 +417,8 @@ export function Agente({ cuenta, datos, transportes = {} }: { cuenta: string; da
           texto: creaRemision
             ? creaEnEffi
               ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una."
-              : "Órdenes que el agente pasa a remisión (y a guía si quieres) cuando pulsas “Ejecutar” en cada una: ahí escoges el paso y la transportadora."
+              : "Órdenes que el agente pasa a remisión (y a guía si quieres) cuando pulsas “Ejecutar” en cada una: ahí escoges el paso y la transportadora." +
+                (cuenta === "TIENDA_CO" ? ` La entrega en oficina de Interrapidísimo o Servientrega va sola${solas.length ? ` (${entero(solas.length)} en camino)` : ""}.` : "")
             : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía." },
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.",
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
