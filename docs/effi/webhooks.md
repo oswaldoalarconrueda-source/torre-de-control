@@ -91,3 +91,18 @@ Más 33 de inventario y compras (pedido del 2026-10-26):
 - Mientras tanto, el sync por API (cada pocos minutos) es la fuente principal.
 
 **Al registrar:** al cerrar el aviso del secreto ("Ya lo guardé") Effi recarga la página, así que se crea un webhook por cada carga de la página.
+
+**Diagnóstico del 2026-10-27:**
+- `effi_webhook_events` sigue en 0 filas para todas las cuentas.
+- En Effi, los 13 webhooks de CO siguen "Vigente - Activo", con "Último envío: Sin envíos" y 0 entregas fallidas. Effi nunca intentó enviar: no es que la Torre los rechace.
+- Eventos reales desde que se crearon los webhooks (datos del sync por API):
+
+  | Cuenta | Guías creadas | Cambios de estado | Movimientos de wallet | Avisos recibidos |
+  |---|---|---|---|---|
+  | TIENDA_CO (desde el 23-oct 15:00) | 1.363 | 9.620 | 6.068 | 0 |
+  | TIENDA_EC (desde el 23-oct 15:00) | 1.331 | 7.002 | 2.816 | 0 |
+  | VALKA_GT (desde el 25-oct 18:00) | 5 | 99 | 52 | 0 |
+
+- El receptor funciona: un POST de prueba sin clave respondió 200 en 0,5 s y quedó guardado (la fila de prueba se borró).
+- Pasa igual con lo creado por la API (remisiones y guías de la Torre) y con lo hecho en la pantalla de Effi.
+- Conclusión: Effi no está despachando webhooks. Hay que abrir caso con soporte de Effi antes de crear los de GT y CR.
