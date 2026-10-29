@@ -14,7 +14,7 @@ import type { DatosFabrica } from "./fabrica-agente";
 // remisión y la guía de cada orden pendiente y muestra qué crearía. "Automático" y "Ejecutar" quedan bloqueados
 // hasta activar la creación en Effi.
 
-type Estado = "completa" | "revision" | "sin_guia" | "sin_remision" | "anulada";
+type Estado = "completa" | "revision" | "sin_guia" | "sin_remision" | "anulada" | "resuelta";
 type Modo = "apagado" | "vigilar" | "simular" | "automatico";
 type Plan = {
   resumen?: Record<string, string | number | boolean>; remision?: Record<string, unknown>; guia?: Record<string, unknown>;
@@ -80,6 +80,7 @@ const ESTADOS: Record<Estado, { label: string; color: string }> = {
   sin_guia: { label: "Sin guía", color: "var(--blue-2)" },
   sin_remision: { label: "Sin remisión", color: "var(--red)" },
   anulada: { label: "Anulada", color: "var(--muted)" },
+  resuelta: { label: "Resuelta", color: "var(--muted)" },
 };
 
 const hora = (iso: string) =>
@@ -306,6 +307,18 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
     setGuardando(null);
     if (e) setError(e.message); else router.refresh();
   }
+  // "Ya está resuelta": la orden se arregló fuera de la Torre (el cliente canceló, salió con otra orden…). Sale de la
+  // lista y el agente no la crea; "Volver a la lista" lo deshace.
+  const [confirmarResuelta, setConfirmarResuelta] = useState<string | null>(null);
+  async function marcarResuelta(o: OrdenAuto, resuelta: boolean) {
+    const clave = `${o.sucursal}-${o.id}`;
+    setConfirmarResuelta(null);
+    setGuardando(clave); setError(null);
+    const { error: e } = await createClient().rpc("auto_marcar_resuelta", { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_resuelta: resuelta });
+    setGuardando(null);
+    if (e) setError(e.message); else router.refresh();
+  }
+  const resueltas = ordenes.filter((o) => o.estado === "resuelta");
 
   return (
     <div className="space-y-4">
@@ -531,7 +544,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
               {s.conGuia && <th className="px-3 py-3">Guía</th>}
               <th className="px-3 py-3">Estado</th>
               <th className="px-3 py-3">Lo que haría el agente</th>
-              <th className="px-3 py-3">Acción</th>
+              <th className="px-3 py-3 sticky right-0 z-10 bg-panel border-l border-line">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -544,10 +557,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                 <tr className="align-middle hover:bg-tinte/[0.02]">
                   <td className="px-3 py-2 whitespace-nowrap">
                     <div className="font-mono font-semibold">OV {o.id}</div>
-                    <div className="text-[11px] text-muted">{hora(o.fecha)}{o.pedido ? ` · ${o.ecommerce ?? ""} #${o.pedido}` : ""}</div>
+                    <div className="text-[11px] text-muted">{hora(o.fecha)}</div>
                   </td>
-                  <td className="px-3 py-2 min-w-[11rem]">
-                    <div className="font-semibold">{o.cliente ?? "—"}</div>
+                  <td className="px-3 py-2 min-w-[8rem] max-w-[11rem]">
+                    <div className="font-semibold leading-snug">{o.cliente ?? "—"}</div>
                     <span
                       className="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
                       style={o.recuperado ? { background: "rgba(180,140,255,.15)", color: "#b48cff" } : { background: "color-mix(in srgb, var(--tinte) 5%, transparent)", color: "var(--muted)" }}
@@ -556,8 +569,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                     </span>
                   </td>
                   {/* Ciudad - departamento y, debajo, la dirección de entrega (la del plan de remisión o de guía). */}
-                  <td className="px-3 py-2 min-w-[12rem] max-w-[20rem] text-xs">
-                    <div className="whitespace-nowrap font-semibold">{[o.ciudad, o.provincia].filter(Boolean).join(" - ") || "—"}</div>
+                  <td className="px-3 py-2 min-w-[7rem] max-w-[11rem] text-xs">
+                    <div className="font-semibold leading-snug">{o.ciudad || "—"}</div>
+                    {o.provincia && <div className="text-muted leading-snug">{o.provincia}</div>}
                     {o.restriccion && (
                       <div className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${cumpleCondicion(o) ? "bg-green/15 text-green" : "bg-red/15 text-red"}`}
                         title={`${o.restriccion.lugar}: ${o.restriccion.motivo}`}>
@@ -566,13 +580,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                     )}
                     {(() => {
                       const dir = String(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0] ?? "").trim();
-                      return dir ? <div className="text-muted whitespace-normal">{dir}</div> : null;
+                      return dir ? <div className="mt-0.5 text-muted whitespace-normal line-clamp-2" title={dir}>{dir}</div> : null;
                     })()}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap text-right num">{dinero(o.total, cuenta)}</td>
                   {/* Todo es dropshipping: importa que tenga convenio, no cuál. */}
                   <td className="px-3 py-2 whitespace-nowrap text-xs">
-                    {o.convenio ? <span className="text-green">✓ Con convenio</span> : <span className="font-semibold text-red">Sin convenio</span>}
+                    {o.convenio ? <span className="text-green" title="Con convenio">✓ Sí</span> : <span className="font-semibold text-red">Sin convenio</span>}
                   </td>
                   {s.conRemision && <td className="px-3 py-2 whitespace-nowrap text-xs">
                     {o.id_remision ? (
@@ -588,7 +602,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                     )}
                   </td>}
                   {s.conGuia && <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{o.guia ?? "—"}</td>}
-                  <td className="px-3 py-2 min-w-[12rem]">
+                  <td className="px-3 py-2 min-w-[10rem] max-w-[18rem]">
                     <span className="inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ color: est.color, background: "color-mix(in srgb, var(--tinte) 5%, transparent)" }}>
                       {o.estado === "sin_remision" && !atrasada(o) ? "Esperando remisión" : est.label}
                     </span>
@@ -599,14 +613,14 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                     {/* Resultado de lo que se ejecutó: un tropiezo de Effi lo reintenta el agente solo; lo demás lo
                         revisa una persona. */}
                     {o.plan_estado === "error" && o.plan_motivo && (pasajero(o.plan_motivo) ? (
-                      <div className="mt-1 min-w-[26rem] max-w-[44rem] rounded-lg border border-amber/40 bg-amber/10 px-2 py-1 text-[11px] text-amber whitespace-normal">
+                      <div className="mt-1 min-w-[14rem] rounded-lg border border-amber/40 bg-amber/10 px-2 py-1 text-[11px] text-amber whitespace-normal">
                         ↻ Effi falló de paso ({o.plan_motivo.replace(/^Effi no dej[oó] crear la remisi[oó]n: /, "")}). El agente lo reintenta solo cada 5 minutos, hasta 3 veces al día.
                         {datos.es_owner && o.plan?.resultado && (
                           <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
                         )}
                       </div>
                     ) : (
-                      <div className="mt-1 min-w-[26rem] max-w-[44rem] rounded-lg border border-red/40 bg-red/10 px-2 py-1 text-[11px] text-red whitespace-normal">
+                      <div className="mt-1 min-w-[14rem] rounded-lg border border-red/40 bg-red/10 px-2 py-1 text-[11px] text-red whitespace-normal">
                         ⚠ Requiere verificación humana: {o.plan_motivo}
                         {datos.es_owner && o.plan?.resultado && (
                           <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
@@ -628,14 +642,14 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                       <div className="mt-1 text-[11px] text-green">✓ Hecha por la Torre: sale de aquí cuando Effi lo confirme, en unos minutos</div>
                     )}
                   </td>
-                  <td className="px-3 py-2 min-w-[15rem]">
+                  <td className="px-3 py-2 min-w-[13rem] max-w-[17rem]">
                     <Simulacion o={o} cuenta={cuenta} abierto={abierto} onAlternar={() => setAbierta(abierto ? null : clave)} />
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-2 whitespace-nowrap sticky right-0 z-10 bg-panel border-l border-line">
                     {o.estado === "completa" || o.estado === "anulada" ? (
                       <span className="text-xs text-muted">—</span>
                     ) : (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col items-start gap-1.5">
                         {puedeEjecutar(o) && confirmarOrden === clave ? (
                           // Qué paso hacer y por qué transportadora; nada se crea hasta "Sí, crear".
                           <div className="flex min-w-[17rem] flex-col gap-1.5 rounded-xl border border-green/40 bg-green/5 p-2">
@@ -706,6 +720,20 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                             <Play size={12} /> Ejecutar
                           </button>
                         )}
+                        {o.estado === "sin_remision" && confirmarOrden !== clave && (confirmarResuelta === clave ? (
+                          <span className="inline-flex items-center gap-1 text-[11px]">
+                            <span className="text-muted">¿Quitar de la lista?</span>
+                            <button onClick={() => marcarResuelta(o, true)} disabled={guardando === clave}
+                              className="rounded-full bg-blue px-2 py-0.5 font-bold text-white">Sí</button>
+                            <button onClick={() => setConfirmarResuelta(null)} className="rounded-full border border-line px-2 py-0.5 font-semibold text-muted hover:text-text">No</button>
+                          </span>
+                        ) : (
+                          <button onClick={() => setConfirmarResuelta(clave)} disabled={guardando === clave}
+                            title="Se arregló fuera de la Torre (el cliente canceló, salió con otra orden…): sale de la lista y el agente no la crea"
+                            className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-muted hover:text-text hover:border-tinte/30">
+                            Ya está resuelta
+                          </button>
+                        ))}
                       </div>
                     )}
                   </td>
@@ -741,6 +769,27 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
       </div>
       </Fragment>
       ))}
+
+      {/* Las que una persona marcó como resueltas: fuera de la lista y sin que el agente las cree; se pueden devolver. */}
+      {resueltas.length > 0 && (
+        <details className="card p-3 text-sm">
+          <summary className="cursor-pointer text-muted">Marcadas como resueltas ({entero(resueltas.length)})</summary>
+          <div className="mt-2 divide-y divide-line">
+            {resueltas.map((o) => (
+              <div key={`${o.sucursal}-${o.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                <span className="font-mono font-semibold">OV {o.id}</span>
+                <span>{o.cliente ?? "—"}</span>
+                <span className="text-muted">{o.ciudad ?? ""}</span>
+                <span className="text-xs text-muted">por {o.decision_por ?? "una persona"}{o.decision_en ? ` · ${hora(o.decision_en)}` : ""}</span>
+                <button onClick={() => marcarResuelta(o, false)} disabled={guardando === `${o.sucursal}-${o.id}`}
+                  className="ml-auto rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-muted hover:text-text">
+                  Volver a la lista
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -784,7 +833,7 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
     return (
       <div className="text-xs">
         <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-amber bg-tinte/5">Pendiente de revisión</span>
-        <div className="text-amber mt-1 min-w-[26rem] max-w-[44rem] whitespace-normal">{o.plan_motivo}</div>
+        <div className="text-amber mt-1 min-w-[12rem] max-w-[20rem] whitespace-normal">{o.plan_motivo}</div>
       </div>
     );
   }
