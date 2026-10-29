@@ -207,13 +207,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
   // Órdenes sin remisión en una ciudad con condición de envío (pago anticipado, sin cobertura…): recordatorio.
   const conCondicion = ordenes.filter((o) => o.estado === "sin_remision" && !cumpleCondicion(o));
 
-  // El automático está montado para Guatemala y Ecuador; activarlo y pasarlo a manual piden confirmación en pantalla
+  // El automático está montado para Guatemala, Ecuador y A un clic Guatemala; activarlo y pasarlo a manual piden confirmación en pantalla
   // (el navegador de la app bloquea las ventanas de confirmación). "Manual" = simular: arma lo que haría sin crear.
-  const automaticoPosible = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
+  const automaticoPosible = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC" || cuenta === "AUNCLIC_GT";
   // Guatemala, Ecuador y Colombia: la Torre hace la remisión desde la orden y después la guía (Ecuador desde el 27-oct,
   // con la llave de perfil principal; con la de perfil Auxiliar Effi fallaba con el error 1452). Colombia solo orden por
   // orden, con "Ejecutar", mientras el dueño da sus condiciones.
-  const creaRemision = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC" || cuenta === "TIENDA_CO";
+  const creaRemision = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC" || cuenta === "TIENDA_CO" || cuenta === "AUNCLIC_GT";
   async function cambiarModo(m: Modo) {
     if (m === modo || (m === "automatico" && !automaticoPosible)) return;
     setGuardando("modo"); setError(null);
@@ -263,9 +263,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
     setGuardando(null);
     if (e) setError(e.message); else { setEditando(false); router.refresh(); }
   }
-  // Guatemala y Ecuador tienen montada la creación en tanda ("Ejecutar ahora", automático); Colombia solo orden por
+  // Guatemala, Ecuador y A un clic Guatemala tienen montada la creación en tanda ("Ejecutar ahora", automático); Colombia solo orden por
   // orden. La orden debe tener la remisión lista, o la guía de una remisión ya hecha (o un error para reintentar).
-  const creaEnEffi = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC";
+  const creaEnEffi = cuenta === "TIENDA_GT" || cuenta === "TIENDA_EC" || cuenta === "AUNCLIC_GT";
   const porOrden = creaEnEffi || cuenta === "TIENDA_CO";
   // "Ejecutar" orden por orden lo puede pulsar cualquiera que vea el agente de este país (tiene el módulo); el modo y
   // las tandas siguen siendo solo del dueño.

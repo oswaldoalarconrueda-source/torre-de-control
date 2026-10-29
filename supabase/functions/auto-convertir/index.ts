@@ -33,19 +33,22 @@ const REGLAS_HORAS = 6;
 const MAX_ORDENES = 15;
 // Países donde la Torre crea en Effi, en Automático o cuando el dueño pulsa "Ejecutar ahora" o "Ejecutar". Costa Rica
 // y Colombia están en prueba: no crean nada.
-const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC'];
+const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC', 'AUNCLIC_GT'];
 // Países donde además se crea la remisión desde la orden (action 3, nunca anulando la orden). Ecuador desde el 27-oct,
-// con la llave de perfil principal (con la de perfil Auxiliar Effi fallaba con el error 1452).
-const PAISES_REMISION = ['TIENDA_GT', 'TIENDA_EC'];
+// con la llave de perfil principal (con la de perfil Auxiliar Effi fallaba con el error 1452). A un clic Guatemala
+// (AUNCLIC_GT, otra sociedad) desde el 29-oct, igual que Joalix Guatemala: pedidos de Shopify → remisión y guía por el
+// centro SHOPIFY (centro_normal); las ventas de Lucid llegan como remisión y solo les falta la guía (centro LUCID, el
+// de la remisión).
+const PAISES_REMISION = ['TIENDA_GT', 'TIENDA_EC', 'AUNCLIC_GT'];
 // "Ejecutar" orden por orden (el dueño escoge el paso y la transportadora): también Colombia, que todavía no crea sola
 // mientras el dueño da sus condiciones.
-const PAISES_POR_ORDEN = ['TIENDA_GT', 'TIENDA_EC', 'TIENDA_CO'];
+const PAISES_POR_ORDEN = ['TIENDA_GT', 'TIENDA_EC', 'TIENDA_CO', 'AUNCLIC_GT'];
 const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const MAX_GUIAS_AHORA = 10;   // "Ejecutar ahora": guías por corrida, de a 10 para no cargar el sistema (regla del dueño)
 const ESPERA_GUIA_MIN = 15;   // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía
 const PAGINAS_REGLAS = 30;    // guías y remisiones de 10 días (Ecuador hace unas 250 guías al día)
-const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIENDA_CO: 'COP', TIENDA_CR: 'CRC' };
+const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIENDA_CO: 'COP', TIENDA_CR: 'CRC', AUNCLIC_GT: 'GTQ' };
 // Países que escogen transportadora por dirección (ids de transportadora en Effi). Los demás usan la más común.
 const TRANSPORTE_PAIS: Record<string, { oficina: number; domicilio: number; respaldo: number }> = {
   TIENDA_EC: { oficina: 1, domicilio: 5, respaldo: 1 },   // 1 Servientrega · 5 Gintracom
