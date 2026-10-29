@@ -862,10 +862,12 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
         {abierto ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Lista para crear
       </button>
       <div className="mt-1 whitespace-normal">
-        <span className="font-semibold">{String(r.cantidad)} × {String(r.producto)}</span> a {precio2(Number(r.precio), cuenta)} c/u
+        {r.varios
+          ? <span className="font-semibold">{String(r.producto)}</span>
+          : <><span className="font-semibold">{String(r.cantidad)} × {String(r.producto)}</span> a {precio2(Number(r.precio), cuenta)} c/u</>}
       </div>
       <div className="text-muted">
-        Centro {r.recuperado ? "Recuperado" : "Principal"} · remitente {String(r.remitente)} · {Number(r.antecedentes).toLocaleString("es-CO")} antecedentes
+        Centro {r.recuperado ? "Recuperado" : "Principal"} · remitente {String(r.remitente)} · {r.fuente === "orden" ? "cantidad de la orden" : `${Number(r.antecedentes).toLocaleString("es-CO")} antecedentes`}
       </div>
       {transporte}
       {o.plan_en && <div className="text-[10px] text-muted">simulada {haceCuanto(o.plan_en)}</div>}

@@ -13,7 +13,8 @@
 // - Remisión desde la orden (action 3) con el convenio de dropshipping que trae la orden, sin cambiarlo.
 // - Cliente con * al inicio del nombre (pedido recuperado de LucidBot) → centro de costos Recuperado.
 // - Productos: se detectan con el filtro "articulo" de api/orden_v (la API no da el detalle de la orden).
-//   Cantidad: la que siempre tuvo ese producto con ese total en las guías anteriores. Sin antecedentes → revisión.
+//   Cantidad y precio: los de la orden (api/detalle_orden_v, desde el 29-oct). Si no se pueden leer, la que siempre tuvo
+//   ese producto con ese total en las guías anteriores; sin antecedentes → revisión.
 // - Guía: transportadora, servicio y forma de pago de las guías hechas; remitente según el convenio; contenido,
 //   valor declarado y recaudo tomados de la remisión.
 //
@@ -395,6 +396,24 @@ async function convertir(cuenta: string, ahora = false) {
   const guardadas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id=in.(${pendientes.map((o) => o.id).join(',')})&select=sucursal,id,articulos`);
   const historial: { total: string; contenido: string; n: number }[] = await rpc('auto_historial_contenido', { p_cuenta: cuenta });
   const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado`);
+  // Detalle de las órdenes pendientes (api/detalle_orden_v: artículo, cantidad y precio de cada concepto, 29-oct): la
+  // cantidad sale de la orden y ya no se adivina con las guías anteriores (un producto nuevo quedaba "sin antecedentes").
+  // La fila no trae la sucursal: la orden se reconoce por id y fecha. Si la llave no tiene permiso de reportes, sigue
+  // la detección por artículo y antecedentes de antes.
+  // Solo se filtra por "desde": con vigente, hasta o est_facturacion Effi responde vacío (29-oct); lo vigente y sin
+  // remisión se escoge aquí. Hasta 1000 filas por página.
+  const detalle = new Map<string, Json[]>();
+  try {
+    for (let p = 1; p <= 10; p++) {
+      const r = await api.get('detalle_orden_v', { desde, por_pagina: 1000, pagina: p });
+      for (const f of r.data) {
+        if (f.vigente !== '1' || f.id_remision_v) continue;
+        const k = `${f.id_orden_v}|${f.fecha_trans}`;
+        detalle.set(k, [...(detalle.get(k) ?? []), f]);
+      }
+      if (p >= r.paginas) break;
+    }
+  } catch (_) { /* sin permiso de reportes: queda el método de antes */ }
 
   const planes: Json[] = [];
   for (const o of pendientes) {
@@ -402,8 +421,21 @@ async function convertir(cuenta: string, ahora = false) {
     const revision = (motivo: string) => planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: plan.articulos ?? null, estado: 'revision', motivo, plan });
     if (conAbono(o.nombre_cliente)) { plan.abono = true; revision('Con abono: el agente no la toca, hacer el proceso a mano en Effi'); continue; }
 
-    // 1. Productos de la orden (filtro por artículo; se guarda para no repetir).
-    let det = guardadas.find((g) => Number(g.id) === Number(o.id) && Number(g.sucursal) === Number(o.sucursal))?.articulos as { id: number; nombre: string }[] | null;
+    // 0. Conceptos de la orden con su cantidad y precio. Solo se usan si todos son artículos de venta (sin FLETE) y sin
+    // impuestos, y si cuadran con el total de la orden; si no, se sigue con el método de antes.
+    const filasDetalle = (detalle.get(`${o.id}|${o.fecha_trans}`) ?? []).filter((l) => Number(l.cantidad) > 0);
+    let conceptos: { id: number; nombre: string; descripcion: string; cantidad: number; precio: number; descuento: number }[] | null =
+      filasDetalle.length && filasDetalle.every((l) => Number(l.impuestos ?? 0) === 0 && articulos.some((a) => a.id === Number(l.articulo)))
+        ? filasDetalle.map((l) => {
+            const a = articulos.find((x) => x.id === Number(l.articulo))!;
+            return { id: a.id, nombre: a.nombre, descripcion: a.descripcion, cantidad: Number(l.cantidad), precio: Number(l.p_venta), descuento: Number(l.descuento ?? 0) };
+          })
+        : null;
+    if (conceptos && Math.abs(conceptos.reduce((t, c) => t + c.cantidad * c.precio - c.descuento, 0) - Number(o.total)) > 0.01) conceptos = null;
+    const deLaOrden = !!conceptos;
+
+    // 1. Productos de la orden (del detalle o, si no, con el filtro por artículo; se guarda para no repetir).
+    let det = conceptos ? conceptos.map((c) => ({ id: c.id, nombre: c.nombre })) : guardadas.find((g) => Number(g.id) === Number(o.id) && Number(g.sucursal) === Number(o.sucursal))?.articulos as { id: number; nombre: string }[] | null;
     if (!det) {
       det = [];
       for (const a of articulos) {
@@ -420,22 +452,28 @@ async function convertir(cuenta: string, ahora = false) {
     const recuperado = String(o.nombre_cliente ?? '').trim().startsWith('*');
     const centro = recuperado ? centros.centro_recuperado : centros.centro_normal;
 
-    // 3. Cantidades: la combinación de productos y total que ya existe en las guías.
+    // 3. Cantidades: las de la orden (detalle) o la combinación de productos y total que ya existe en las guías.
     const total = Number(o.total);
     const nombres = det.map((a) => a.nombre).sort().join('|');
-    const candidatas = historial
+    const candidatas = conceptos ? [] : historial
       .filter((h) => Math.abs(Number(h.total) - total) < 0.005)
       .map((h) => ({ l: lineas(h.contenido), n: Number(h.n) }))
       .filter((h) => h.l.length && h.l.map((x) => x.nombre).sort().join('|') === nombres)
       .sort((a, b) => b.n - a.n);
-    if (!candidatas.length) {
+    if (!conceptos && !candidatas.length) {
       revision(`Sin antecedentes de cantidad: ${det.map((a) => a.nombre).join(' + ')} por ${total.toFixed(2)}`);
       continue;
     }
-    if (det.length > 1) { revision('La orden trae varios productos: el precio de cada uno no se puede saber'); continue; }
-    const cantidad = candidatas[0].l[0].cant;
-    const precio = Math.round((total / cantidad) * 100) / 100;
-    if (Math.abs(precio * cantidad - total) > 0.005) { revision(`El total ${total.toFixed(2)} no se divide exacto en ${cantidad} unidades`); continue; }
+    if (!conceptos && det.length > 1) { revision('La orden trae varios productos: el precio de cada uno no se puede saber'); continue; }
+    if (!conceptos) {
+      const cant = candidatas[0].l[0].cant;
+      const precio = Math.round((total / cant) * 100) / 100;
+      if (Math.abs(precio * cant - total) > 0.005) { revision(`El total ${total.toFixed(2)} no se divide exacto en ${cant} unidades`); continue; }
+      const a = det[0];
+      conceptos = [{ id: Number(a.id), nombre: a.nombre, descripcion: articulos.find((x) => x.id === Number(a.id))?.descripcion || a.nombre, cantidad: cant, precio, descuento: 0 }];
+    }
+    const cantidad = conceptos.reduce((t, c) => t + c.cantidad, 0);
+    const precio = conceptos[0].precio;
 
     // 4. Remitente según el convenio.
     const remitente = reglas?.remitentes?.[convenio];
@@ -454,8 +492,9 @@ async function convertir(cuenta: string, ahora = false) {
       cliente: o.cliente, id_pais_cliente: Number(o.pais_cliente), id_provincia_cliente: Number(o.provincia_cliente),
       id_ciudad_cliente: Number(o.ciudad_cliente), direccion_cliente: o.direccion_cliente,
       convenio_dropshipping: convenio,
-      articulo: [det[0].id], descripcion: [articulos.find((a) => a.id === Number(det![0].id))?.descripcion || det[0].nombre],
-      cantidad: [cantidad], precio: [precio],
+      articulo: conceptos.map((c) => c.id), descripcion: conceptos.map((c) => c.descripcion),
+      cantidad: conceptos.map((c) => c.cantidad), precio: conceptos.map((c) => c.precio),
+      ...(conceptos.some((c) => c.descuento > 0) ? { descuento: conceptos.map((c) => c.descuento) } : {}),
       t_forma_pago: [reglas.formaPagoRemision], valor_forma_pago: [total],
     };
     plan.guia = {
@@ -468,9 +507,10 @@ async function convertir(cuenta: string, ahora = false) {
       id_ciudad_destinatario: [Number(o.ciudad_cliente)], direccion_destinatario: [o.direccion_cliente],
     };
     plan.resumen = {
-      producto: det[0].nombre, cantidad, precio, total, convenio, recuperado, centro,
+      producto: conceptos.length > 1 ? conceptos.map((c) => `${c.cantidad} × ${c.nombre}`).join(' + ') : conceptos[0].nombre,
+      cantidad, precio, total, convenio, recuperado, centro, varios: conceptos.length > 1, fuente: deLaOrden ? 'orden' : 'guias',
       remitente: Number(remitente), transportadora: elegido.t.nombre, motivo_transportadora: elegido.motivo, ciudad: o.nombre_ciudad,
-      antecedentes: candidatas[0].n, ...(rec ? { recomendacion: rec } : {}),
+      antecedentes: candidatas[0]?.n ?? null, ...(rec ? { recomendacion: rec } : {}),
     };
     planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: det, estado: 'lista', motivo: null, plan });
   }
