@@ -47,7 +47,7 @@ const ESTADOS: { id: Cat; label: string }[] = [
 ];
 // El proceso en orden: cada etapa cuelga de la anterior (las órdenes del país; los estados de la guía generada).
 const ETAPAS: { id: Etapa; label: string; color: string }[] = [
-  { id: "ORDEN", label: "Órdenes", color: "#ff6ad5" }, // rosado: distinto del naranja de las novedades
+  { id: "ORDEN", label: "Órdenes", color: "#d4ff1f" }, // limón fluorescente: la chispa del proceso, distinta del verde y del ámbar
   { id: "REMISION", label: "Remisiones", color: "#b48cff" },
   { id: "GENERADA", label: "Guías generadas", color: "#8f9bb8" },
 ];
