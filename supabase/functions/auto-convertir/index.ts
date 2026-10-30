@@ -53,6 +53,7 @@ const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIE
 // Países que escogen transportadora por dirección (ids de transportadora en Effi). Los demás usan la más común.
 const TRANSPORTE_PAIS: Record<string, { oficina: number; domicilio: number; respaldo: number }> = {
   TIENDA_EC: { oficina: 1, domicilio: 5, respaldo: 1 },   // 1 Servientrega · 5 Gintracom
+  TIENDA_CR: { oficina: 18, domicilio: 18, respaldo: 18 }, // regla del dueño (30-oct): en Costa Rica todo va por Red Logistic
 };
 // Transportadoras que en Effi piden además las medidas del paquete (alto, ancho, largo en cm): Servientrega,
 // Coordinadora, Laarcourier y CAEX. Sin medidas Effi responde HTTP 500 vacío, y sin volumen "Volumen total es
