@@ -13,10 +13,13 @@ import { FabricaAgente, type ConteoOrdenes, type DatosFabrica } from "./fabrica-
 // no hubo errores. Consulta los últimos movimientos cada 3 segundos (para ver qué está haciendo) y los aciertos y
 // errores del día completo cada 15 s.
 
+// Días elegidos en el calendario (hora local del país) y cómo se nombran ("Ayer · 29 oct").
+export type Periodo = { desde: string; hasta: string; etiqueta: string };
 type Evento = { id: number; id_orden: number | null; paso: string; ok: boolean | null; mensaje: string; datos: Record<string, unknown> | null; creado_en: string };
 
 
-export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, completas, remisionadas, esDueno = false }: {
+export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, completas, remisionadas, esDueno = false, rango = null }: {
+  rango?: Periodo | null; // con rango: historial de esos días (se carga una vez, sin seguir en vivo)
   cuenta: string; fabrica?: DatosFabrica | null; conteoOrdenes?: ConteoOrdenes; proxima: { hora: string; corte: string | null; en: number } | null; onNuevo: () => void;
   esDueno?: boolean; // "ver variables" (lo que se envió y respondió Effi) es solo para el dueño
   completas?: number[]; // órdenes que ya tienen remisión y guía (o que se anularon)
@@ -57,21 +60,37 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
       if (!vivo || ok.error || mal.error) return;
       setDelDia([...(ok.data as Evento[]).map((e) => ({ ...e, datos: null })), ...(mal.data as Evento[])].sort((a, b) => b.id - a.id));
     };
+    // Historial: aciertos y errores de esos días (un día de margen por la zona horaria; se filtra por día local abajo).
+    const cargarRango = async (r: Periodo) => {
+      const desde = new Date(Date.parse(`${r.desde}T00:00:00Z`) - 86_400_000).toISOString();
+      const hasta = new Date(Date.parse(`${r.hasta}T00:00:00Z`) + 2 * 86_400_000).toISOString();
+      const [ok, mal] = await Promise.all([
+        supabase.from("auto_eventos").select("id,id_orden,paso,ok,mensaje,creado_en")
+          .eq("cuenta", cuenta).eq("ok", true).in("paso", ["remision", "guia", "fin"]).gte("creado_en", desde).lt("creado_en", hasta).limit(10000),
+        supabase.from("auto_eventos").select("id,id_orden,paso,ok,mensaje,datos,creado_en")
+          .eq("cuenta", cuenta).eq("ok", false).gte("creado_en", desde).lt("creado_en", hasta).order("id", { ascending: false }).limit(2000),
+      ]);
+      if (!vivo || ok.error || mal.error) return;
+      setEventos([]);
+      setDelDia([...(ok.data as Evento[]).map((e) => ({ ...e, datos: null })), ...(mal.data as Evento[])].sort((a, b) => b.id - a.id));
+    };
+    if (rango) { cargarRango(rango); return () => { vivo = false; }; }
     cargar();
     cargarDia();
     const t = setInterval(cargar, 3000), t2 = setInterval(cargarDia, 15_000);
     return () => { vivo = false; clearInterval(t); clearInterval(t2); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cuenta]);
+  }, [cuenta, rango?.desde, rango?.hasta]);
 
   const dia = (ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: zona }).format(new Date(ms));
   const hora = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(iso));
   // Lo del día: aciertos y errores completos, más los últimos movimientos (para que lo recién hecho cuente al instante).
   const hoy = useMemo(() => {
     const m = new Map<number, Evento>();
-    for (const e of [...delDia, ...eventos]) if (e.ok !== null && dia(Date.parse(e.creado_en)) === dia(ahora)) m.set(e.id, e);
+    const enPeriodo = (d: string) => rango ? d >= rango.desde && d <= rango.hasta : d === dia(ahora);
+    for (const e of [...delDia, ...eventos]) if (e.ok !== null && enPeriodo(dia(Date.parse(e.creado_en)))) m.set(e.id, e);
     return [...m.values()].sort((a, b) => b.id - a.id);
-  }, [delDia, eventos, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [delDia, eventos, ahora, rango?.desde, rango?.hasta]); // eslint-disable-line react-hooks/exhaustive-deps
   // Errores que siguen pendientes: no cuenta el de una orden que después quedó completa o anulada (la creó la Torre en
   // un intento siguiente o alguien a mano en Effi), ni el de la remisión de una orden que ya tiene remisión vigente.
   const pendientes = hoy.filter((e) => e.ok === false && !(e.id_orden != null && (
@@ -123,7 +142,7 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
   return (
     <>
       {fabrica && (
-        <FabricaAgente d={fabrica} ordenes={conteoOrdenes} paso={activo?.paso} enVivo={!!activo} estado={activo ? (
+        <FabricaAgente d={fabrica} ordenes={conteoOrdenes} paso={activo?.paso} enVivo={!!activo} periodo={rango?.etiqueta} estado={rango ? "Historial" : activo ? (
           <span className="text-blue-2 font-semibold">Trabajando en la OV {activo.id_orden}: {activo.mensaje}</span>
         ) : proxima ? (
           <>Próxima corrida {proxima.hora}{proxima.corte ? ` · antes del corte de las ${proxima.corte}` : ""} · en {proxima.en} min</>
@@ -134,7 +153,7 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
       {/* Errores de hoy, con lo enviado y lo respondido por Effi para corregir. */}
       <div>
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-widest font-mono text-muted">
-          Errores de hoy
+          {rango ? `Errores · ${rango.etiqueta}` : "Errores de hoy"}
           <span className={`rounded-full px-2 py-0.5 text-[10px] ${errores.length ? "bg-red/15 text-red" : "bg-green/15 text-green"}`}>{errores.length}</span>
           {errores.length > 0 && <span className="normal-case tracking-normal font-sans">· una línea por remisión u orden; desaparece cuando queda resuelta</span>}
           {reintentables.length > 1 && (
@@ -157,7 +176,7 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
                     {e.paso === "guia" ? "no se hizo la guía porque:" : e.paso === "remision" ? "no se hizo la remisión porque:" : "no se completó porque:"}
                   </span>
                   <span className="min-w-[16rem] flex-1 text-text/90">{e.motivo}</span>
-                  {e.intentos > 1 && <span className="whitespace-nowrap text-[10px] text-muted">{e.intentos} intentos hoy</span>}
+                  {e.intentos > 1 && <span className="whitespace-nowrap text-[10px] text-muted">{e.intentos} intentos{rango ? "" : " hoy"}</span>}
                   <span className="whitespace-nowrap rounded-full border border-amber/50 bg-amber/10 px-2 py-0.5 text-[10px] font-semibold text-amber">Requiere verificación humana</span>
                   {e.id_orden != null && (enviada(e) ? (
                     <span className="whitespace-nowrap text-[11px] font-semibold text-blue-2">Enviada a Effi…</span>
@@ -181,7 +200,7 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
           </div>
         ) : (
           <div className="flex items-center gap-2 rounded-xl border border-green/30 bg-green/[0.06] px-3 py-2 text-xs text-green">
-            <CheckCircle2 size={15} /> Sin errores hoy: Effi aceptó todo lo que el agente envió.
+            <CheckCircle2 size={15} /> Sin errores {rango ? "en esos días" : "hoy"}: Effi aceptó todo lo que el agente envió.
           </div>
         )}
       </div>

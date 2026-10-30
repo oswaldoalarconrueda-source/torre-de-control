@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, Clock, Pause, Play, Truck } from "lucide-rea
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
-import { FlujoAgente } from "./flujo-agente";
+import { FlujoAgente, type Periodo } from "./flujo-agente";
 import type { DatosFabrica } from "./fabrica-agente";
 
 // Agente de órdenes de venta: la Torre vigila cada orden de venta (remisión con su convenio, guía, centro de costos
@@ -101,7 +101,11 @@ function proxima(zona: string, cadaMin: number, cortes: string[], antesMin: numb
 const pasajero = (m: string) => /transacci[oó]n Dropshipping|demasiadas peticiones|no respondi[oó]|HTTP 5\d\d/i.test(m);
 const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1440 ? `${Math.round(min / 60)} h` : `${Math.floor(min / 1440)} d`);
 
-export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null }) {
+// rango: días del calendario (hora local del país); sin rango es hoy, en vivo. Con rango la pantalla es el historial
+// de esos días: el resumen del agente, sus errores y todas las órdenes del periodo, sin los controles de operación.
+export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null }: {
+  cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null; rango?: Periodo | null;
+}) {
   const router = useRouter();
   const [confirmarModo, setConfirmarModo] = useState(false);
   const [confirmarOrden, setConfirmarOrden] = useState<string | null>(null);
@@ -192,7 +196,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
   const sinRemisionRevisar = sinRemision.filter(requierePersona).length;
   // Órdenes de hoy (hora local del país) para Agente en vivo, del mismo listado que las tablas de abajo.
   const diaLocal = (iso: string | number) => new Intl.DateTimeFormat("en-CA", { timeZone: zona }).format(new Date(iso));
-  const hoyOrdenes = ordenes.filter((o) => diaLocal(o.fecha) === diaLocal(Date.now()));
+  const hoyOrdenes = ordenes.filter((o) => rango ? diaLocal(o.fecha) >= rango.desde && diaLocal(o.fecha) <= rango.hasta : diaLocal(o.fecha) === diaLocal(Date.now()));
   const conteoOrdenes = {
     total: hoyOrdenes.length,
     remisionadas: hoyOrdenes.filter((o) => o.id_remision != null).length,
@@ -324,7 +328,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
     <div className="space-y-4">
       {/* Modo: Automático (la Torre crea sola remisión y guía, solo Guatemala) o Manual (crea cuando el dueño pulsa
           "Ejecutar ahora" o "Ejecutar" en una orden). */}
-      {cfg && (
+      {cfg && !rango && (
         <div className={`card p-4 flex flex-wrap items-center justify-between gap-3 ${modo === "automatico" ? "border border-green/40" : ""}`}
           style={modo === "automatico" ? { background: "linear-gradient(90deg, rgb(47 210 143 / 0.12), transparent)" } : undefined}>
           <div className="flex items-center gap-3">
@@ -404,7 +408,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
         </div>
       )}
 
-      {cfg && (
+      {cfg && !rango && (
         <div className="card p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -456,12 +460,19 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
         </div>
       )}
 
+      {rango && (
+        <div className="card flex flex-wrap items-center gap-2 border border-blue/30 p-3 text-sm">
+          <span className="font-semibold text-blue-2">📅 Historial · {rango.etiqueta}</span>
+          <span className="text-muted">Lo que hizo el agente esos días y en qué quedó cada orden. Para operar (Ejecutar, modo, horario) vuelve a <b>Hoy</b> en el calendario.</span>
+        </div>
+      )}
+
       {/* Agente en vivo (orden → remisión → guía de hoy, por agente y por humano) y, debajo, los errores de hoy. */}
-      <FlujoAgente cuenta={cuenta} fabrica={fabrica} conteoOrdenes={conteoOrdenes} proxima={sig} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
+      <FlujoAgente cuenta={cuenta} fabrica={fabrica} conteoOrdenes={conteoOrdenes} proxima={rango ? null : sig} rango={rango} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
         completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o) || remisionAnulada(o)).map((o) => o.id)}
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
 
-      {conAbono.length > 0 && (
+      {!rango && conAbono.length > 0 && (
         <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
           <div className="font-semibold text-amber">💰 {entero(conAbono.length)} {conAbono.length === 1 ? "pedido con abono" : "pedidos con abono"}: hacer el proceso</div>
           <div className="text-xs text-muted mt-0.5">El cliente empieza con ** y el agente no los toca: se quedan en orden de venta para hacerlos a mano en Effi.</div>
@@ -475,7 +486,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
         </div>
       )}
 
-      {conCondicion.length > 0 && (
+      {!rango && conCondicion.length > 0 && (
         <div className="card border border-red/40 p-4" style={{ background: "linear-gradient(90deg, rgb(255 92 92 / 0.10), transparent)" }}>
           <div className="font-semibold text-red">📍 {entero(conCondicion.length)} {conCondicion.length === 1 ? "pedido va" : "pedidos van"} a una ciudad con condición de envío</div>
           <div className="text-xs text-muted mt-0.5">Recordatorio de las asesoras logísticas: revisar con el cliente antes de despachar. Estas no se crean solas.</div>
@@ -489,6 +500,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
         </div>
       )}
 
+      {!rango && (
       <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         {/* Mes como el listado de Effi; hoy: órdenes, cuántas ya tienen remisión y cuántas ya tienen guía. */}
         <Indicador titulo="Órdenes del mes" valor={entero(r.mes_total ?? 0)} color="var(--blue-2)"
@@ -504,12 +516,16 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
         <Indicador titulo="Listas para crear" valor={entero(listas.length)} color="var(--green)"
           sub={`${entero(listasRemision.length)} a remisión · ${entero(listasGuia.length)} a guía`} />
       </div>
+      )}
 
       {error && <p className="text-sm text-red">{error}</p>}
 
       {/* Columnas Remisión y Guía solo donde dicen algo: en "orden → remisión" siempre están vacías y empujaban "Acción"
           fuera de la pantalla; en "remisión → guía" la guía todavía no existe. */}
-      {[
+      {(rango ? [
+        { titulo: "Órdenes del periodo", filas: ordenes.slice(0, 300), vacio: "No hubo órdenes en esos días.", conRemision: true, conGuia: true,
+          texto: `${ordenes.length > 300 ? `Las 300 más recientes de ${entero(ordenes.length)} órdenes` : "Todas las órdenes"} de ${rango.etiqueta}, con su remisión, su guía y quién la hizo (🤖 agente o 👤 persona). Para ver menos, elige un solo día.` },
+      ] : [
         { titulo: "Órdenes sin remisión", filas: sinRemision, vacio: "Ninguna orden sin remisión.", conRemision: false, conGuia: false,
           texto: (sinRemisionRevisar ? `Primero las ${entero(sinRemisionRevisar)} que necesitan a una persona (con su aviso en Estado). ` : "") + (creaRemision
             ? creaEnEffi
@@ -523,7 +539,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
           texto: "Solo lo que necesita una persona. Se concilia sola con Effi cada minuto: sale de aquí apenas la orden tenga remisión y guía (las haga la Torre o alguien a mano) o si la anulan. Al ejecutar o reintentar, el resultado sale en Estado: ✓ hecha, ↻ Effi falló de paso (el agente reintenta solo) o ⚠ requiere verificación humana." },
         { titulo: "Remisión anulada", filas: anuladasRem, vacio: "Ninguna remisión anulada pendiente.", conRemision: true, conGuia: true,
           texto: "Effi anuló la remisión (el proveedor rechazó el dropshipping o alguien la anuló). No es novedad del agente: queda aquí para decidir si se anula la orden o se hace con otro proveedor, y sale sola cuando eso pase." },
-      ].map((s) => (
+      ]).map((s) => (
       <Fragment key={s.titulo}>
       <div className="flex flex-wrap items-baseline gap-2 pt-2">
         <span className="font-display text-lg font-semibold">{s.titulo}</span>
@@ -607,6 +623,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica }: { cuenta: s
                       {o.estado === "sin_remision" && !atrasada(o) ? "Esperando remisión" : est.label}
                     </span>
                     {o.estado === "sin_remision" && <div className="text-[11px] text-muted mt-0.5">hace {duracion(o.minutos)}</div>}
+                    {rango && o.id_remision != null && (
+                      <div className="text-[11px] text-muted mt-0.5">{o.plan_estado === "creada" ? "🤖 La hizo el agente" : "👤 La hizo una persona"}</div>
+                    )}
                     {o.motivos.map((m) => (
                       <div key={m} className="text-[11px] text-amber mt-0.5">{m}</div>
                     ))}

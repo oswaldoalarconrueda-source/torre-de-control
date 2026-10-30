@@ -140,8 +140,9 @@ function Conector({ agente, humano, colorAgente, rapido, detalle }: { agente: nu
 }
 
 // `estado`: lo que está haciendo el agente ahora o su próxima corrida; `paso`: la etapa que está creando en este momento.
-export function FabricaAgente({ d, ordenes, estado, paso, enVivo = false }: {
-  d: DatosFabrica; ordenes?: ConteoOrdenes; estado?: ReactNode; paso?: string | null; enVivo?: boolean;
+// `periodo`: con el calendario en otros días, cómo se llaman ("Ayer · 29 oct"); sin periodo es hoy.
+export function FabricaAgente({ d, ordenes, estado, paso, enVivo = false, periodo }: {
+  d: DatosFabrica; ordenes?: ConteoOrdenes; estado?: ReactNode; paso?: string | null; enVivo?: boolean; periodo?: string;
 }) {
   const o = ordenes ?? { total: d.ordenes_hoy + d.anuladas_hoy, remisionadas: Math.max(0, d.ordenes_hoy - d.sin_remision), sinRemision: d.sin_remision, sinRemisionAntes: 0, anuladas: d.anuladas_hoy };
   const rem = d.rem_agente + d.rem_humano;
@@ -155,15 +156,15 @@ export function FabricaAgente({ d, ordenes, estado, paso, enVivo = false }: {
             <span className={`absolute inline-flex h-full w-full rounded-full onda ${enVivo ? "bg-blue-2" : "bg-green/60"}`} />
             <span className={`relative inline-flex size-2.5 rounded-full ${enVivo ? "bg-blue-2" : "bg-green"}`} />
           </span>
-          <span className="font-display font-semibold">Agente en vivo</span>
-          <span className="text-xs text-muted">· hoy · hecho por el agente:</span>
+          <span className="font-display font-semibold">{periodo ? "Agente" : "Agente en vivo"}</span>
+          <span className="text-xs text-muted">· {periodo ?? "hoy"} · hecho por el agente:</span>
           <span className="text-xs font-semibold" style={{ color: `rgb(${C.agenteRem})` }}>{pct(d.rem_agente, d.rem_humano)} % remisiones</span>
           <span className="text-xs font-semibold" style={{ color: `rgb(${C.agenteGuia})` }}>{pct(guiaAgente, guiaHumano)} % guías</span>
         </div>
         {estado && <div className="text-xs text-muted">{estado}</div>}
       </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.1fr)] md:gap-2">
-        <Etapa Icono={ShoppingCart} titulo="Órdenes de hoy" valor={o.total} color={C.orden} sub={
+        <Etapa Icono={ShoppingCart} titulo={periodo ? "Órdenes del periodo" : "Órdenes de hoy"} valor={o.total} color={C.orden} sub={
           <div className="mt-0.5 space-y-px text-[11px] leading-snug">
             <div className="text-muted"><span className="num font-semibold text-text">{entero(o.remisionadas)}</span> remisionadas</div>
             {/* Las que palpitan son las que están en la lista "Órdenes sin remisión", una por una. */}
