@@ -51,8 +51,8 @@ function guardarVistas(v: Record<string, number>) {
   } catch { /* sin almacenamiento: solo se repetiría un aviso */ }
 }
 
-// Avisos emergentes en cualquier pantalla. Solo guías hechas desde que se abrió la Torre (10 min de margen); cada guía
-// se avisa una vez. Las de riesgo se quedan hasta cerrarlas; las demás se van solas a los 15 s.
+// Avisos emergentes en cualquier pantalla. Solo clientes que ya tienen historia (el cliente nuevo pasa derecho) y guías
+// hechas desde que se abrió la Torre (10 min de margen); cada guía se avisa una vez. Las de riesgo se quedan hasta cerrarlas; las demás se van solas a los 15 s.
 export function AlertaHuella() {
   const [avisos, setAvisos] = useState<(GuiaHuella & { clave: string; hasta: number | null })[]>([]);
   const inicio = useRef(Date.now() - 10 * 60_000);
@@ -63,7 +63,7 @@ export function AlertaHuella() {
     if (!Array.isArray(data)) return;
     const vistas = leerVistas();
     const nuevas = (data as GuiaHuella[])
-      .filter((g) => !vistas[`${g.cuenta}-${g.id}`] && Date.parse(g.fecha) >= inicio.current)
+      .filter((g) => g.pedidos > 0 && !vistas[`${g.cuenta}-${g.id}`] && Date.parse(g.fecha) >= inicio.current)
       .reverse();
     for (const g of data as GuiaHuella[]) vistas[`${g.cuenta}-${g.id}`] ??= Date.now();
     guardarVistas(vistas);
@@ -104,7 +104,8 @@ export function AlertaHuella() {
   );
 }
 
-// Lista del día en el Agente: las de riesgo primero, luego las demás de la más reciente a la más antigua.
+// Lista del día en el Agente: solo los clientes que ya tienen historia (los nuevos pasan derecho); las de riesgo primero,
+// luego las demás de la más reciente a la más antigua.
 export function HuellaGuias({ cuenta, zona }: { cuenta: string; zona: string }) {
   const [guias, setGuias] = useState<GuiaHuella[] | null>(null);
   const [todas, setTodas] = useState(false);
@@ -125,7 +126,8 @@ export function HuellaGuias({ cuenta, zona }: { cuenta: string; zona: string }) 
 
   if (!guias) return null;
   const orden = { riesgo: 0, cuidado: 1, nuevo: 2, bueno: 3 } as const;
-  const lista = [...guias].sort((a, b) => orden[nivel(a)] - orden[nivel(b)] || Date.parse(b.fecha) - Date.parse(a.fecha));
+  const conHistoria = guias.filter((g) => g.pedidos > 0);
+  const lista = [...conHistoria].sort((a, b) => orden[nivel(a)] - orden[nivel(b)] || Date.parse(b.fecha) - Date.parse(a.fecha));
   const riesgo = guias.filter((g) => nivel(g) === "riesgo").length;
   const hora = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
   const visibles = todas ? lista : lista.slice(0, 15);
@@ -133,10 +135,10 @@ export function HuellaGuias({ cuenta, zona }: { cuenta: string; zona: string }) 
     <div className="card p-4">
       <div className="mb-2 flex flex-wrap items-baseline gap-2">
         <span className="font-display text-lg font-semibold">🧬 Huella del cliente · guías de hoy</span>
-        <span className="text-xs text-muted">Historial de cada cliente en Guatemala (todas las tiendas). {entero(guias.length)} guías{riesgo ? ` · ` : ""}</span>
+        <span className="text-xs text-muted">Solo clientes que ya tienen historia en Guatemala (todas las tiendas): {entero(conHistoria.length)} de {entero(guias.length)} guías.{riesgo ? " " : ""}</span>
         {riesgo > 0 && <span className="rounded-full bg-red/15 px-2 py-0.5 text-[11px] font-semibold text-red">{entero(riesgo)} de cliente que devuelve mucho</span>}
       </div>
-      {!guias.length ? <p className="py-4 text-center text-sm text-muted">Todavía no hay guías hoy.</p> : (
+      {!lista.length ? <p className="py-4 text-center text-sm text-muted">{guias.length ? "Hoy todas las guías son de clientes nuevos." : "Todavía no hay guías hoy."}</p> : (
         <div className="divide-y divide-line">
           {visibles.map((g) => {
             const n = nivel(g);
