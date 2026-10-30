@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, RotateCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { infoCuenta } from "@/lib/paises";
+import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { FabricaAgente, type ConteoOrdenes, type DatosFabrica } from "./fabrica-agente";
 
 // Agente en vivo y Errores de hoy. Arriba, la franja orden → remisión → guía de hoy, por agente y por humano
@@ -142,7 +142,7 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
   return (
     <>
       {fabrica && (
-        <FabricaAgente d={fabrica} ordenes={conteoOrdenes} paso={activo?.paso} enVivo={!!activo} periodo={rango?.etiqueta} estado={rango ? "Historial" : activo ? (
+        <FabricaAgente d={fabrica} nombre={nombreAgente(cuenta)} ordenes={conteoOrdenes} paso={activo?.paso} enVivo={!!activo} periodo={rango?.etiqueta} estado={rango ? "Historial" : activo ? (
           <span className="text-blue-2 font-semibold">Trabajando en la OV {activo.id_orden}: {activo.mensaje}</span>
         ) : proxima ? (
           <>Próxima corrida {proxima.hora}{proxima.corte ? ` · antes del corte de las ${proxima.corte}` : ""} · en {proxima.en} min</>

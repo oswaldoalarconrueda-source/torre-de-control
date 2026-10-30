@@ -1,6 +1,6 @@
 import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros, rangoActivo, rangosRapidos, sumarDias } from "@/lib/filtros";
-import { infoCuenta } from "@/lib/paises";
+import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { Agente, type DatosAuto, type Transportes } from "@/components/agente";
 import { FabricaAgente, type DatosFabrica } from "@/components/fabrica-agente";
@@ -54,7 +54,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
   return (
     <>
       <Encabezado
-        titulo="🤖 Agente"
+        titulo={`🤖 ${nombreAgente(cuenta)}`}
         subtitulo={`${pais.bandera} ${pais.nombre} · cada orden de venta debe pasar a remisión con su convenio y tener guía. Si el cliente empieza con *, va por el centro de costos Recuperado.`}
         f={{ ...f, desde, hasta }}
         inicio={INICIO_AGENTE}
@@ -82,7 +82,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
               </button>
             </div>
           </div>
-          {fabrica && <FabricaAgente d={fabrica as DatosFabrica} periodo={rango?.etiqueta} />}
+          {fabrica && <FabricaAgente d={fabrica as DatosFabrica} periodo={rango?.etiqueta} nombre={nombreAgente(cuenta)} />}
           <div className="card p-10 text-center">
             <div className="text-4xl">{pais.bandera}</div>
             <p className="font-display text-xl font-semibold mt-3">El agente de {pais.nombre} está en prueba</p>

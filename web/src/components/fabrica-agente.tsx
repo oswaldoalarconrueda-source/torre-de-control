@@ -125,11 +125,11 @@ function Helice({ agente, humano, colorAgente, rapido }: { agente: number; human
 }
 
 // Conector entre dos etapas: arriba cuántas hizo el agente, la hélice en medio y abajo cuántas hizo una persona.
-function Conector({ agente, humano, colorAgente, rapido, detalle }: { agente: number; humano: number; colorAgente: string; rapido?: boolean; detalle?: string }) {
+function Conector({ agente, humano, colorAgente, rapido, detalle, nombre = "Agente" }: { agente: number; humano: number; colorAgente: string; rapido?: boolean; detalle?: string; nombre?: string }) {
   return (
     <div className="flex min-w-0 flex-col justify-center px-1" title={detalle}>
       <div className="whitespace-nowrap text-center text-[11px] font-semibold" style={{ color: `rgb(${colorAgente})` }}>
-        🤖 Agente <span className="num text-text">{entero(agente)}</span>
+        🤖 {nombre} <span className="num text-text">{entero(agente)}</span>
       </div>
       <Helice agente={agente} humano={humano} colorAgente={colorAgente} rapido={rapido} />
       <div className="whitespace-nowrap text-center text-[11px] font-semibold" style={{ color: `rgb(${C.humano})` }}>
@@ -141,8 +141,9 @@ function Conector({ agente, humano, colorAgente, rapido, detalle }: { agente: nu
 
 // `estado`: lo que está haciendo el agente ahora o su próxima corrida; `paso`: la etapa que está creando en este momento.
 // `periodo`: con el calendario en otros días, cómo se llaman ("Ayer · 29 oct"); sin periodo es hoy.
-export function FabricaAgente({ d, ordenes, estado, paso, enVivo = false, periodo }: {
-  d: DatosFabrica; ordenes?: ConteoOrdenes; estado?: ReactNode; paso?: string | null; enVivo?: boolean; periodo?: string;
+// `nombre`: cómo se llama la agente (ValerIA en Joalix).
+export function FabricaAgente({ d, ordenes, estado, paso, enVivo = false, periodo, nombre = "Agente" }: {
+  d: DatosFabrica; ordenes?: ConteoOrdenes; estado?: ReactNode; paso?: string | null; enVivo?: boolean; periodo?: string; nombre?: string;
 }) {
   const o = ordenes ?? { total: d.ordenes_hoy + d.anuladas_hoy, remisionadas: Math.max(0, d.ordenes_hoy - d.sin_remision), sinRemision: d.sin_remision, sinRemisionAntes: 0, anuladas: d.anuladas_hoy };
   const rem = d.rem_agente + d.rem_humano;
@@ -156,8 +157,8 @@ export function FabricaAgente({ d, ordenes, estado, paso, enVivo = false, period
             <span className={`absolute inline-flex h-full w-full rounded-full onda ${enVivo ? "bg-blue-2" : "bg-green/60"}`} />
             <span className={`relative inline-flex size-2.5 rounded-full ${enVivo ? "bg-blue-2" : "bg-green"}`} />
           </span>
-          <span className="font-display font-semibold">{periodo ? "Agente" : "Agente en vivo"}</span>
-          <span className="text-xs text-muted">· {periodo ?? "hoy"} · hecho por el agente:</span>
+          <span className="font-display font-semibold">{periodo ? nombre : `${nombre} en vivo`}</span>
+          <span className="text-xs text-muted">· {periodo ?? "hoy"} · hecho por {nombre === "Agente" ? "el agente" : nombre}:</span>
           <span className="text-xs font-semibold" style={{ color: `rgb(${C.agenteRem})` }}>{pct(d.rem_agente, d.rem_humano)} % remisiones</span>
           <span className="text-xs font-semibold" style={{ color: `rgb(${C.agenteGuia})` }}>{pct(guiaAgente, guiaHumano)} % guías</span>
         </div>
@@ -181,10 +182,10 @@ export function FabricaAgente({ d, ordenes, estado, paso, enVivo = false, period
             <div className={o.anuladas ? "text-red" : "text-muted"}><span className="num font-semibold">{entero(o.anuladas)}</span> anuladas</div>
           </div>
         } />
-        <Conector agente={d.rem_agente} humano={d.rem_humano} colorAgente={C.agenteRem} rapido={paso === "remision"} />
+        <Conector nombre={nombre} agente={d.rem_agente} humano={d.rem_humano} colorAgente={C.agenteRem} rapido={paso === "remision"} />
         <Etapa Icono={FileText} titulo="Remisiones" valor={rem} color={C.agenteRem} activa={paso === "remision"}
           sub={sinGuia ? `${entero(sinGuia)} esperando guía` : "todas con guía"} />
-        <Conector agente={guiaAgente} humano={guiaHumano} colorAgente={C.agenteGuia} rapido={paso === "guia"}
+        <Conector nombre={nombre} agente={guiaAgente} humano={guiaHumano} colorAgente={C.agenteGuia} rapido={paso === "guia"}
           detalle={`Guías del agente: ${entero(d.guia_aa)} de remisiones del agente y ${entero(d.guia_ha)} de remisiones de humano. ` +
             `Guías de humano: ${entero(d.guia_ah)} de remisiones del agente y ${entero(d.guia_hh)} de remisiones de humano.`} />
         <Etapa Icono={Truck} titulo="Guías" valor={guias} color={C.agenteGuia} activa={paso === "guia"} sub="listas para despacho" />

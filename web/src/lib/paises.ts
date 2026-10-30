@@ -28,6 +28,10 @@ export const ordenCuenta = (slug: string) => (ORDEN_CUENTAS.includes(slug) ? ORD
 // Colombia no tiene fulfillment: paga 4x1000 sobre el recaudo (ya viene cobrado en el wallet).
 export const TARIFA_FULFILLMENT: Record<string, number> = { TIENDA_GT: 6.5, TIENDA_EC: 0.95 };
 
+// Nombre de la agente de órdenes según la sociedad: la de Joalix (tiendas TIENDA_*) se llama ValerIA (regla del dueño,
+// 30-oct); las demás sociedades siguen con "Agente" hasta que le pongan nombre.
+export const nombreAgente = (slug: string) => (slug.startsWith("TIENDA_") ? "ValerIA" : "Agente");
+
 export const infoCuenta = (slug: string): InfoCuenta =>
   CUENTAS[slug] ?? { pais: "", nombre: slug, bandera: "🏳️", divisa: "", decimales: 0, verde: 0.25, naranja: 0.35, zona: "America/Bogota", indicativo: "" };
 
