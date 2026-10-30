@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
 import { FlujoAgente, type Periodo } from "./flujo-agente";
+import { RemisionesDirectas } from "./remisiones-directas";
 import type { DatosFabrica } from "./fabrica-agente";
 
 // Agente de órdenes de venta: la Torre vigila cada orden de venta (remisión con su convenio, guía, centro de costos
@@ -476,6 +477,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
 
       {huella}
+
+      {/* Remisiones que llegan sin orden de venta (Lucid) y solo esperan la guía: no salen en las listas de órdenes. */}
+      <RemisionesDirectas cuenta={cuenta} zona={zona} rango={rango} />
 
       {!rango && conAbono.length > 0 && (
         <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
