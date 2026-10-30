@@ -39,6 +39,7 @@ const CONDICIONES = {
   solo_envia: "🚚 Inter solo anticipado · Envía sí",
   inter_oficina: "🏢 Solo a oficina Interrapidísimo",
   validar: "📞 Validar con el cliente",
+  trato_especial: "⭐ Trato especial: no se remisiona",
 } as const;
 // Transportadoras que usa el país (aprendidas de sus guías): id → nombre y cuántas guías tuvo en los últimos 10 días.
 export type Transportes = Record<string, { nombre?: string; guias?: number }>;
