@@ -31,24 +31,25 @@ const MIN_GAP_MS = 560;
 const DAY_MS = 86_400_000;
 const REGLAS_HORAS = 6;
 const MAX_ORDENES = 15;
-// Países donde la Torre crea en Effi, en Automático o cuando el dueño pulsa "Ejecutar ahora" o "Ejecutar". Costa Rica
-// y Colombia están en prueba: no crean nada.
-const PAISES_CREACION = ['TIENDA_GT', 'TIENDA_EC', 'AUNCLIC_GT'];
+// Mismo mando para todas las tiendas de todas las sociedades (30-oct; la proveeduría DistriLatam queda fuera): crean en
+// Effi en Automático o cuando el dueño pulsa "Ejecutar ahora", "Pasar de remisión a guía" o "Ejecutar" en una orden.
+const TIENDAS = ['TIENDA_GT', 'TIENDA_EC', 'TIENDA_CO', 'TIENDA_CR', 'AUNCLIC_GT', 'VALKA_GT'];
+const PAISES_CREACION = TIENDAS;
 // Países donde además se crea la remisión desde la orden (action 3, nunca anulando la orden). Ecuador desde el 27-oct,
 // con la llave de perfil principal (con la de perfil Auxiliar Effi fallaba con el error 1452). A un clic Guatemala
 // (AUNCLIC_GT, otra sociedad) desde el 29-oct, igual que Joalix Guatemala: pedidos de Shopify → remisión y guía por el
 // centro SHOPIFY (centro_normal); las ventas de Lucid llegan como remisión y solo les falta la guía (centro LUCID, el
 // de la remisión).
-const PAISES_REMISION = ['TIENDA_GT', 'TIENDA_EC', 'AUNCLIC_GT'];
-// "Ejecutar" orden por orden (el dueño escoge el paso y la transportadora): también Colombia, que todavía no crea sola
-// mientras el dueño da sus condiciones.
-const PAISES_POR_ORDEN = ['TIENDA_GT', 'TIENDA_EC', 'TIENDA_CO', 'AUNCLIC_GT'];
+// Valka Guatemala (centro Whatsapp) y Joalix Costa Rica desde el 30-oct, arrancando en Manual.
+const PAISES_REMISION = TIENDAS;
+// "Ejecutar" orden por orden (el dueño escoge el paso y la transportadora).
+const PAISES_POR_ORDEN = TIENDAS;
 const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const MAX_GUIAS_AHORA = 10;   // "Ejecutar ahora": guías por corrida, de a 10 para no cargar el sistema (regla del dueño)
 const ESPERA_GUIA_MIN = 15;   // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía
 const PAGINAS_REGLAS = 30;    // guías y remisiones de 10 días (Ecuador hace unas 250 guías al día)
-const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIENDA_CO: 'COP', TIENDA_CR: 'CRC', AUNCLIC_GT: 'GTQ' };
+const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIENDA_CO: 'COP', TIENDA_CR: 'CRC', AUNCLIC_GT: 'GTQ', VALKA_GT: 'GTQ' };
 // Países que escogen transportadora por dirección (ids de transportadora en Effi). Los demás usan la más común.
 const TRANSPORTE_PAIS: Record<string, { oficina: number; domicilio: number; respaldo: number }> = {
   TIENDA_EC: { oficina: 1, domicilio: 5, respaldo: 1 },   // 1 Servientrega · 5 Gintracom
@@ -645,27 +646,36 @@ async function oficinasCO(cuenta: string) {
     const direccion = String(f.plan.remision?.direccion_cliente ?? f.plan.guia?.direccion_destinatario?.[0] ?? '');
     const r = (await rpc('auto_restriccion', { p_cuenta: cuenta, p_ciudad: f.ciudad ?? '', p_dpto: f.provincia ?? '', p_direccion: direccion })) as Json | null;
     if (r && !(r.tipo === 'inter_oficina' && oficinaCO(f.plan.remision?.direccion_cliente) === 4)) continue;
-    hechas.push(await crear(cuenta, Number(f.sucursal), Number(f.id), true));
+    hechas.push(await crear(cuenta, Number(f.sucursal), Number(f.id), true, true));
   }
   return hechas;
 }
 
-// Crea en Effi la remisión y la guía de UNA orden que el dueño mandó a ejecutar.
-async function crear(cuenta: string, sucursal: number, id: number, automatico = false) {
+// Crea en Effi la remisión y la guía de UNA orden que el dueño mandó a ejecutar. `sola`: Colombia en Manual, la orden
+// que va sola (entrega en oficina o asesora y matriz coinciden), por la transportadora de esa regla.
+async function crear(cuenta: string, sucursal: number, id: number, automatico = false, sola = false) {
   const ev = (paso: string, ok: boolean | null, mensaje: string, datos: Json | null = null) =>
     rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_paso: paso, p_ok: ok, p_mensaje: mensaje, p_datos: datos });
   const resultado = (estado: 'creada' | 'error', motivo: string | null, datos: Json) =>
     rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_estado: estado, p_motivo: motivo, p_resultado: datos });
 
-  if (!(automatico ? [...PAISES_CREACION, 'TIENDA_CO'] : PAISES_POR_ORDEN).includes(cuenta)) throw new Error('La creación no está montada para este país');
-  const [fila] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id=eq.${id}&select=plan,plan_estado,decision`);
-  // Colombia en automático: solo entrega en oficina (por la transportadora de esa oficina) o cuando asesora y matriz
-  // coinciden (por esa transportadora).
-  const ofi = automatico && cuenta === 'TIENDA_CO' ? oficinaCO(fila?.plan?.remision?.direccion_cliente) : null;
-  const coincide = automatico && cuenta === 'TIENDA_CO' && !ofi ? coincideCO(fila?.plan) : null;
-  if (automatico && cuenta === 'TIENDA_CO' && !ofi && !coincide) return { creada: false, motivo: 'Colombia solo crea sola la entrega en oficina o cuando asesora y matriz coinciden' };
+  if (!(automatico ? PAISES_CREACION : PAISES_POR_ORDEN).includes(cuenta)) throw new Error('La creación no está montada para este país');
+  const [fila] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id=eq.${id}&select=plan,plan_estado,decision,ciudad,provincia`);
+  // Colombia en Manual: solo va sola la entrega en oficina (por la transportadora de esa oficina) o cuando asesora y
+  // matriz coinciden (por esa transportadora). En Automático o con "Ejecutar ahora" va toda orden lista, como en los
+  // demás países.
+  const ofi = sola && cuenta === 'TIENDA_CO' ? oficinaCO(fila?.plan?.remision?.direccion_cliente) : null;
+  const coincide = sola && cuenta === 'TIENDA_CO' && !ofi ? coincideCO(fila?.plan) : null;
+  if (sola && cuenta === 'TIENDA_CO' && !ofi && !coincide) return { creada: false, motivo: 'Colombia solo crea sola la entrega en oficina o cuando asesora y matriz coinciden' };
   // Orden recién llegada que la vigilancia (cada 2 minutos) aún no registra: no es error, se crea en la próxima corrida.
   if (automatico && !fila) return { creada: false, motivo: 'aún no registrada' };
+  // Ciudad con condición de las asesoras (pago anticipado, sin cobertura, trato especial…): sola no se crea, la ve una
+  // persona con el aviso. Única excepción: "solo a oficina de Interrapidísimo" cuando la orden es justo a oficina de Inter.
+  if (automatico && fila?.plan) {
+    const direccion = String(fila.plan.remision?.direccion_cliente ?? fila.plan.guia?.direccion_destinatario?.[0] ?? '');
+    const r = (await rpc('auto_restriccion', { p_cuenta: cuenta, p_ciudad: fila.ciudad ?? '', p_dpto: fila.provincia ?? '', p_direccion: direccion })) as Json | null;
+    if (r && !(r.tipo === 'inter_oficina' && oficinaCO(fila.plan.remision?.direccion_cliente) === 4)) return { creada: false, motivo: `Condición de envío: ${r.motivo}` };
+  }
   const autorizada = automatico ? fila?.plan_estado === 'lista' : fila?.decision === 'ejecutar';
   if (!fila || !autorizada || !(fila.plan?.remision || (fila.plan?.remision_existente && fila.plan?.guia))) {
     await ev('fin', false, automatico ? 'Automático: la orden ya no estaba lista para crear' : 'La orden no está marcada para ejecutar o no tiene plan');
