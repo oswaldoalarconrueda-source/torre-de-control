@@ -337,6 +337,10 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
   const nodo = (c: string, id: string) => esEtapa(id) ? enProceso(c, id) : enVentana(c, id as Cat);
   const suma = (cat?: Cat) => sel.reduce((a, c) => a + enVentana(c, cat), 0);
   const sumaEtapa = (et: Etapa) => sel.reduce((a, c) => a + enProceso(c, et), 0);
+  // Movimientos del país (número de la bandera y del centro): órdenes + remisiones + cambios de estado de sus guías
+  // ("Generada" ya cuenta como cambio de estado, por eso las guías generadas del agente no se suman otra vez).
+  const movimientos = (c: string) => enVentana(c) + enProceso(c, "ORDEN") + enProceso(c, "REMISION");
+  const sumaMovimientos = () => sel.reduce((a, c) => a + movimientos(c), 0);
   // Órdenes y remisiones salen de la vigilancia del Agente; si algún país elegido no la tiene, se dice de cuáles salen.
   const conAgente = sel.filter((c) => datos(c)?.agente).map((c) => infoCuenta(c).nombre);
   const origenProceso = !pulso || conAgente.length === sel.length ? "" : conAgente.length ? `solo ${conAgente.join(" y ")}` : "sin vigilancia aún";
@@ -424,10 +428,10 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
           ) : (
           <div className={entrando ? "zoom-pais" : ""}
             style={entrando ? { transformOrigin: `${(entrando.x / ANCHO) * 100}% ${(entrando.y / ALTO) * 100}%` } : undefined}>
-          <RedNeuronal ref={red} ancho={ANCHO} alto={ALTO} centro={geo.sola ? null : { x: CX, y: CY }} total={suma()} maxNodo={maxNodo} logo={logo}
+          <RedNeuronal ref={red} ancho={ANCHO} alto={ALTO} centro={geo.sola ? null : { x: CX, y: CY }} total={sumaMovimientos()} maxNodo={maxNodo} logo={logo}
             onPais={entrarMapa}
             paises={geo.paises.map((p) => ({
-              cuenta: p.cuenta, bandera: infoCuenta(p.cuenta).bandera, x: p.x, y: p.y, total: enVentana(p.cuenta),
+              cuenta: p.cuenta, bandera: infoCuenta(p.cuenta).bandera, x: p.x, y: p.y, total: movimientos(p.cuenta),
               estados: p.estados.map((e) => ({
                 ...e, n: nodo(p.cuenta, e.id),
                 hoy: esEtapa(e.id) ? datos(p.cuenta)?.proceso_hoy?.[e.id] ?? 0 : datos(p.cuenta)?.hoy[e.id] ?? 0,
@@ -438,7 +442,7 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2">
           <div className="text-[11px] text-muted max-w-xl">
-            Proceso de cada país: órdenes → remisiones → guías generadas → estados. Número y tamaño de cada hexágono = movimientos {enVentanaTxt}. Cada movimiento viaja como señal por su tramo; entregas y devoluciones lanzan una onda.
+            Proceso de cada país: órdenes → remisiones → guías generadas → estados. Número y tamaño de cada hexágono = movimientos {enVentanaTxt}; la bandera suma los del país (órdenes + remisiones + cambios de estado de sus guías). Cada movimiento viaja como señal por su tramo; entregas y devoluciones lanzan una onda.
           </div>
           <div className="flex items-center gap-2 text-[11px] font-mono text-muted">
             <span className="pulso size-2 rounded-full bg-red shadow-[0_0_10px_var(--red)]" />
@@ -503,7 +507,7 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
             <div key={c} className="card p-4">
               <div className="flex items-center justify-between font-semibold">
                 <span>{info.bandera} {info.nombre}</span>
-                <span className="text-[11px] font-mono text-muted">{entero(enVentana(c))} {enVentanaTxt}</span>
+                <span className="text-[11px] font-mono text-muted">{entero(movimientos(c))} movimientos {enVentanaTxt}</span>
               </div>
               {/* Sigue el filtro de tiempo; "hoy" va aparte porque cada país tiene su propia medianoche. */}
               <div className="grid grid-cols-4 gap-2 mt-3 text-center">
