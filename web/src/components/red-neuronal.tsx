@@ -82,6 +82,10 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
   });
   const logo = useRef<HTMLImageElement | null>(null);
   const alDia = useRef<() => void>(() => {});
+  // Banderas con la fuente fija de la Torre (Windows no dibuja los emoji de bandera: salía "CO"). El lienzo no pide la
+  // fuente por sí solo; se carga aquí y el siguiente cuadro ya la usa.
+  useEffect(() => { document.fonts?.load("28px Banderas", "🇨🇴🇪🇨🇬🇹🇨🇷").catch(() => {}); }, []);
+
   // El logo cambia con la sociedad elegida; sin logo se borra el anterior.
   useEffect(() => {
     logo.current = null;
@@ -417,7 +421,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         hexagono(ctx, p.x, p.y, R + 9, -(ahora / 6000));
         ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${AZUL},0.3)`; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
         ctx.textAlign = "center";
-        ctx.font = `${paises.length === 1 ? 40 : 28}px system-ui`;
+        ctx.font = `${paises.length === 1 ? 40 : 28}px Banderas, system-ui`;
         ctx.fillText(p.bandera, p.x, p.y + (paises.length === 1 ? -4 : -3));
         ctx.fillStyle = "#e8eefc"; ctx.font = `700 ${paises.length === 1 ? 16 : 13}px ui-sans-serif, system-ui`;
         ctx.fillText(p.total.toLocaleString("es-CO"), p.x, p.y + (paises.length === 1 ? 28 : 21));
@@ -438,8 +442,8 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         if (logo.current) {
           ctx.save();
           ctx.beginPath(); ctx.arc(cx, cy, R - 2, 0, Math.PI * 2); ctx.clip();
-          const z = R * 1.9; // el logo (sobre el mismo fondo oscuro) cabe completo dentro del círculo, con un poco de aire
-          ctx.drawImage(logo.current, cx - z / 2, cy - z / 2, z, z);
+          const z = R * 2.25; // el logo trae margen negro: se amplía un poco para que llene el círculo
+          ctx.drawImage(logo.current, cx - z / 2, cy - z / 2 + 4, z, z);
           ctx.restore();
         }
         ctx.strokeStyle = `rgba(212,166,74,${0.75 + 0.25 * l})`; ctx.lineWidth = 2;
