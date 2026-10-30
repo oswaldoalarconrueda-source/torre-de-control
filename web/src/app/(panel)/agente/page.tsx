@@ -4,6 +4,7 @@ import { infoCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { Agente, type DatosAuto, type Transportes } from "@/components/agente";
 import { FabricaAgente, type DatosFabrica } from "@/components/fabrica-agente";
+import { HuellaGuias } from "@/components/alerta-huella";
 
 // Primer día con órdenes en la vigilancia del agente.
 const INICIO_AGENTE = "2026-10-01";
@@ -92,7 +93,8 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
         <>
           {error && <p className="text-sm text-red mb-4">{error.message}</p>}
           {datos && <Agente key={`${cuenta}-${desde}-${hasta}`} cuenta={cuenta} datos={datos} transportes={(config?.transportes ?? {}) as Transportes}
-            fabrica={fabrica as DatosFabrica | null} rango={rango} />}
+            fabrica={fabrica as DatosFabrica | null} rango={rango}
+            huella={pais.pais === "GT" && !rango ? <HuellaGuias cuenta={cuenta} zona={pais.zona} /> : null} />}
         </>
       )}
     </>

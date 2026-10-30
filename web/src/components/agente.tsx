@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Clock, Pause, Play, Truck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -104,8 +104,9 @@ const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1
 
 // rango: días del calendario (hora local del país); sin rango es hoy, en vivo. Con rango la pantalla es el historial
 // de esos días: el resumen del agente, sus errores y todas las órdenes del periodo, sin los controles de operación.
-export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null }: {
-  cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null; rango?: Periodo | null;
+// huella: la lista "Huella del cliente" de las guías de hoy (Guatemala), debajo del Agente en vivo.
+export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null, huella = null }: {
+  cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null; rango?: Periodo | null; huella?: ReactNode;
 }) {
   const router = useRouter();
   const [confirmarModo, setConfirmarModo] = useState(false);
@@ -473,6 +474,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null 
       <FlujoAgente cuenta={cuenta} fabrica={fabrica} conteoOrdenes={conteoOrdenes} proxima={rango ? null : sig} rango={rango} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
         completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o) || remisionAnulada(o)).map((o) => o.id)}
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
+
+      {huella}
 
       {!rango && conAbono.length > 0 && (
         <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>

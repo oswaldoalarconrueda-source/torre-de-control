@@ -5,6 +5,7 @@ import { haceCuanto } from "@/lib/formato";
 import { Sidebar } from "@/components/sidebar";
 import { SinAcceso } from "@/components/sin-acceso";
 import { AgenteFlotante } from "@/components/agente-flotante";
+import { AlertaHuella } from "@/components/alerta-huella";
 import { tieneModulo } from "@/lib/modulos";
 import { infoCuenta } from "@/lib/paises";
 import { SelectorTema } from "@/components/selector-tema";
@@ -47,6 +48,8 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
           soloProveeduria={!!cuentas?.length && cuentas.every((c) => c.tipo === "proveeduria")} />
       </Suspense>
       {tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} />}
+      {/* Huella del cliente: aviso al hacerse cada guía de Guatemala (solo trae las tiendas que el usuario ve). */}
+      {tieneModulo(usuario, "automatizacion") && <AlertaHuella />}
       <main className="relative flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-16 max-w-[1400px]">
         <SelectorTema className="absolute right-4 sm:right-6 lg:right-8 top-6 z-30" />
         {caida && (
