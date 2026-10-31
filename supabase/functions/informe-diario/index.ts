@@ -135,6 +135,29 @@ function htmlCpa(filas: Cpa[], dia: string) {
   </td></tr></table></body></html>`;
 }
 
+// Recordatorio de las 7 a. m. (informe_programado.tipo = 'cpa_falta'): si todavía faltan los pedidos Lucid de ayer, el
+// correo de CPA no ha salido; avisa qué países faltan. Apenas se carguen, el de CPA sale solo.
+function htmlCpaFalta(faltan: string[], dia: string) {
+  const paises = faltan.map((c) => {
+    const pa = PAIS[c] ?? { nombre: c, bandera: '🏳️', moneda: '' };
+    return `<div style="font-size:18px;font-weight:700;color:#e8edf7;padding:6px 0">${pa.bandera} ${pa.nombre}</div>`;
+  }).join('');
+  return `<!doctype html><html><body style="margin:0;background:#070b16;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px">
+    <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%">
+      <tr><td style="padding:0 4px 16px">
+        <div style="font-size:22px;font-weight:800;color:#ffb347">⏰ Faltan los pedidos Lucid de ayer</div>
+        <div style="font-size:14px;color:#c9d2e6;margin-top:8px;line-height:1.5">El correo del CPA real de ayer (${fechaTxt(dia)}) no ha salido porque faltan los pedidos de:</div>
+      </td></tr>
+      <tr><td style="background:#0f1526;border:1px solid #1e2740;border-radius:14px;padding:12px 16px">${paises}</td></tr>
+      <tr><td style="padding:16px 4px;font-size:14px;color:#c9d2e6;line-height:1.5">
+        Llénalos en 📝 Pedidos Lucid y el correo del CPA sale solo apenas se guarden:<br>
+        <a href="https://torre-de-control-inky.vercel.app/pedidos-lucid" style="color:#5aa2ff;font-weight:700">torre-de-control-inky.vercel.app/pedidos-lucid</a>
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`;
+}
+
 // Pide una foto a informe-imagen; null si falla (el correo sale igual).
 async function foto(token: string, body: unknown) {
   try {
@@ -273,6 +296,15 @@ Deno.serve(async (req) => {
       // priority 'high' = X-Priority 1 e Importance: High (Gmail y Outlook lo marcan como importante).
       const info = await transporte.sendMail({ from: `CPA real Joalix <${cred.user}>`, to: para.join(', '), subject: asunto, priority: 'high', html: htmlCpa(filas, dia) });
       return json(200, { ok: true, enviados: para.length, asunto, id: info.messageId, paises: filas.length });
+    }
+    if ((prog?.tipo ?? url.searchParams.get('tipo')) === 'cpa_falta') {
+      const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date(Date.now() - 86_400_000));
+      const faltan = (await rpc('informe_cpa_faltan', { p_dia: dia, p_sociedad: prog?.sociedad ?? 'Joalix AA Group' })) as string[];
+      if (!faltan?.length) return json(200, { ok: true, enviados: 0, mensaje: 'Ya están todos los pedidos de ayer' });
+      const asunto = `${prueba ? '[Prueba] ' : ''}${prog?.asunto ?? '⏰ Faltan los pedidos Lucid de ayer'} · ${faltan.map((c) => PAIS[c]?.nombre ?? c).join(', ')}`;
+      const transporte = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: cred.user, pass: cred.pass } });
+      const info = await transporte.sendMail({ from: `CPA real Joalix <${cred.user}>`, to: para.join(', '), subject: asunto, priority: 'high', html: htmlCpaFalta(faltan, dia) });
+      return json(200, { ok: true, enviados: para.length, asunto, id: info.messageId, faltan });
     }
     const todas = (await rpc('informe_diario', { p_dias_atras: diasAtras })) as Fila[];
     const filas = prog?.sociedad ? todas.filter((f) => f.sociedad === prog.sociedad) : todas;
