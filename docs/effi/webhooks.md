@@ -54,15 +54,15 @@ La lista completa de eventos (unos 190, de todos los módulos) aparece en el sel
 
 | Cuenta | Estado |
 |---|---|
-| TIENDA_CO (NATURALFITT CO, ID 58004) | ✅ 13/13, el 2026-10-23 |
+| TIENDA_CO (NATURALFITT CO, ID 58004) | ✅ **151/151**: todos los eventos que Effi deja crear (13 del 2026-10-23 + 138 del 2026-10-31, "Torre Control · <evento>", plataforma "Otra", `?cuenta=TIENDA_CO`) |
 | TIENDA_EC (NATURALFITT EC, ID 57380) | ✅ **151/151**: todos los eventos que Effi deja crear en esa empresa (13 del 2026-10-23 + 138 del 2026-10-28) |
 | TIENDA_GT (NATURALFITT GT, ID 56172) | ✅ **103/103**: todos los eventos que Effi deja crear en esa empresa (los 13 de siempre + 90 creados el 2026-10-28, pedido del dueño "aunque hoy no se usen") |
 | TIENDA_CR (NATURALFITT CR, ID 59798) | ✅ **103/103**: todos los eventos que Effi deja crear (13 que ya estaban + 90 del 2026-10-28) |
 | AUNCLIC_GT (A UN CLIC GT, ID 54019) | ✅ **151/151**: todos los eventos que Effi deja crear, creados el 2026-10-28 con la sesión de la empresa (usuario de A un clic), nombre "Torre Control - <evento>", plataforma "Otra", `?cuenta=AUNCLIC_GT` |
-| VALKA_GT (VALKA GT, ID 58130, sociedad Valka) | ✅ 13/13, el 2026-10-25 (nombre "Torre Control - <evento>": Effi quita el "·") |
-| DISTRI_GT (DISTRIGUATEMALA, ID 25084, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
-| DISTRI_CR (DISTRICOSTARICA, ID 40014, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
-| DISTRI_LAB (DISTRILAB, ID 53639, sociedad Distrilatam) | ✅ 43: 10 de proveeduría + 17 de inventario + 16 de compras, el 2026-10-26 |
+| VALKA_GT (VALKA GT, ID 56130, sociedad Valka) | ✅ **103/103**: todos los eventos que Effi deja crear (13 del 2026-10-25 + 90 del 2026-10-31 con el usuario de Valka; nombre "Torre Control - <evento>") |
+| DISTRI_GT (DISTRIGUATEMALA, ID 25084, sociedad Distrilatam) | ✅ **151/151**: todos los eventos que Effi deja crear (37 del 2026-10-26 de proveeduría, inventario y compras + 114 del 2026-10-31; "Torre Control - <evento>") |
+| DISTRI_CR (DISTRICOSTARICA, ID 40014, sociedad Distrilatam) | ✅ **151/151**: todos los eventos que Effi deja crear (37 del 2026-10-26 de proveeduría, inventario y compras + 114 del 2026-10-31; "Torre Control - <evento>") |
+| DISTRI_LAB (DISTRILAB, ID 53639, sociedad Distrilatam) | ✅ **151/151**: todos los eventos que Effi deja crear (37 del 2026-10-26 de proveeduría, inventario y compras + 114 del 2026-10-31; "Torre Control - <evento>") |
 
 **Proveedurías (Distrilatam):** no hacen guías, así que llevan otros 10 eventos. Todos se llaman "Torre Control - <evento>" y
 apuntan a `effi-webhook?cuenta=DISTRI_…`:
@@ -138,3 +138,8 @@ Más 33 de inventario y compras (pedido del 2026-10-26):
   - Effi estuvo lento: un intento falló por conexión y se repitió.
 - **Verificado en la lista de Effi:** un webhook por evento, sin repetidos, todos "Vigente - Activo".
 - **Ojo al leer la lista:** si se pide una página después de la última, Effi devuelve otra vez la última. Hay que cortar cuando los ids se repiten.
+
+**Todas las cuentas completas (2026-10-31):**
+- Se completaron NATURALFITT CO (+138), VALKA GT (+90) y las 3 proveedurías de Distrilatam (+114 cada una). Ahora las 9 cuentas tienen un webhook por cada evento que Effi deja crear: 151 en CO, EC, A un clic y Distrilatam; 103 en GT, CR y Valka.
+- Cada empresa necesita la sesión de un usuario que tenga acceso: distrishop.ven solo ve las 4 NaturalFitt; Valka, A un clic y Distrilatam tienen su propio usuario. Las 3 de Distrilatam se cambian con `a.cambiar-empresa[data-empresa=…]` sin volver a iniciar sesión (ese usuario ve también empresas de Effisystems/Efficommerce: no se tocan).
+- Creados en serie (uno, esperar el OK, el siguiente) y verificados leyendo todas las páginas de la lista (`/app/webhook?page=N`, 50 por página): sin repetidos, todos "Vigente - Activo".
