@@ -32,10 +32,10 @@ type Medidor = { llegaron: number; llamadas: number; contactados: number; soluci
 export type Medidores = { cuentas: (Medidor & { cuenta: string })[]; asesoras: (Medidor & { email: string; nombre: string })[] };
 type Borrador = { sol?: string; fecha?: string; tel?: string; dir?: string; ges?: string };
 
-const RESULTADOS: Record<Resultado, { label: string; color: string }> = {
-  contesto: { label: "Contactado", color: "var(--green)" },
-  no_contesto: { label: "No contesta", color: "var(--red)" },
-  telefono_malo: { label: "No aplica", color: "#b48cff" },
+const RESULTADOS: Record<Resultado, { label: string; corto: string; color: string }> = {
+  contesto: { label: "Contactado", corto: "C", color: "var(--green)" },
+  no_contesto: { label: "No contesta", corto: "NC", color: "var(--red)" },
+  telefono_malo: { label: "No aplica", corto: "NA", color: "#b48cff" },
 };
 const hoyLocal = (cuenta: string) => new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date());
 const minutos = (m: number | null) => (m == null ? "—" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
@@ -232,7 +232,8 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
         <table className="w-full min-w-max text-xs">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wider text-muted border-b border-line">
-              {["Llegó", "Trans.", "Guía", "Novedad", "Contenido", "Cliente", "Teléfono", "Ciudad", "Dirección", "Recaudo", "C1", "C2", "C3", "Solución", "Entrega", "Qué se habló", "", "Asesora"].map((h, i) => (
+              {/* Dirección y recaudo a la izquierda: al trabajar la línea se ven juntos guía, cliente, teléfono y las llamadas. */}
+              {["Llegó", "Trans.", "Novedad", "Contenido", "Ciudad", "Dirección", "Recaudo", "Guía", "Cliente", "Teléfono", "C1", "C2", "C3", "Solución", "Entrega", "Qué se habló", "", "Asesora"].map((h, i) => (
                 <th key={i} className="px-1.5 py-2 font-semibold whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -259,6 +260,16 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     <div suppressHydrationWarning>{minutosDesde(f.llego, ahora)}</div>
                   </td>
                   <td className="px-1.5 py-1.5 whitespace-nowrap" title={f.transportadora ?? ""}>{transCorta(f.transportadora)}</td>
+                  <td className="px-1.5 py-1.5 max-w-[10rem]">
+                    <div className="font-semibold truncate" title={f.novedad ?? ""}>{f.novedad}</div>
+                    <div className="text-muted truncate" title={f.aclaracion ?? ""}>{f.aclaracion}</div>
+                  </td>
+                  <td className="px-1.5 py-1.5 min-w-[6rem] max-w-[8.5rem] font-semibold text-blue-2" title={f.contenido ?? ""}>
+                    <div className="line-clamp-2">{f.contenido ?? "—"}</div>
+                  </td>
+                  <td className="px-1.5 py-1.5 max-w-[4.5rem] truncate" title={[f.ciudad, f.provincia].filter(Boolean).join(", ")}>{f.ciudad}</td>
+                  <td className="px-1.5 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-32`} /></td>
+                  <td className="px-1.5 py-1.5 whitespace-nowrap num">{f.recaudo != null ? dinero(f.recaudo, f.cuenta) : "—"}</td>
                   <td className="px-1.5 py-1.5 whitespace-nowrap">
                     {f.guia && (
                       <button onClick={() => copiar(f.guia!)} title="Copiar guía" className="group inline-flex items-center gap-1 font-mono font-semibold hover:text-blue-2">
@@ -268,42 +279,39 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     )}
                     <div className="max-w-[7.5rem] truncate text-[10px] text-muted" title={f.estado_guia ?? ""}>{f.estado_guia}</div>
                   </td>
-                  <td className="px-1.5 py-1.5 max-w-[10rem]">
-                    <div className="font-semibold truncate" title={f.novedad ?? ""}>{f.novedad}</div>
-                    <div className="text-muted truncate" title={f.aclaracion ?? ""}>{f.aclaracion}</div>
-                  </td>
-                  <td className="px-1.5 py-1.5 min-w-[6rem] max-w-[8.5rem] font-semibold text-blue-2" title={f.contenido ?? ""}>
-                    <div className="line-clamp-2">{f.contenido ?? "—"}</div>
-                  </td>
                   <td className="px-1.5 py-1.5 max-w-[7rem] truncate" title={f.cliente ?? ""}>{f.cliente}</td>
                   <td className="px-1.5 py-1.5"><input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { tel: e.target.value })} className={`${inp} w-24`} /></td>
-                  <td className="px-1.5 py-1.5 max-w-[4.5rem] truncate" title={[f.ciudad, f.provincia].filter(Boolean).join(", ")}>{f.ciudad}</td>
-                  <td className="px-1.5 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-32`} /></td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap num">{f.recaudo != null ? dinero(f.recaudo, f.cuenta) : "—"}</td>
                   {[1, 2, 3].map((i) => {
                     const l = f.llamadas[String(i)];
+                    const res = l ? RESULTADOS[l.r] : null;
+                    // Cerrado muestra solo la sigla (C, NC, NA) con su color; al abrir salen los nombres completos.
                     return (
-                      <td key={i} className="px-1.5 py-1.5">
-                        <select value={l?.r ?? ""} onChange={(e) => marcar(f, i, e.target.value)} title={l?.u ?? ""}
-                          className={`${sel} w-[4.75rem]`} style={l ? { color: RESULTADOS[l.r].color, borderColor: RESULTADOS[l.r].color } : undefined}>
-                          <option value="" className="bg-bg text-text">—</option>
-                          {(Object.keys(RESULTADOS) as Resultado[]).map((r) => <option key={r} value={r} className="bg-bg text-text">{RESULTADOS[r].label}</option>)}
-                        </select>
+                      <td key={i} className="px-1 py-1.5">
+                        <div className="relative w-10">
+                          <select value={l?.r ?? ""} onChange={(e) => marcar(f, i, e.target.value)} title={res ? `${res.label}${l?.u ? ` · ${l.u.split("@")[0]}` : ""}` : "Sin llamar"}
+                            className={`${sel} w-full appearance-none text-transparent`} style={res ? { borderColor: res.color } : undefined}>
+                            <option value="" className="bg-bg text-text">—</option>
+                            {(Object.keys(RESULTADOS) as Resultado[]).map((r) => <option key={r} value={r} className="bg-bg text-text">{RESULTADOS[r].corto} · {RESULTADOS[r].label}</option>)}
+                          </select>
+                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs font-bold" style={{ color: res?.color ?? "var(--muted)" }}>
+                            {res?.corto ?? "—"}
+                          </span>
+                        </div>
                       </td>
                     );
                   })}
                   <td className="px-1.5 py-1.5">
-                    {/* Seguimiento interno guardado: el día y la nota, con ✕ para quitarlo. */}
+                    {/* Seguimiento interno guardado: el día y la nota (completa al pasar el mouse), con ✕ para quitarlo. */}
                     {f.seguimiento && (
-                      <div className="mb-1 flex items-center gap-1" title={`${f.seguimiento.nota ?? ""}${f.seguimiento.u ? ` · ${f.seguimiento.u.split("@")[0]}` : ""}`}>
-                        <span className="rounded-full border border-naranja/60 bg-naranja/10 px-2 py-0.5 text-[10px] font-semibold text-naranja">
-                          📌 Seguimiento {ddmm(f.seguimiento.fecha)}{f.seguimiento.nota ? ` · ${f.seguimiento.nota.slice(0, 24)}` : ""}
+                      <div className="mb-1 flex items-center gap-1" title={`Seguimiento ${ddmm(f.seguimiento.fecha)}${f.seguimiento.nota ? ` · ${f.seguimiento.nota}` : ""}${f.seguimiento.u ? ` · ${f.seguimiento.u.split("@")[0]}` : ""}`}>
+                        <span className="max-w-[9rem] truncate rounded-full border border-naranja/60 bg-naranja/10 px-2 py-0.5 text-[10px] font-semibold text-naranja">
+                          📌 {ddmm(f.seguimiento.fecha)}{f.seguimiento.nota ? ` · ${f.seguimiento.nota}` : ""}
                         </span>
                         <button onClick={() => seguir(f, null)} disabled={ocupada[f.id]} title="Quitar el seguimiento" className="rounded p-0.5 text-muted hover:text-red"><X size={11} /></button>
                       </div>
                     )}
-                    {enviada ? <span className="font-semibold text-green">{env!.solucion}</span> : (
-                      <select value={b.sol ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { sol: e.target.value, fecha: undefined })} className={`${sel} w-36`}
+                    {enviada ? <div className="max-w-[9.5rem] truncate font-semibold text-green" title={env!.solucion ?? ""}>{env!.solucion}</div> : (
+                      <select value={b.sol ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { sol: e.target.value, fecha: undefined })} className={`${sel} w-[9.5rem]`}
                         style={sigue ? { color: "var(--naranja)", borderColor: "var(--naranja)" } : undefined}>
                         <option value="" className="bg-bg">{sols.length ? "Elegir…" : "Elegir… (sin catálogo de Effi)"}</option>
                         <option value={SEGUIR} className="bg-bg">📌 Hacer seguimiento (interno)</option>
