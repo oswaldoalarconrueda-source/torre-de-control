@@ -299,7 +299,9 @@ Deno.serve(async (req) => {
     }
     if ((prog?.tipo ?? url.searchParams.get('tipo')) === 'cpa_falta') {
       const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date(Date.now() - 86_400_000));
-      const faltan = (await rpc('informe_cpa_faltan', { p_dia: dia, p_sociedad: prog?.sociedad ?? 'Joalix AA Group' })) as string[];
+      let faltan = (await rpc('informe_cpa_faltan', { p_dia: dia, p_sociedad: prog?.sociedad ?? 'Joalix AA Group' })) as string[];
+      // En prueba, si no falta nada, se ve con un ejemplo para revisar cómo llega.
+      if (prueba && !faltan?.length) faltan = ['TIENDA_CO', 'TIENDA_EC', 'TIENDA_GT'];
       if (!faltan?.length) return json(200, { ok: true, enviados: 0, mensaje: 'Ya están todos los pedidos de ayer' });
       const asunto = `${prueba ? '[Prueba] ' : ''}${prog?.asunto ?? '⏰ Faltan los pedidos Lucid de ayer'} · ${faltan.map((c) => PAIS[c]?.nombre ?? c).join(', ')}`;
       const transporte = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: cred.user, pass: cred.pass } });
