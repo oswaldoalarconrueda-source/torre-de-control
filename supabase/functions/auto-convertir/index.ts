@@ -95,7 +95,7 @@ function asesoraCO(direccion: string, ciudad: string, dpto: string, soloInter: b
   }
   if (c === 'CALI') return { id: 10, regla: 'Cali' };
   if (['BARRANQUILLA', 'SANTA MARTA', 'CUCUTA', 'MONTERIA', 'BOGOTA'].includes(c)) return { id: 1, regla: ciudad };
-  if (['FLORENCIA', 'BARRANCABERMEJA', 'MANIZALES', 'PASTO', 'POPAYAN', 'NEIVA', 'IBAGUE', 'BUCARAMANGA'].includes(c)) return { id: 6, regla: ciudad };
+  if (['FLORENCIA', 'BARRANCABERMEJA', 'MANIZALES', 'PASTO', 'POPAYAN', 'NEIVA', 'BUCARAMANGA'].includes(c)) return { id: 6, regla: ciudad };
   if (dp === 'TOLIMA') return { id: 1, regla: 'Tolima' };
   if (soloInter) return { id: 4, regla: 'Pueblo o zona alejada (solo llega Inter)', deMatriz: true };
   if (dp === 'ATLANTICO' || dp === 'MAGDALENA' || c.startsWith('BUENAVENTURA')) return { id: 4, regla: 'Atlántico, Magdalena o Buenaventura' };
@@ -105,7 +105,12 @@ async function recomendacionCO(direccion: string, ciudad: string, dpto: string) 
   const r = (await rpc('auto_matriz_ruta', { p_destino: ciudad ?? '', p_dpto: dpto ?? '' })) as Json;
   const opciones = ((r?.opciones ?? []) as Json[]).filter((o) => CO_HABILITADAS.includes(Number(o.id)));
   const recomendada = CO_HABILITADAS.includes(Number(r?.recomendada)) ? Number(r.recomendada) : null;
-  const asesora = asesoraCO(direccion, ciudad, dpto, !!r?.solo_inter);
+  // Transportadora fija de las asesoras para la ciudad (auto_restricciones, desde el 31-oct): manda sobre las demás reglas,
+  // salvo la entrega en oficina. Esas ciudades se hacen manual (la condición no deja que vayan solas).
+  const fija = oficinaCO(direccion) ? null : (await rpc('auto_transportadora_fija', { p_cuenta: 'TIENDA_CO', p_ciudad: ciudad ?? '', p_dpto: dpto ?? '' })) as Json | null;
+  const asesora = CO_HABILITADAS.includes(Number(fija?.id))
+    ? { id: Number(fija!.id), regla: `Transportadora fija de las asesoras (${fija!.lugar})` }
+    : asesoraCO(direccion, ciudad, dpto, !!r?.solo_inter);
   // Regla del dueño (28-oct): si la regla de las asesoras y la ⭐ de la matriz dicen la misma transportadora, va sola
   // (remisión y guía, o solo la guía de una remisión hecha a mano), aunque Colombia esté en Manual.
   const coincide = asesora && !asesora.deMatriz && asesora.id === recomendada ? asesora.id : null;
@@ -633,6 +638,10 @@ async function guiasPendientes(cuenta: string, ahora = false) {
 // (remisión y guía, o solo la guía de una remisión hecha a mano, por esa transportadora). Se toman las que la Torre ya
 // tiene listas, de la más antigua a la más nueva, de a MAX_CREAR por corrida.
 const coincideCO = (plan: Json) => Number(plan?.resumen?.recomendacion?.coincide) || null;
+// Condición de la ciudad que igual deja ir sola la orden: "solo a oficina de Inter" con entrega en oficina de Inter, y la
+// transportadora fija con entrega en cualquier oficina (Inter o Servientrega).
+const condicionCumplida = (r: Json, direccion: unknown) =>
+  (r.tipo === 'inter_oficina' && oficinaCO(direccion) === 4) || (r.tipo === 'transportadora_fija' && oficinaCO(direccion) !== null);
 async function oficinasCO(cuenta: string) {
   if (cuenta !== 'TIENDA_CO') return [];
   const filas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&plan_estado=eq.lista&guia=is.null&select=sucursal,id,plan,ciudad,provincia,id_remision,decision&order=id.asc&limit=300`);
@@ -643,10 +652,11 @@ async function oficinasCO(cuenta: string) {
   for (const f of filas.filter(vaSola)) {
     if (hechas.length >= MAX_CREAR) break;
     // Ciudad con condición de las asesoras (pago anticipado, sin cobertura…): no va sola, la ve la asesora con el aviso.
-    // Única excepción: "solo a oficina de Interrapidísimo" cuando la orden es justo a oficina de Inter.
+    // Excepciones: "solo a oficina de Interrapidísimo" cuando la orden es justo a oficina de Inter, y la transportadora
+    // fija cuando la orden es a una oficina (va por la de la oficina).
     const direccion = String(f.plan.remision?.direccion_cliente ?? f.plan.guia?.direccion_destinatario?.[0] ?? '');
     const r = (await rpc('auto_restriccion', { p_cuenta: cuenta, p_ciudad: f.ciudad ?? '', p_dpto: f.provincia ?? '', p_direccion: direccion })) as Json | null;
-    if (r && !(r.tipo === 'inter_oficina' && oficinaCO(f.plan.remision?.direccion_cliente) === 4)) continue;
+    if (r && !condicionCumplida(r, f.plan.remision?.direccion_cliente)) continue;
     hechas.push(await crear(cuenta, Number(f.sucursal), Number(f.id), true, true));
   }
   return hechas;
@@ -675,7 +685,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   if (automatico && fila?.plan) {
     const direccion = String(fila.plan.remision?.direccion_cliente ?? fila.plan.guia?.direccion_destinatario?.[0] ?? '');
     const r = (await rpc('auto_restriccion', { p_cuenta: cuenta, p_ciudad: fila.ciudad ?? '', p_dpto: fila.provincia ?? '', p_direccion: direccion })) as Json | null;
-    if (r && !(r.tipo === 'inter_oficina' && oficinaCO(fila.plan.remision?.direccion_cliente) === 4)) return { creada: false, motivo: `Condición de envío: ${r.motivo}` };
+    if (r && !condicionCumplida(r, fila.plan.remision?.direccion_cliente)) return { creada: false, motivo: `Condición de envío: ${r.motivo}` };
   }
   const autorizada = automatico ? fila?.plan_estado === 'lista' : fila?.decision === 'ejecutar';
   if (!fila || !autorizada || !(fila.plan?.remision || (fila.plan?.remision_existente && fila.plan?.guia))) {

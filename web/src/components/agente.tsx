@@ -41,6 +41,7 @@ const CONDICIONES = {
   inter_oficina: "🏢 Solo a oficina Interrapidísimo",
   validar: "📞 Validar con el cliente",
   trato_especial: "⭐ Trato especial: no se remisiona",
+  transportadora_fija: "🚚 Transportadora fija: se hace manual",
 } as const;
 // Transportadoras que usa el país (aprendidas de sus guías): id → nombre y cuántas guías tuvo en los últimos 10 días.
 export type Transportes = Record<string, { nombre?: string; guias?: number }>;
@@ -157,8 +158,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   // Colombia: va sola (la crea el agente en la próxima corrida) la entrega en oficina de Inter o Servientrega y la orden
   // en que la regla de las asesoras y la ⭐ de la matriz coinciden (también la guía de una remisión hecha a mano).
   // Si la ciudad tiene una condición de las asesoras, la orden no va sola (salvo "solo a oficina de Inter" yendo a Inter).
-  const cumpleCondicion = (o: OrdenAuto) =>
-    !o.restriccion || (o.restriccion.tipo === "inter_oficina" && oficinaCO(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0]) === 4);
+  // La condición se cumple (la orden puede ir sola): "solo a oficina de Inter" con entrega en oficina de Inter, y la
+  // transportadora fija con entrega en cualquier oficina.
+  const cumpleCondicion = (o: OrdenAuto) => {
+    if (!o.restriccion) return true;
+    const ofi = oficinaCO(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0]);
+    return (o.restriccion.tipo === "inter_oficina" && ofi === 4) || (o.restriccion.tipo === "transportadora_fija" && ofi !== null);
+  };
   const coincide = (o: OrdenAuto) =>
     Number(((o.plan?.resumen as Record<string, unknown> | undefined)?.recomendacion as { coincide?: number } | undefined)?.coincide) || null;
   const vaSola = (o: OrdenAuto) => cuenta === "TIENDA_CO" && o.plan_estado === "lista" && o.decision !== "descartar" && cumpleCondicion(o) && (

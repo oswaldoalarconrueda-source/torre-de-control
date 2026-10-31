@@ -24,6 +24,7 @@ TIPOS = {
     "inter_oficina": ("🏢 Solo a oficina Interrapidísimo", "Sale sola SOLO si la dirección es oficina de Inter; si no, aviso rojo."),
     "validar": ("📞 Validar con el cliente", "No sale sola. Aviso rojo; llamar al cliente antes de despachar."),
     "trato_especial": ("⭐ Trato especial: no se remisiona", "Nunca se pasa a remisión (ni sola ni con Ejecutar); la maneja una persona."),
+    "transportadora_fija": ("🚚 Transportadora fija: se hace manual", "ValerIA propone esa transportadora en Ejecutar, pero no la hace sola (salvo entrega en oficina)."),
 }
 
 COMO_DECIDE = [
