@@ -10,8 +10,8 @@ import { FabricaAgente, type ConteoOrdenes, type DatosFabrica } from "./fabrica-
 // (auto_fabrica); cuando el agente está creando algo, la etapa activa late y se ve la orden y el paso. Abajo, los errores
 // de hoy: una línea por documento, diciendo si el error es de la remisión (no se pudo hacer la guía) o de la orden (no
 // se pudo hacer la remisión) y por qué, con sus variables (lo enviado y lo respondido por Effi), o el aviso verde de que
-// no hubo errores. Consulta los últimos movimientos cada 3 segundos (para ver qué está haciendo) y los aciertos y
-// errores del día completo cada 15 s.
+// no hubo errores. Consulta los movimientos nuevos cada 3 segundos (para ver qué está haciendo) y vuelve a traer los
+// aciertos y errores del día completo cada 5 minutos.
 
 // Días elegidos en el calendario (hora local del país) y cómo se nombran ("Ayer · 29 oct").
 export type Periodo = { desde: string; hasta: string; etiqueta: string };
@@ -36,16 +36,30 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
 
   useEffect(() => {
     const supabase = createClient();
-    let vivo = true, ultimo = 0;
+    let vivo = true, ultimo = 0, ultimoAviso = 0;
+    let aviso: ReturnType<typeof setTimeout> | null = null;
+    // Movimientos nuevos → se recarga la pantalla (lista y contadores), pero como mucho una vez cada 20 s: en una corrida
+    // salen decenas de eventos seguidos y cada recarga pide la lista completa (31-oct, la base se quedó sin conexiones).
+    const avisar = () => {
+      if (aviso) return;
+      aviso = setTimeout(() => { aviso = null; ultimoAviso = Date.now(); if (vivo) onNuevo(); }, Math.max(0, ultimoAviso + 20_000 - Date.now()));
+    };
+    // La primera vez, los últimos 300 movimientos; después solo los nuevos (id mayor al último visto).
     const cargar = async () => {
-      const { data } = await supabase.from("auto_eventos").select("id,id_orden,paso,ok,mensaje,datos,creado_en")
-        .eq("cuenta", cuenta).gte("creado_en", new Date(Date.now() - 36 * 3600_000).toISOString())
-        .order("id", { ascending: false }).limit(300);
+      const q = supabase.from("auto_eventos").select("id,id_orden,paso,ok,mensaje,datos,creado_en").eq("cuenta", cuenta);
+      const { data } = await (ultimo
+        ? q.gt("id", ultimo).order("id", { ascending: false }).limit(300)
+        : q.gte("creado_en", new Date(Date.now() - 36 * 3600_000).toISOString()).order("id", { ascending: false }).limit(300));
       if (!vivo || !data) return;
-      const max = data[0]?.id ?? 0;
-      if (ultimo && max > ultimo) onNuevo();
-      ultimo = max;
-      setEventos(data as Evento[]);
+      const nuevos = data as Evento[];
+      if (ultimo && nuevos.length) {
+        setEventos((ev) => [...nuevos, ...ev].slice(0, 300));
+        // Al día van los aciertos de remisión, guía y fin (sin "datos") y todos los errores, igual que en cargarDia.
+        setDelDia((d) => [...nuevos.filter((e) => e.ok === false || (e.ok === true && ["remision", "guia", "fin"].includes(e.paso)))
+          .map((e) => (e.ok ? { ...e, datos: null } : e)), ...d]);
+        avisar();
+      } else if (!ultimo) setEventos(nuevos);
+      ultimo = Math.max(ultimo, nuevos[0]?.id ?? 0);
       setAhora(Date.now());
     };
     // Aciertos sin "datos" (no se necesitan y pesan); errores con sus variables.
@@ -77,8 +91,9 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
     if (rango) { cargarRango(rango); return () => { vivo = false; }; }
     cargar();
     cargarDia();
-    const t = setInterval(cargar, 3000), t2 = setInterval(cargarDia, 15_000);
-    return () => { vivo = false; clearInterval(t); clearInterval(t2); };
+    // Los nuevos cada 3 s (consulta mínima); el día completo se vuelve a traer cada 5 min solo para cuadrar.
+    const t = setInterval(cargar, 3000), t2 = setInterval(cargarDia, 300_000);
+    return () => { vivo = false; clearInterval(t); clearInterval(t2); if (aviso) clearTimeout(aviso); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuenta, rango?.desde, rango?.hasta]);
 

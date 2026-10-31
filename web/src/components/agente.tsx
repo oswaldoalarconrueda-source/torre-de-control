@@ -130,10 +130,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   const [horario, setHorario] = useState({ cada: cfg?.cada_min ?? 10, cortes: (cfg?.cortes ?? []).join(", "), antes: cfg?.antes_min ?? 2 });
   const sig = cfg && modo !== "apagado" && modo !== "vigilar" ? proxima(zona, cfg.cada_min, cfg.cortes, cfg.antes_min) : null;
 
-  // La vigilancia corre en Supabase; la pantalla se refresca sola cada minuto.
+  // La vigilancia corre en Supabase; la pantalla se refresca sola cada minuto (y además cuando ValerIA hace algo, desde
+  // FlujoAgente). En una pestaña escondida no se refresca: se pone al día apenas vuelve a verse.
   useEffect(() => {
-    const t = setInterval(() => router.refresh(), 60_000);
-    return () => clearInterval(t);
+    const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 60_000);
+    const alVolver = () => { if (!document.hidden) router.refresh(); };
+    document.addEventListener("visibilitychange", alVolver);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", alVolver); };
   }, [router]);
 
   // Una orden sin remisión solo es alerta cuando pasa el tiempo de espera (normalmente se convierte en minutos).
@@ -246,12 +249,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     setGuardando(null);
     if (e) return setError(e.message);
     setCorriendo(data === "ocupado" ? "Ya hay una corrida en curso; la bitácora muestra lo que va haciendo." : "Creando en Effi… mira la bitácora del agente.");
+    // La pantalla se pone al día sola con cada movimiento de ValerIA (FlujoAgente, máximo cada 20 s).
     router.refresh();
-    let n = 0;
-    const t = setInterval(() => {
-      router.refresh();
-      if (++n >= 15) { clearInterval(t); setCorriendo(null); }
-    }, 4000);
+    setTimeout(() => setCorriendo(null), 60_000);
   }
   // "Pasar de remisión a guía": solo las guías de las remisiones ya hechas, en tandas de 10 hasta acabarlas. En Ecuador
   // es el paso que sí se puede hacer (las remisiones las hace una persona porque la API de Effi falla al crearlas).
@@ -264,11 +264,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     if (e) return setError(e.message);
     setCorriendo(data === "ocupado" ? "Ya hay una corrida en curso; la bitácora muestra lo que va haciendo." : "Haciendo las guías de a 10… mira la bitácora del agente.");
     router.refresh();
-    let n = 0;
-    const t = setInterval(() => {
-      router.refresh();
-      if (++n >= 45) { clearInterval(t); setCorriendo(null); }
-    }, 4000);
+    setTimeout(() => setCorriendo(null), 180_000);
   }
   async function guardarHorario() {
     setGuardando("horario"); setError(null);
