@@ -74,7 +74,7 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
   const total = p.reduce((a, i) => a + esperado(i), 0);
   return (
     <Recuadro titulo="Inconsistencias pendientes de pago"
-      ayuda="Guías entregadas sin recaudo en el wallet de Effi y órdenes entregadas sin ganancia en la cartera, de cualquier fecha hasta el fin del periodo. Se reclaman sin esperar días de rezago. El costo es el real cobrado o, si no lo hay, el promedio del producto.">
+      ayuda="Guías entregadas sin recaudo en el wallet de Effi y órdenes entregadas sin ganancia en la cartera de Otra P, de cualquier fecha hasta el fin del periodo. Se reclaman sin esperar días de rezago. El costo es el real cobrado o, si no lo hay, el promedio del producto.">
       {p.length ? (
         <table className="w-full border-separate border-spacing-y-1.5 text-sm">
           <thead>
@@ -89,6 +89,7 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
               <tr key={`${i.plataforma}-${i.guia}`}>
                 <td {...fila(COLOR_PLATAFORMA[i.plataforma])}>
                   <span className="font-mono font-semibold">{i.guia ?? "—"}</span>
+                  {i.plataforma === "Dropi" && <span className="ml-2 rounded-full border border-amber/40 px-1.5 text-[10px] text-amber">Otra P</span>}
                 </td>
                 <td className="bg-tinte/[0.03] px-3 whitespace-nowrap">{i.fecha}</td>
                 <td className="bg-tinte/[0.03] px-3">{i.transportadora ?? "—"}</td>
@@ -98,7 +99,7 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
                 <td className="bg-tinte/[0.03] px-3 text-right num font-semibold text-green">{$(esperado(i))}</td>
                 <td className="rounded-r-xl bg-tinte/[0.03] px-3 text-right text-xs max-w-[26rem]">
                   {i.plataforma === "Dropi"
-                    ? "Orden entregada sin ganancia en la cartera — pedir que la liquiden"
+                    ? "Orden entregada sin ganancia en la cartera — pedir a Otra P que la liquide"
                     : i.flete_dev > 0
                       ? `Wallet solo tiene el cargo de flete de devolución (−${$(i.flete_dev)}) y la guía figura entregada — pedir a Effi que retroceda la devolución y liquide la venta`
                       : "Guía entregada sin ningún movimiento de recaudo en el wallet — pedir a Effi que la liquide"}
@@ -183,7 +184,7 @@ function Gastos({ titulo, lineas, meses, $, totalLabel, nomina }: {
 
   return (
     <Recuadro titulo={titulo}
-      ayuda="Se cargan a mano o por Excel: estos gastos se pagan por fuera de las plataformas. Se toman los meses completos que toca el calendario (no se prorratean por días). La nómina va por quincena: 1–15 y 16–fin de mes.">
+      ayuda="Se cargan a mano o por Excel: estos gastos se pagan por fuera de Effi y Otra P. Se toman los meses completos que toca el calendario (no se prorratean por días). La nómina va por quincena: 1–15 y 16–fin de mes.">
       {lineas.length ? (
         <table className="w-full border-separate border-spacing-y-1 text-sm">
           <thead>

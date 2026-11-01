@@ -67,5 +67,5 @@ export const minutosDesde = (iso: string | null | undefined, ahora = Date.now())
   return m < 1440 ? `${m} min` : `${Math.floor(m / 1440)} d`;
 };
 
-// Regla del dueño (28-oct): el nombre de la segunda plataforma no se muestra en ninguna parte de la Torre; sus datos sí.
-export const nombrePlataforma = (p: string) => (p === "Dropi" ? "Otra" : p);
+// Regla del dueño (28-oct, ajustada 31-oct): la segunda plataforma se muestra como "Otra P", nunca con su nombre real.
+export const nombrePlataforma = (p: string) => (p === "Dropi" ? "Otra P" : p);

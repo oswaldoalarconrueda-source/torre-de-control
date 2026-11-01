@@ -7,9 +7,9 @@ export type Celda = string | number | boolean | Date | null | undefined;
 export type Fila = Record<string, unknown>;
 
 export const NOMBRE_TIPO: Record<TipoCarga, string> = {
-  dropi_ordenes: "Órdenes",
-  dropi_productos: "Órdenes por producto",
-  dropi_cartera: "Historial de cartera",
+  dropi_ordenes: "Otra P · Órdenes",
+  dropi_productos: "Otra P · Órdenes por producto",
+  dropi_cartera: "Otra P · Historial de cartera",
   meta_bm: "Meta · CSV por BM",
 };
 
