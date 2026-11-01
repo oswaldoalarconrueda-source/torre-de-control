@@ -38,6 +38,12 @@ export async function proxy(request: NextRequest) {
     url.search = "";
     return NextResponse.redirect(url);
   }
+  // La dirección principal abre 🏠 Inicio. Los enlaces viejos de Data Experience traen filtros (?c=…&d=…): esos siguen a /datos.
+  if (ruta === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = request.nextUrl.search ? "/datos" : "/inicio";
+    return NextResponse.redirect(url);
+  }
   return response;
 }
 

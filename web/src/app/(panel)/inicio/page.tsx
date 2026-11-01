@@ -52,13 +52,13 @@ function TarjetaPais({ f }: { f: Fila }) {
       <h2 className="font-display text-lg font-semibold tracking-tight px-4 py-3 sm:px-5">{c.bandera} {c.nombre}</h2>
       <Franja titulo={`Hoy · ${Number(f.dia.slice(8, 10))} de ${MESES[Number(f.dia.slice(5, 7)) - 1]}`} datos={[
         dato("Órdenes", f.ordenes, entero(f.ordenes), "/agente"),
-        dato("Guías hechas", f.guias, entero(f.guias), "/"),
-        dato("Entregadas", f.entregadas, entero(f.entregadas), "/", "var(--green)"),
+        dato("Guías hechas", f.guias, entero(f.guias), "/datos"),
+        dato("Entregadas", f.entregadas, entero(f.entregadas), "/datos", "var(--green)"),
         dato("Recaudo", f.recaudo, dinero(f.recaudo, f.cuenta), "/wallet-en-vivo"),
       ]} />
       <Franja titulo={`Mes corrido · ${MESES[Number(f.dia.slice(5, 7)) - 1]}`} datos={[
-        dato("Pedidos", f.mes_pedidos, entero(f.mes_pedidos), "/"),
-        dato("% de entrega", f.mes_pedidos, pctEntrega, "/"),
+        dato("Pedidos", f.mes_pedidos, entero(f.mes_pedidos), "/datos"),
+        dato("% de entrega", f.mes_pedidos, pctEntrega, "/datos"),
         dato("Recaudo", f.mes_recaudo, dinero(f.mes_recaudo, f.cuenta), "/dinero"),
         dato("CPA real", f.mes_gasto, cpa, "/publicidad"),
       ]} />

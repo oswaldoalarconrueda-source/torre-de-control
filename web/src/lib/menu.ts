@@ -22,7 +22,7 @@ export type ItemMenu = {
 // que todavía no está ("pronto"). Las de solo dueño van en "Solo para ti".
 export const MENU_JOALIX: ItemMenu[] = [
   { href: "/inicio", label: "Inicio", emoji: "🏠", estado: "vivo" },
-  { href: "/", label: "Data Experience", emoji: "🛒", estado: "vivo", modulo: "resumen" },
+  { href: "/datos", label: "Data Experience", emoji: "🛒", estado: "vivo", modulo: "resumen" },
   { href: "#logistica", label: "Novedades logística", emoji: "🚚", estado: "vivo", hijos: [
     { href: "/oficina", label: "Disponible en oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
     { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades", noProveeduria: true },

@@ -45,7 +45,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
 
   const item = (it: ItemMenu, sub = false) => {
     if (!visible(it)) return null;
-    const activo = it.href === "/" ? path === "/" : path === it.href || path.startsWith(`${it.href}/`);
+    const activo = path === it.href || path.startsWith(`${it.href}/`);
     return (
       <Link
         key={it.href}

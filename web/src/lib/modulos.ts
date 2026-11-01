@@ -2,7 +2,7 @@
 // tiendas y el dueño ve todo). Cada módulo abre una o varias pantallas del menú.
 
 export const MODULOS = [
-  { id: "resumen", nombre: "Data Experience", detalle: "Ventas, despachos, PyG y utilidad", rutas: ["/"] },
+  { id: "resumen", nombre: "Data Experience", detalle: "Ventas, despachos, PyG y utilidad", rutas: ["/datos"] },
   { id: "global", nombre: "Global", detalle: "Todos los países juntos", rutas: ["/global"] },
   { id: "oficina", nombre: "Disponible en oficina", detalle: "CRM para llamar a los clientes", rutas: ["/oficina"] },
   { id: "guias", nombre: "Guías y En vivo", detalle: "Transportadoras, ciudades y la operación en vivo", rutas: ["/guias", "/en-vivo"] },
