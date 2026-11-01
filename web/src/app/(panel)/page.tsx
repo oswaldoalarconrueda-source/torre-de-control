@@ -39,7 +39,7 @@ export default async function DatosPage({ searchParams }: PageProps<"/">) {
       {/* Proveeduría: el mismo formato; despachado = venta a la tienda que ya tiene guía, entregado por el estado global. */}
       {esProveeduria ? <DatosProveeduria cuenta={cuenta} f={f} /> : <DespachoEntregado f={f} plataforma={plataforma} />}
       <div className="mt-3">
-        <ResumenDiario f={f} sp={sp} hoy={hoyBogota()} />
+        <ResumenDiario f={f} sp={sp} hoy={hoyBogota()} plataforma={plataforma} />
       </div>
       <EstadoPyG f={f} plataforma={plataforma} />
       <CuadrosDatos f={f} plataforma={plataforma} parte="pendientes" />

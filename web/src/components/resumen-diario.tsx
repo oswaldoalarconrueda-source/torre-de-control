@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { Info } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { sumarDias, type Filtros } from "@/lib/filtros";
+import type { Plataforma } from "@/lib/datos";
 import { entero } from "@/lib/formato";
 import { COLOR_SEMAFORO, infoCuenta, semaforoDevolucion } from "@/lib/paises";
 import { FiltroMulti } from "./filtro-multi";
@@ -60,17 +61,17 @@ function totales(filas: Fila[]) {
   return { pedidos, ent, pctEnt: pedidos ? ent / pedidos : null, pctDev: pctDevolucion(pedidos, ent, indem) };
 }
 
-export async function ResumenDiario({ f, sp, hoy }: { f: Filtros; sp: SP; hoy: string }) {
+export async function ResumenDiario({ f, sp, hoy, plataforma }: { f: Filtros; sp: SP; hoy: string; plataforma: Plataforma }) {
   const transportadoras = lista(sp.t), centros = lista(sp.cc), proveedores = lista(sp.pv);
   const hasta = f.hasta > hoy ? hoy : f.hasta;
   const antDesde = mesAnterior(f.desde), antHasta = mesAnterior(hasta);
-  const args = { p_cuentas: f.cuentas, p_transportadoras: transportadoras, p_centros: centros, p_proveedores: proveedores };
+  const args = { p_cuentas: f.cuentas, p_transportadoras: transportadoras, p_centros: centros, p_proveedores: proveedores, p_plataforma: plataforma };
 
   const supabase = await createClient();
   const [{ data: act, error }, { data: ant }, { data: ops }] = await Promise.all([
     supabase.rpc("kpi_diario_dim", { ...args, p_desde: f.desde, p_hasta: hasta }),
     supabase.rpc("kpi_diario_dim", { ...args, p_desde: antDesde, p_hasta: antHasta }),
-    supabase.rpc("kpi_opciones_dim", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta }),
+    supabase.rpc("kpi_opciones_dim", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta, p_plataforma: plataforma }),
   ]);
   const filas = (act ?? []) as Fila[];
   const opciones = (ops ?? []) as { dimension: string; valor: string; guias: number }[];
