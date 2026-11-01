@@ -96,27 +96,34 @@ type Cpa = { cuenta: string; dia: { gasto: number; pedidos: number }; semana: { 
 function htmlCpa(filas: Cpa[], dia: string) {
   const cop = (x: number) => dinero(x, 'COP');
   const cpa = (p: { gasto: number; pedidos: number }) => (p.pedidos ? p.gasto / p.pedidos : null);
-  const tarjetas = filas.map((f) => {
+  const mesTxt = `${MESES_LARGO[Number(dia.slice(5, 7)) - 1]} (1–${Number(dia.slice(8, 10))})`;
+  // Orden fijo del dueño: Colombia, Ecuador, Guatemala, Costa Rica.
+  const ORDEN = ['TIENDA_CO', 'TIENDA_EC', 'TIENDA_GT', 'TIENDA_CR'];
+  const pos = (c: string) => (ORDEN.indexOf(c) + 1 || 99);
+  const tarjetas = [...filas].sort((a, b) => pos(a.cuenta) - pos(b.cuenta)).map((f) => {
     const pa = PAIS[f.cuenta] ?? { nombre: f.cuenta, bandera: '🏳️', moneda: 'COP' };
     const hoy = cpa(f.dia), sem = cpa(f.semana), mes = cpa(f.mes);
     const dif = hoy != null && sem ? (hoy - sem) / sem : null;
     const color = dif == null ? '#8a96b3' : dif > 0.05 ? '#ff5470' : dif < -0.05 ? '#2fd28f' : '#ffb347';
     const flecha = dif == null ? '' : `${dif > 0 ? '▲' : '▼'} ${Math.abs(Math.round(dif * 100))}% vs. últimos 7 días`;
-    const celda = (etq: string, valor: string, sub = '') =>
-      `<td style="padding:10px 12px;border-top:1px solid #1e2740;vertical-align:top">
-         <div style="font-size:11px;color:#8a96b3;text-transform:uppercase;letter-spacing:.06em">${etq}</div>
-         <div style="font-size:17px;font-weight:700;color:#e8edf7;margin-top:2px">${valor}</div>${sub ? `<div style="font-size:11px;color:#8a96b3">${sub}</div>` : ''}
-       </td>`;
+    // Tres filas iguales (ayer, 7 días, mes corrido): CPA · gasto · pedidos. Ayer va más grande y con el color del semáforo.
+    const fila = (titulo: string, p: { gasto: number; pedidos: number }, cpaTxt: string, grande: boolean, colorCpa: string, sub = '') => {
+      const tam = grande ? '26px' : '18px';
+      const celda = (etq: string, valor: string, c: string, s = '') =>
+        `<td width="33%" style="padding:4px 12px 12px;vertical-align:top">
+           <div style="font-size:11px;color:#8a96b3;text-transform:uppercase;letter-spacing:.06em">${etq}</div>
+           <div style="font-size:${tam};font-weight:800;color:${c};margin-top:2px;white-space:nowrap">${valor}</div>${s ? `<div style="font-size:11px;color:${c === '#e8edf7' ? '#8a96b3' : c};margin-top:1px">${s}</div>` : ''}
+         </td>`;
+      return `
+      <tr><td colspan="3" style="padding:12px 12px 4px;border-top:1px solid #1e2740;font-size:12px;font-weight:700;color:#c9d2e6">${titulo}</td></tr>
+      <tr>${celda(grande ? 'CPA real' : titulo.startsWith('Mes') ? 'CPA promedio' : 'CPA real', cpaTxt, colorCpa, sub)}${celda('Gasto Meta', cop(p.gasto), '#e8edf7')}${celda('Pedidos Lucid', p.pedidos ? n(p.pedidos) : '—', '#e8edf7')}</tr>`;
+    };
     return `
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0f1526;border:1px solid #1e2740;border-radius:14px;margin:0 0 16px;border-collapse:separate">
-      <tr><td colspan="3" style="padding:14px 12px 4px">
-        <div style="font-size:17px;font-weight:700;color:#e8edf7">${pa.bandera} ${pa.nombre}</div>
-        <div style="font-size:12px;color:#8a96b3;margin-top:6px;text-transform:uppercase;letter-spacing:.06em">CPA real de ayer</div>
-        <div style="font-size:30px;font-weight:800;color:${color};margin-top:2px">${hoy == null ? 'Sin pedidos cargados' : cop(hoy)}</div>
-        <div style="font-size:12px;color:${color}">${hoy == null ? 'Falta llenar ayer en 📝 Pedidos Lucid' : flecha}</div>
-      </td></tr>
-      <tr>${celda('Gasto Meta', cop(f.dia.gasto))}${celda('Pedidos Lucid', f.dia.pedidos ? n(f.dia.pedidos) : '—')}${celda('Gasto 7 días', cop(f.semana.gasto), 'días con pedidos')}</tr>
-      <tr>${celda('CPA 7 días', sem == null ? '—' : cop(sem), `${n(f.semana.pedidos)} pedidos`)}${celda('CPA del mes', mes == null ? '—' : cop(mes), `${n(f.mes.pedidos)} pedidos`)}${celda('Gasto del mes', cop(f.mes.gasto), 'días con pedidos')}</tr>
+      <tr><td colspan="3" style="padding:14px 12px 8px;font-size:17px;font-weight:700;color:#e8edf7">${pa.bandera} ${pa.nombre}</td></tr>
+      ${fila(`Ayer · ${fechaTxt(dia)}`, f.dia, hoy == null ? 'Sin pedidos' : cop(hoy), true, color, hoy == null ? 'Falta llenar ayer en 📝 Pedidos Lucid' : flecha)}
+      ${fila('Últimos 7 días', f.semana, sem == null ? '—' : cop(sem), false, '#e8edf7')}
+      ${fila(`Mes corrido · ${mesTxt}`, f.mes, mes == null ? '—' : cop(mes), false, '#e8edf7')}
     </table>`;
   }).join('');
   return `<!doctype html><html><body style="margin:0;background:#070b16;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
@@ -128,7 +135,7 @@ function htmlCpa(filas: Cpa[], dia: string) {
       </td></tr>
       <tr><td>${tarjetas || '<p style="color:#8a96b3">Sin gasto ni pedidos ayer.</p>'}</td></tr>
       <tr><td style="padding:8px 4px;font-size:12px;color:#8a96b3">
-        Verde: más barato que los últimos 7 días · rojo: más caro. Detalle por día en 📢 Publicidad:
+        Verde: ayer salió más barato que los últimos 7 días · rojo: más caro. En 7 días y en el mes el gasto solo cuenta los días con pedidos cargados. Detalle por día en 📢 Publicidad:
         <a href="https://torre-de-control-inky.vercel.app/publicidad" style="color:#5aa2ff">torre-de-control-inky.vercel.app/publicidad</a>
       </td></tr>
     </table>
