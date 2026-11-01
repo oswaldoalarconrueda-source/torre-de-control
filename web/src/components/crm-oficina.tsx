@@ -17,6 +17,8 @@ import { BarraHorizontal } from "./barra-horizontal";
 // de qué pasó con lo que llegó a oficina está en el cuadre).
 // "Hacer seguimiento" guarda el día en que el cliente pidió que lo llamen: desde ese día la guía va siempre arriba de la
 // lista, resaltada, hasta que alguien cambie la observación (o la guía se entregue o se devuelva y salga sola).
+// "Volver a llamar" sube de primeras lo que el cliente dijo pero sigue en oficina: "ya retiró" marcado hace 24 horas o
+// más (Effi no la muestra entregada; 1 de cada 3 no se confirma) y "realizará el retiro el…" con el día ya pasado.
 
 type Resultado = "contesto" | "no_contesto" | "telefono_malo";
 export type Llamada = { id: number; intento: number; resultado: Resultado; canal: "llamada" | "whatsapp"; nota: string | null; usuario: string | null; creado_en: string };
@@ -41,6 +43,7 @@ const CONTACTOS = [
 ] as const;
 const FILTROS = [
   { id: "todas", label: "Todas" },
+  { id: "volver", label: "🔁 Volver a llamar" },
   { id: "seguimiento", label: "📌 Seguimiento hoy" },
   { id: "sin_llamar", label: "Sin contactar" },
   { id: "contesto", label: "Contactado" },
@@ -48,6 +51,8 @@ const FILTROS = [
   { id: "telefono_malo", label: "No aplica" },
 ] as const;
 const POR_PAGINA = 60;
+const HORAS_RETIRO = 24;
+const MORADO = "#b48cff";
 // Hora local de cada tienda e indicativo para abrir WhatsApp.
 
 // Un campo puede traer varios teléfonos: "300 123 4567 / 311..." → cada uno con su botón (sin repetir).
@@ -96,21 +101,50 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
     const o = obs[g.guia] ?? { codigo: g.observacion?.codigo ?? "", fecha: g.observacion?.fecha ?? null };
     return o.codigo === "seguimiento" && !!o.fecha && o.fecha <= hoy ? o.fecha : null;
   };
+  // Lo que el cliente dijo y no se cumplió (la guía sigue en oficina): horas de atraso y la etiqueta de la fila. Lo
+  // cambiado en esta sesión manda (si ya se reagendó o se cambió la observación, sale).
+  const volverALlamar = (g: GuiaOficina): { horas: number; etiqueta: string; titulo: string } | null => {
+    const o = g.observacion, local = obs[g.guia];
+    const codigo = local ? local.codigo : o?.codigo ?? "", fecha = local ? local.fecha : o?.fecha ?? null;
+    if (codigo === "ya_retiro" && o?.codigo === "ya_retiro") {
+      const h = (Date.now() - Date.parse(o.actualizado_en)) / 3_600_000;
+      if (h < HORAS_RETIRO) return null;
+      return { horas: h, etiqueta: `❓ Dijo que retiró · hace ${h >= 48 ? `${Math.floor(h / 24)} d` : `${Math.floor(h)} h`}`,
+        titulo: `Marcado "ya retiró" el ${hora(o.actualizado_en)}; Effi todavía no la muestra entregada` };
+    }
+    // Fecha imposible (año mal escrito o anterior al día en que se marcó): también hay que llamar y corregirla.
+    const marcado = local || !o ? hoy : dia(o.actualizado_en);
+    if (codigo === "retira_fecha" && fecha && (fecha < marcado || fecha.slice(0, 4) < hoy.slice(0, 4))) {
+      const h = o && !local ? (Date.now() - Date.parse(o.actualizado_en)) / 3_600_000 : 0;
+      return { horas: h, etiqueta: `⚠️ Fecha mal puesta: ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}/${fecha.slice(0, 4)}`,
+        titulo: "La fecha de retiro quedó mal escrita: llama al cliente y vuelve a escoger el día" };
+    }
+    if (codigo === "retira_fecha" && fecha && fecha < hoy) {
+      const d = Math.round((Date.parse(hoy) - Date.parse(fecha)) / 86_400_000);
+      return { horas: d * 24, etiqueta: `⏰ Prometió ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} · no ha ido`,
+        titulo: `Dijo que retiraba el ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} (hace ${d} ${d === 1 ? "día" : "días"}) y sigue en oficina` };
+    }
+    return null;
+  };
   const lista = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return guias.filter((g) => {
       const ult = llamadasDe(g).at(-1);
       if (filtro === "seguimiento" && !seguimiento(g)) return false;
+      if (filtro === "volver" && !volverALlamar(g)) return false;
       if (filtro === "sin_llamar" && ult) return false;
-      if (filtro !== "todas" && filtro !== "sin_llamar" && filtro !== "seguimiento" && ult?.resultado !== filtro) return false;
+      if (filtro !== "todas" && filtro !== "sin_llamar" && filtro !== "seguimiento" && filtro !== "volver" && ult?.resultado !== filtro) return false;
       return !q || [g.guia, g.destinatario, g.telefono, g.ciudad, g.contenido, g.transportadora, g.observacion?.texto].some((x) => (x ?? "").toLowerCase().includes(q));
-    // Los seguimientos que ya tocan van siempre arriba (el más atrasado primero); el resto sigue en su orden.
-    }).map((g, i) => ({ g, i, s: seguimiento(g) }))
-      .sort((a, b) => (a.s ? 0 : 1) - (b.s ? 0 : 1) || (a.s && b.s ? a.s.localeCompare(b.s) : 0) || a.i - b.i)
+    // Arriba: primero lo que hay que volver a llamar (lo más atrasado primero), luego los seguimientos que ya tocan (el más
+    // atrasado primero); el resto sigue en su orden.
+    }).map((g, i) => ({ g, i, r: volverALlamar(g)?.horas ?? null, s: seguimiento(g) }))
+      .sort((a, b) => (a.r ? 0 : 1) - (b.r ? 0 : 1) || (a.r && b.r ? b.r - a.r : 0)
+        || (a.s ? 0 : 1) - (b.s ? 0 : 1) || (a.s && b.s ? a.s.localeCompare(b.s) : 0) || a.i - b.i)
       .map((x) => x.g);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guias, filtro, buscar, locales, obs, hoy]);
   const porSeguir = guias.filter((g) => seguimiento(g)).length;
+  const porVolver = guias.filter((g) => volverALlamar(g)).length;
 
   const todas = guias.flatMap((g) => llamadasDe(g));
   const deHoy = todas.filter((l) => dia(l.creado_en) === hoy);
@@ -135,6 +169,8 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
   async function guardarObs(g: GuiaOficina, codigo: CodigoObs | "", fecha: string | null, texto?: string) {
     setObs((o) => ({ ...o, [g.guia]: { codigo, fecha, texto } }));
     if (CON_FECHA.includes(codigo as CodigoObs) && !fecha) return;
+    // El calendario no deja escoger días pasados, pero escribiendo la fecha sí: se frena aquí (y años mal escritos).
+    if (fecha && (fecha < hoy || fecha.slice(0, 4) > String(Number(hoy.slice(0, 4)) + 1))) { setError("Esa fecha no sirve: escoge un día de hoy en adelante."); return; }
     if (codigo === "otro" && !(texto ?? "").trim()) return;
     setGuardando(`${g.guia}|obs`); setError(null);
     const supabase = createClient();
@@ -149,6 +185,18 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
 
   return (
     <div className="space-y-3">
+      {/* El cliente dijo que retiró o que retiraba un día que ya pasó, y la guía sigue en oficina: volver a llamar. */}
+      {porVolver > 0 && (
+        <button onClick={() => { setFiltro("volver"); setMostrar(POR_PAGINA); }}
+          className="w-full flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-left"
+          style={{ borderColor: `${MORADO}80`, background: `${MORADO}1a` }}>
+          <span className="text-2xl">🔁</span>
+          <span className="font-display text-lg font-semibold" style={{ color: MORADO }}>
+            {porVolver === 1 ? "1 cliente para volver a llamar" : `${entero(porVolver)} clientes para volver a llamar`}
+          </span>
+          <span className="text-xs text-muted">Dijeron que ya retiraron (hace más de {HORAS_RETIRO} horas) o que retiraban un día que ya pasó, y la guía sigue en oficina. Van de primeras en la lista.</span>
+        </button>
+      )}
       {/* Clientes que pidieron que los llamen hoy (o antes y siguen pendientes): siempre a la vista. */}
       {porSeguir > 0 && (
         <button onClick={() => { setFiltro("seguimiento"); setMostrar(POR_PAGINA); }}
@@ -176,7 +224,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
         {FILTROS.map((f) => (
           <button key={f.id} onClick={() => { setFiltro(f.id); setMostrar(POR_PAGINA); }}
             className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filtro === f.id ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
-            {f.label}{f.id === "seguimiento" ? ` (${entero(porSeguir)})` : ""}
+            {f.label}{f.id === "seguimiento" ? ` (${entero(porSeguir)})` : f.id === "volver" ? ` (${entero(porVolver)})` : ""}
           </button>
         ))}
         <label className="ml-auto flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-sm">
@@ -216,10 +264,18 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
               const dias = g.llegada ? (Date.now() - Date.parse(g.llegada)) / 86_400_000 : 0;
               const tels = telefonos(g.telefono);
               const seg = seguimiento(g);
+              const ret = volverALlamar(g);
               return (
-                <tr key={g.guia} className={`align-middle ${seg ? "bg-naranja/[0.07] hover:bg-naranja/[0.11]" : "hover:bg-tinte/[0.02]"}`}>
-                  <td className={`sticky left-0 z-10 px-2 py-2 whitespace-nowrap text-xs font-mono ${seg ? "bg-naranja-fondo shadow-[inset_3px_0_0_var(--naranja)]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`} title={g.llegada ? hora(g.llegada) : ""}>
-                    {seg && (
+                <tr key={g.guia} className={`align-middle ${seg && !ret ? "bg-naranja/[0.07] hover:bg-naranja/[0.11]" : "hover:bg-tinte/[0.02]"}`}
+                  style={ret ? { background: `${MORADO}12` } : undefined}>
+                  <td className={`sticky left-0 z-10 px-2 py-2 whitespace-nowrap text-xs font-mono ${seg && !ret ? "bg-naranja-fondo shadow-[inset_3px_0_0_var(--naranja)]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`}
+                    style={ret ? { boxShadow: `inset 3px 0 0 ${MORADO}` } : undefined} title={g.llegada ? hora(g.llegada) : ""}>
+                    {ret && (
+                      <div className="mb-1 inline-block rounded-full px-2 py-0.5 font-sans text-[10px] font-bold text-black" style={{ background: MORADO }} title={ret.titulo}>
+                        {ret.etiqueta}
+                      </div>
+                    )}
+                    {seg && !ret && (
                       <div className="mb-1 inline-block rounded-full bg-naranja px-2 py-0.5 font-sans text-[10px] font-bold text-black">
                         📌 {seg === hoy ? "Hoy" : `${seg.slice(8, 10)}/${seg.slice(5, 7)}`}
                       </div>
