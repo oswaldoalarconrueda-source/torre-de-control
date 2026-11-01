@@ -4,14 +4,15 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Menu, X } from "lucide-react";
+import { ChevronDown, Menu, X } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
 import { esSocio, tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
 
-export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, porAceptar = 0, conProveeduria = false, soloProveeduria = false }: {
+export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, agente, porAceptar = 0, conProveeduria = false, soloProveeduria = false }: {
   acceso: Acceso; email: string; ultimoSync: string; sociedad: string; sociedades: string[] | null; vista: string | null;
+  agente: string; // cómo se llama el ítem del agente: ValerIA en Joalix, Agente en las demás sociedades
   porAceptar?: number; // registros nuevos esperando que el dueño los acepte
   conProveeduria?: boolean; // ve alguna empresa de proveeduría (Distrilatam)
   soloProveeduria?: boolean; // solo ve empresas de proveeduría: no le salen los módulos de tiendas que no necesita
@@ -21,8 +22,9 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   const sp = useSearchParams();
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
+  const [grupos, setGrupos] = useState<Record<string, boolean>>({}); // grupos que la persona abrió o cerró a mano
   const [cambiando, start] = useTransition();
-  // Dueño: qué Torre mira. Se guarda en su usuario y la base filtra todo por esa sociedad; el país elegido se suelta
+  // Dueño: qué sociedad mira. Se guarda en su usuario y la base filtra todo por esa sociedad; el país elegido se suelta
   // porque puede ser de otra sociedad.
   async function verSociedad(s: string) {
     const { error } = await createClient().rpc("app_ver_sociedad", { p_sociedad: s || null });
@@ -33,64 +35,90 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
 
   useEffect(() => setAbierto(false), [path]);
 
-  const item = (it: ItemMenu) => {
-    if (it.soloOwner && !esOwner) return null;
-    if (it.soloSocios && !esSocio(acceso)) return null;
-    if (it.soloProveeduria && !conProveeduria) return null;
-    if (it.noProveeduria && soloProveeduria && !esOwner) return null;
-    if (it.modulo && !tieneModulo(acceso, it.modulo)) return null;
+  const visible = (it: ItemMenu) => {
+    if (it.soloOwner && !esOwner) return false;
+    if (it.soloSocios && !esSocio(acceso)) return false;
+    if (it.soloProveeduria && !conProveeduria) return false;
+    if (it.noProveeduria && soloProveeduria && !esOwner) return false;
+    return !it.modulo || tieneModulo(acceso, it.modulo);
+  };
+
+  const item = (it: ItemMenu, sub = false) => {
+    if (!visible(it)) return null;
     const activo = it.href === "/" ? path === "/" : path === it.href || path.startsWith(`${it.href}/`);
     return (
       <Link
         key={it.href}
         href={`${it.href}${qs}`}
         aria-current={activo ? "page" : undefined}
-        className={`group flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors ${
+        className={`group flex items-center gap-2.5 rounded-xl py-2 pr-3 text-sm transition-colors ${sub ? "pl-7" : "pl-3"} ${
           activo ? "bg-blue/15 text-text shadow-[inset_2px_0_0_var(--blue-2)]" : "text-muted hover:text-text hover:bg-tinte/[0.04]"
         }`}
       >
-        <span className="w-5 text-center text-base leading-none" aria-hidden>{it.emoji}</span>
-        <span className="flex-1 truncate">{it.label}</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {it.icono ? <img src={it.icono} alt="" className="size-5 shrink-0" /> : <span className="w-5 text-center text-base leading-none" aria-hidden>{it.emoji}</span>}
+        <span className="flex-1 truncate">{it.href === "/agente" ? agente : it.label}</span>
         {it.estado === "pronto" && <span className="text-[10px] rounded-full border border-line px-1.5 py-0.5 text-muted">pronto</span>}
         {it.href === "/usuarios" && porAceptar > 0 && <span className="text-[10px] font-bold rounded-full bg-amber px-1.5 py-0.5 text-black">{porAceptar}</span>}
       </Link>
     );
   };
 
+  // Grupo plegable (Novedades logística): se abre solo cuando se está en una de sus pantallas.
+  const grupo = (it: ItemMenu) => {
+    const hijos = (it.hijos ?? []).filter(visible);
+    if (!hijos.length) return null;
+    const dentro = hijos.some((h) => path === h.href || path.startsWith(`${h.href}/`));
+    const desplegado = grupos[it.href] ?? dentro;
+    return (
+      <div key={it.href}>
+        <button type="button" onClick={() => setGrupos((g) => ({ ...g, [it.href]: !desplegado }))} aria-expanded={desplegado}
+          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-tinte/[0.04] hover:text-text ${dentro ? "text-text" : "text-muted"}`}>
+          <span className="w-5 text-center text-base leading-none" aria-hidden>{it.emoji}</span>
+          <span className="flex-1 truncate">{it.label}</span>
+          <ChevronDown size={14} className={`shrink-0 transition-transform ${desplegado ? "rotate-180" : ""}`} aria-hidden />
+        </button>
+        {desplegado && <div className="mt-0.5 space-y-0.5">{hijos.map((h) => item(h, true))}</div>}
+      </div>
+    );
+  };
+
   const contenido = (
     <>
       <div className="flex items-center gap-2.5 px-3 pt-5 pb-4">
-        <Logo />
+        <Link href="/inicio" aria-label="Ir a Inicio" className="shrink-0"><Logo /></Link>
         <div className="min-w-0 flex-1">
-          <div className="font-display font-semibold tracking-tight leading-tight">Torre de Control</div>
-          {sociedades ? (
-            <select value={vista ?? ""} onChange={(e) => verSociedad(e.target.value)} disabled={cambiando}
-              aria-label="Qué Torre de control ver"
-              className="mt-0.5 -ml-1 max-w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-muted hover:border-line hover:text-text focus:border-line">
-              <option value="" className="bg-bg text-text">Todas las sociedades</option>
-              {sociedades.map((s) => <option key={s} value={s} className="bg-bg text-text">{s}</option>)}
-            </select>
-          ) : (
-            <div className="text-[11px] text-muted truncate">{sociedad}</div>
-          )}
+          <Link href="/inicio" className="block font-display font-semibold tracking-tight leading-tight">Centro de Control</Link>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            {sociedades ? (
+              <select value={vista ?? ""} onChange={(e) => verSociedad(e.target.value)} disabled={cambiando}
+                aria-label="Qué sociedad ver"
+                className="-ml-1 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-muted hover:border-line hover:text-text focus:border-line">
+                <option value="" className="bg-bg text-text">Todas las sociedades</option>
+                {sociedades.map((s) => <option key={s} value={s} className="bg-bg text-text">{s}</option>)}
+              </select>
+            ) : (
+              <div className="min-w-0 flex-1 text-[11px] text-muted truncate">{sociedad}</div>
+            )}
+            {tieneModulo(acceso, "guias") && <Link href="/en-vivo" title="Ver la operación en vivo"
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                path.startsWith("/en-vivo") ? "border-red/60 bg-red/15 text-text" : "border-red/40 text-red hover:bg-red/10"
+              }`}>
+              <span className="pulso size-1.5 rounded-full bg-red shadow-[0_0_8px_var(--red)]" />
+              En vivo
+            </Link>}
+          </div>
         </div>
-        {tieneModulo(acceso, "guias") && <Link href="/en-vivo" title="Ver la operación en vivo"
-          className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-            path.startsWith("/en-vivo") ? "border-red/60 bg-red/15 text-text" : "border-red/40 text-red hover:bg-red/10"
-          }`}>
-          <span className="pulso size-1.5 rounded-full bg-red shadow-[0_0_8px_var(--red)]" />
-          En vivo
-        </Link>}
       </div>
       <nav className="flex-1 overflow-y-auto px-2 space-y-5">
-        <div className="space-y-0.5">{MENU_JOALIX.filter((it) => !it.soloOwner).map(item)}</div>
+        <div className="space-y-0.5">{MENU_JOALIX.filter((it) => !it.soloOwner).map((it) => (it.hijos ? grupo(it) : item(it)))}</div>
         {MENU_EN_VIVO.some((it) => !it.modulo || tieneModulo(acceso, it.modulo)) && (
           <div>
             <div className="px-3 pb-1.5 text-[11px] uppercase tracking-wider text-muted/70">En vivo</div>
-            <div className="space-y-0.5">{MENU_EN_VIVO.map(item)}</div>
+            <div className="space-y-0.5">{MENU_EN_VIVO.map((it) => item(it))}</div>
           </div>
         )}
-        <div className="space-y-0.5">{MENU_PRONTO.map(item)}</div>
+        <div className="space-y-0.5">{MENU_PRONTO.map((it) => item(it))}</div>
         {/* Usuario maestro: lo que nadie más puede ver, sin importar la sociedad. */}
         {esOwner && (
           <div className="rounded-xl border border-amber/25 bg-amber/[0.04] py-1.5">
@@ -102,7 +130,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
                 {porAceptar === 1 ? "1 registro por aceptar" : `${porAceptar} registros por aceptar`}
               </Link>
             )}
-            <div className="space-y-0.5">{MENU_JOALIX.filter((it) => it.soloOwner).map(item)}</div>
+            <div className="space-y-0.5">{MENU_JOALIX.filter((it) => it.soloOwner).map((it) => item(it))}</div>
           </div>
         )}
       </nav>
@@ -122,7 +150,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
       <div className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-line bg-bg/85 backdrop-blur">
         <div className="flex items-center gap-2">
           <Logo />
-          <span className="font-display font-semibold tracking-tight">Torre de Control</span>
+          <span className="font-display font-semibold tracking-tight">Centro de Control</span>
         </div>
         <button onClick={() => setAbierto(!abierto)} className="rounded-xl border border-line p-2 text-muted hover:text-text" aria-label={abierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={abierto}>
           {abierto ? <X size={18} /> : <Menu size={18} />}

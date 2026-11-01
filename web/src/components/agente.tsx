@@ -347,13 +347,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               <div className="text-xs text-muted">
                 {modo === "automatico"
                   ? creaRemision
-                    ? "La Torre crea sola en Effi la remisión y la guía de cada orden, según el horario."
-                    : "La Torre crea sola en Effi la guía de cada remisión, según el horario (la remisión se hace en Effi)."
+                    ? "El Centro de Control crea sola en Effi la remisión y la guía de cada orden, según el horario."
+                    : "El Centro de Control crea sola en Effi la guía de cada remisión, según el horario (la remisión se hace en Effi)."
                   : creaEnEffi
-                    ? "La Torre no crea nada sola en Effi: crea cuando pulsas “Ejecutar ahora” o “Ejecutar” en una orden."
+                    ? "El Centro de Control no crea nada sola en Effi: crea cuando pulsas “Ejecutar ahora” o “Ejecutar” en una orden."
                     : porOrden
-                      ? "La Torre no crea nada sola en Effi: crea solo cuando pulsas “Ejecutar” en una orden, con el paso y la transportadora que escojas."
-                      : "La Torre solo revisa: la creación en Effi aún no está montada para este país."}
+                      ? "El Centro de Control no crea nada sola en Effi: crea solo cuando pulsas “Ejecutar” en una orden, con el paso y la transportadora que escojas."
+                      : "El Centro de Control solo revisa: la creación en Effi aún no está montada para este país."}
                 {datos.config?.ultima_corrida && <> · última revisión {haceCuanto(datos.config.ultima_corrida)}</>}
               </div>
               {datos.config?.ultimo_error && <div className="text-xs text-red mt-0.5">{datos.config.ultimo_error}</div>}
@@ -545,7 +545,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
           texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
         { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.", conRemision: true, conGuia: true,
-          texto: "Solo lo que necesita una persona. Se concilia sola con Effi cada minuto: sale de aquí apenas la orden tenga remisión y guía (las haga la Torre o alguien a mano) o si la anulan. Al ejecutar o reintentar, el resultado sale en Estado: ✓ hecha, ↻ Effi falló de paso (el agente reintenta solo) o ⚠ requiere verificación humana." },
+          texto: "Solo lo que necesita una persona. Se concilia sola con Effi cada minuto: sale de aquí apenas la orden tenga remisión y guía (las haga el Centro de Control o alguien a mano) o si la anulan. Al ejecutar o reintentar, el resultado sale en Estado: ✓ hecha, ↻ Effi falló de paso (el agente reintenta solo) o ⚠ requiere verificación humana." },
         { titulo: "Remisión anulada", filas: anuladasRem, vacio: "Ninguna remisión anulada pendiente.", conRemision: true, conGuia: true,
           texto: "Effi anuló la remisión (el proveedor rechazó el dropshipping o alguien la anuló). No es novedad del agente: queda aquí para decidir si se anula la orden o se hace con otro proveedor, y sale sola cuando eso pase." },
       ]).map((s) => (
@@ -667,7 +667,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                     )}
                     {o.decision === "descartar" && <div className="mt-1 text-[11px] text-muted">Descartada por {o.decision_por ?? "una persona"}</div>}
                     {o.plan_estado === "creada" && (
-                      <div className="mt-1 text-[11px] text-green">✓ Hecha por la Torre: sale de aquí cuando Effi lo confirme, en unos minutos</div>
+                      <div className="mt-1 text-[11px] text-green">✓ Hecha por el Centro de Control: sale de aquí cuando Effi lo confirme, en unos minutos</div>
                     )}
                   </td>
                   <td className="px-3 py-2 min-w-[13rem] max-w-[17rem]">
@@ -757,7 +757,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                           </span>
                         ) : (
                           <button onClick={() => setConfirmarResuelta(clave)} disabled={guardando === clave}
-                            title="Se arregló fuera de la Torre (el cliente canceló, salió con otra orden…): sale de la lista y el agente no la crea"
+                            title="Se arregló fuera de el Centro de Control (el cliente canceló, salió con otra orden…): sale de la lista y el agente no la crea"
                             className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-muted hover:text-text hover:border-tinte/30">
                             Ya está resuelta
                           </button>
@@ -839,7 +839,7 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
     const res = (o.plan?.resultado ?? {}) as { remision?: { id_transaccion?: string; id?: number }; guia?: { guia?: string } };
     return (
       <div className="text-xs">
-        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-green bg-tinte/5">✓ Creada por la Torre</span>
+        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-green bg-tinte/5">✓ Creada por el Centro de Control</span>
         <div className="text-muted mt-1">RV {res.remision?.id_transaccion ?? res.remision?.id ?? "—"} · guía {res.guia?.guia ?? "—"}</div>
       </div>
     );

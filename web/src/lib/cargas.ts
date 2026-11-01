@@ -233,7 +233,7 @@ function paisMeta(pais: string | null, campana: string) {
 function metaBm(filas: Record<string, Celda>[]): Lectura {
   const colMonto = Object.keys(filas[0] ?? {}).find((k) => k.startsWith("MONTO GASTADO") || k.startsWith("IMPORTE GASTADO")) ?? "";
   const avisos: string[] = [];
-  if (colMonto && !colMonto.includes("COP")) avisos.push(`El monto viene en "${colMonto}"; la Torre espera COP.`);
+  if (colMonto && !colMonto.includes("COP")) avisos.push(`El monto viene en "${colMonto}"; el Centro de Control espera COP.`);
   const validas = filas.filter((r) => texto(r["NOMBRE DE LA CUENTA"]) && fecha(r["DIA"])); // la primera fila es el total del informe
   const sinPais: string[] = [];
   const out = validas.flatMap((r) => {

@@ -1,5 +1,5 @@
 // Menú lateral: las pestañas del Dashboard Joalix Group (mismo orden, nombre y emoji)
-// más las vistas en vivo que ya tiene la Torre de Control.
+// más las vistas en vivo que ya tiene el Centro de Control.
 
 import type { ModuloId } from "./modulos";
 
@@ -14,16 +14,22 @@ export type ItemMenu = {
   soloProveeduria?: boolean; // solo si el usuario ve alguna empresa de proveeduría
   noProveeduria?: boolean; // oculto para socios y trabajadores que solo ven proveeduría (el dueño lo ve igual)
   modulo?: ModuloId;
+  icono?: string; // imagen en lugar del emoji (p. ej. el logo de Lucid)
+  hijos?: ItemMenu[]; // grupo que se abre y se cierra (el grupo sale solo si la persona ve algún hijo)
 };
 
-// Orden del menú: lo del día a día arriba (Datos, Disp. en Oficina, Novedades, Agente), luego lo en vivo y al final lo
+// Orden del menú: lo del día a día arriba (Inicio, Data Experience, Novedades logística, ValerIA/Agente), luego lo en vivo y al final lo
 // que todavía no está ("pronto"). Las de solo dueño van en "Solo para ti".
 export const MENU_JOALIX: ItemMenu[] = [
-  { href: "/", label: "Datos", emoji: "🛒", estado: "vivo", modulo: "resumen" },
-  { href: "/oficina", label: "Disp. en Oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
-  { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades", noProveeduria: true },
+  { href: "/inicio", label: "Inicio", emoji: "🏠", estado: "vivo" },
+  { href: "/", label: "Data Experience", emoji: "🛒", estado: "vivo", modulo: "resumen" },
+  { href: "#logistica", label: "Novedades logística", emoji: "🚚", estado: "vivo", hijos: [
+    { href: "/oficina", label: "Disponible en oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
+    { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades", noProveeduria: true },
+  ] },
+  // El nombre lo pone la barra lateral según la sociedad: ValerIA en Joalix, Agente en las demás.
   { href: "/agente", label: "Agente", emoji: "🤖", estado: "vivo", modulo: "automatizacion" },
-  { href: "/pedidos-lucid", label: "Pedidos Lucid", emoji: "📝", estado: "vivo", modulo: "pedidos_lucid", noProveeduria: true },
+  { href: "/pedidos-lucid", label: "Data Lucid", emoji: "📝", icono: "/lucid.svg", estado: "vivo", modulo: "pedidos_lucid", noProveeduria: true },
   { href: "/proveeduria", label: "Proveeduría", emoji: "🏭", estado: "vivo", modulo: "proveeduria", soloProveeduria: true },
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
   { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true, soloSocios: true },

@@ -34,7 +34,7 @@ export async function proxy(request: NextRequest) {
   }
   if (data?.claims && enLogin) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/inicio";
     url.search = "";
     return NextResponse.redirect(url);
   }

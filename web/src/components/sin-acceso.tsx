@@ -8,7 +8,7 @@ export function SinAcceso({ motivo, nombre, email }: { motivo: "pendiente" | "si
       <div className="w-full max-w-md text-center">
         <div className="flex items-center gap-2.5 justify-center mb-6">
           <Logo />
-          <span className="font-display text-lg font-semibold tracking-tight">Torre de Control</span>
+          <span className="font-display text-lg font-semibold tracking-tight">Centro de Control</span>
         </div>
         <div className="card card-glow p-7">
           <div className="text-4xl mb-3">{motivo === "pendiente" ? "⏳" : "🔒"}</div>

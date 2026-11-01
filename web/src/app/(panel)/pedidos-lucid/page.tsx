@@ -4,7 +4,7 @@ import { hoyBogota } from "@/lib/filtros";
 import { ordenCuenta } from "@/lib/paises";
 import { PedidosLucid } from "@/components/pedidos-lucid";
 
-// 📝 Pedidos Lucid: la persona encargada llena cada día cuántos pedidos entraron a LucidSales en cada país (el mismo
+// Data Lucid (antes Pedidos Lucid): la persona encargada llena cada día cuántos pedidos entraron a LucidSales en cada país (el mismo
 // número de la hoja "RELACION DE PEDIDOS JOALIX"). Con eso 📢 Publicidad saca el CPA real del día: gasto ÷ pedidos.
 // Módulo exclusivo: solo el dueño y a quien se le marque en /usuarios. Puede corregir los últimos 7 días.
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -38,7 +38,10 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
   return (
     <>
       <div className="pt-8 mb-6">
-        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">📝 Pedidos Lucid</h1>
+        <h1 className="flex items-center gap-3 font-display text-3xl sm:text-4xl font-semibold tracking-tight">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/lucid.svg" alt="" className="size-9" />Data Lucid
+        </h1>
         <p className="text-sm text-muted mt-1.5">
           Cuántos pedidos entraron a LucidSales cada día en cada país.
           {esOwner ? " Al dar Enter pide confirmar. Tú puedes corregir cualquier día." : " Al dar Enter pide confirmar. Se pueden corregir los últimos 7 días."}

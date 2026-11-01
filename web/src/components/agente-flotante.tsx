@@ -27,7 +27,7 @@ const MODO: Record<Modo, { label: string; color: string }> = {
 // Igual que en /agente: Guatemala y Ecuador hacen remisión y guía.
 const CREA = ["TIENDA_GT", "TIENDA_EC"];
 
-export function AgenteFlotante({ esOwner }: { esOwner: boolean }) {
+export function AgenteFlotante({ esOwner, nombre }: { esOwner: boolean; nombre: string }) {
   const path = usePathname();
   const [abierto, setAbierto] = useState(false);
   const [paises, setPaises] = useState<Pais[] | null>(null);
@@ -71,7 +71,7 @@ export function AgenteFlotante({ esOwner }: { esOwner: boolean }) {
         <button onClick={() => setAbierto(true)} title="Abrir el agente sin salir de esta pantalla"
           className="fixed right-0 top-1/2 z-30 -translate-y-1/2 flex flex-col items-center gap-1.5 rounded-l-2xl border border-r-0 border-blue/40 bg-panel/95 px-2 py-3 shadow-[0_0_24px_rgb(47_123_255_/_0.25)] backdrop-blur hover:bg-blue/15">
           <span className="text-lg leading-none">🤖</span>
-          <span className="text-[11px] font-semibold tracking-wider text-text [writing-mode:vertical-rl] rotate-180">Agente</span>
+          <span className="text-[11px] font-semibold tracking-wider text-text [writing-mode:vertical-rl] rotate-180">{nombre}</span>
           {corriendo && <span className="pulso size-2 rounded-full bg-green shadow-[0_0_8px_var(--green)]" title="Corriendo" />}
           {alertas > 0 && <span className="rounded-full bg-red px-1.5 py-0.5 text-[10px] font-bold text-white">{alertas}</span>}
         </button>
@@ -79,9 +79,9 @@ export function AgenteFlotante({ esOwner }: { esOwner: boolean }) {
       {abierto && (
         <div className="fixed inset-0 z-40 flex justify-end">
           <button className="flex-1 bg-black/40" onClick={() => setAbierto(false)} aria-label="Cerrar el agente" />
-          <aside className="flex h-full w-[24rem] max-w-[92vw] flex-col border-l border-line bg-panel shadow-2xl entra" role="dialog" aria-label="Agente">
+          <aside className="flex h-full w-[24rem] max-w-[92vw] flex-col border-l border-line bg-panel shadow-2xl entra" role="dialog" aria-label={nombre}>
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <span className="font-display text-lg font-semibold">🤖 Agente</span>
+              <span className="font-display text-lg font-semibold">🤖 {nombre}</span>
               <button onClick={() => setAbierto(false)} className="rounded-lg p-1.5 text-muted hover:text-text" aria-label="Cerrar"><X size={18} /></button>
             </div>
             <div className="flex-1 space-y-3 overflow-y-auto p-3">

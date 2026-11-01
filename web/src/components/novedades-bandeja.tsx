@@ -343,7 +343,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                       : (
                         <div>
                           {sigue ? (
-                            <button onClick={() => enviar(f)} disabled={ocupada[f.id]} title="Se guarda en la Torre; no se envía a Effi"
+                            <button onClick={() => enviar(f)} disabled={ocupada[f.id]} title="Se guarda en el Centro de Control; no se envía a Effi"
                               className="inline-flex items-center gap-1 rounded-md bg-naranja px-2.5 py-1 text-[11px] font-bold text-black disabled:opacity-40">
                               📌 Guardar
                             </button>

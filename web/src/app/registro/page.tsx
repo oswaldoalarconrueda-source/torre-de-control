@@ -8,7 +8,7 @@ export default function RegistroPage() {
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2.5 justify-center mb-6">
           <Logo />
-          <span className="font-display text-lg font-semibold tracking-tight">Torre de Control</span>
+          <span className="font-display text-lg font-semibold tracking-tight">Centro de Control</span>
         </div>
         <div className="card card-glow p-6 sm:p-7">
           <h1 className="font-display text-2xl font-semibold tracking-tight">Solicitar acceso</h1>

@@ -1,17 +1,17 @@
-// Módulos de la Torre que el dueño le puede dar a un empleado o a un proveedor (los socios ven todos los de sus
+// Módulos del Centro de Control que el dueño le puede dar a un empleado o a un proveedor (los socios ven todos los de sus
 // tiendas y el dueño ve todo). Cada módulo abre una o varias pantallas del menú.
 
 export const MODULOS = [
-  { id: "resumen", nombre: "Datos", detalle: "Ventas, despachos, PyG y utilidad", rutas: ["/"] },
+  { id: "resumen", nombre: "Data Experience", detalle: "Ventas, despachos, PyG y utilidad", rutas: ["/"] },
   { id: "global", nombre: "Global", detalle: "Todos los países juntos", rutas: ["/global"] },
   { id: "oficina", nombre: "Disponible en oficina", detalle: "CRM para llamar a los clientes", rutas: ["/oficina"] },
   { id: "guias", nombre: "Guías y En vivo", detalle: "Transportadoras, ciudades y la operación en vivo", rutas: ["/guias", "/en-vivo"] },
   { id: "novedades", nombre: "Novedades", detalle: "Novedades de las guías", rutas: ["/novedades"] },
   { id: "dinero", nombre: "Dinero", detalle: "Wallet y PyG, Wallet en vivo y guías sin liquidar", rutas: ["/dinero", "/wallet-en-vivo", "/sin-liquidar"] },
-  { id: "automatizacion", nombre: "Agente", detalle: "Órdenes de venta y novedades del agente", rutas: ["/agente"] },
+  { id: "automatizacion", nombre: "ValerIA / Agente", detalle: "Órdenes de venta y novedades del agente", rutas: ["/agente"] },
   { id: "proveeduria", nombre: "Proveeduría", detalle: "Tablero de Distrilatam: ventas a las tiendas, inventario, compras y cartera", rutas: ["/proveeduria"] },
   // Lo llenan el dueño, los socios y la empleada que tenga el módulo marcado.
-  { id: "pedidos_lucid", nombre: "Pedidos Lucid", detalle: "Llenar cada día los pedidos de LucidSales por país (los socios también lo llenan)", rutas: ["/pedidos-lucid"] },
+  { id: "pedidos_lucid", nombre: "Data Lucid", detalle: "Llenar cada día los pedidos de LucidSales por país (los socios también lo llenan)", rutas: ["/pedidos-lucid"] },
 ] as const;
 export type ModuloId = (typeof MODULOS)[number]["id"];
 // Módulos exclusivos: solo el dueño y a quien se le marquen; a los socios no les llegan solos.

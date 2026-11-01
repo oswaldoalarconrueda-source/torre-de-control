@@ -32,7 +32,7 @@ export function NuevaClaveForm() {
       setCargando(false);
       return setError(error.message);
     }
-    router.replace("/");
+    router.replace("/inicio");
     router.refresh();
   }
 

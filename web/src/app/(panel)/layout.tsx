@@ -7,7 +7,7 @@ import { SinAcceso } from "@/components/sin-acceso";
 import { AgenteFlotante } from "@/components/agente-flotante";
 import { AlertaHuella } from "@/components/alerta-huella";
 import { tieneModulo } from "@/lib/modulos";
-import { infoCuenta } from "@/lib/paises";
+import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { SelectorTema } from "@/components/selector-tema";
 
 export default async function PanelLayout({ children }: LayoutProps<"/">) {
@@ -16,7 +16,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const [usuario, { data: ultimo }, { data: cuentas }, { data: lista }] = await Promise.all([
     getUsuario(),
     supabase.rpc("app_ultimo_sync"),
-    supabase.from("effi_accounts").select("sociedad,tipo"),
+    supabase.from("effi_accounts").select("slug,sociedad,tipo"),
     supabase.from("app_sociedades").select("nombre").order("orden"),
   ]);
   if (!usuario) redirect("/login");
@@ -26,7 +26,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
   }
   const sociedades = [...new Set((cuentas ?? []).map((c) => c.sociedad as string))];
   const sociedad = sociedades.join(" · ") || "Sin tiendas asignadas";
-  // El dueño escoge qué Torre mira (todas o una sociedad); los demás ven solo la suya.
+  // El dueño escoge qué sociedad mira (todas o una); los demás ven solo la suya.
   const esOwner = usuario.rol === "owner";
   const [{ data: yo }, { count: porAceptar }, { data: caida }] = esOwner
     ? await Promise.all([
@@ -37,17 +37,19 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
       supabase.from("effi_webhook_incidentes").select("cuentas,desde").is("resuelto_en", null).order("id", { ascending: false }).limit(1).maybeSingle(),
     ])
     : [{ data: null }, { count: 0 }, { data: null }];
+  // ValerIA si ve alguna tienda de Joalix; en las demás sociedades, Agente.
+  const agente = (cuentas ?? []).some((c) => nombreAgente(c.slug as string) === "ValerIA") ? "ValerIA" : "Agente";
   const opciones = esOwner ? (lista ?? []).map((x) => x.nombre as string) : null;
 
   return (
     <div className="lg:flex">
       <Suspense>
         <Sidebar acceso={usuario} email={usuario.email} sociedad={sociedad} ultimoSync={haceCuanto(ultimo as string | null)}
-          sociedades={opciones} vista={(yo?.sociedad_vista as string | null) ?? null} porAceptar={porAceptar ?? 0}
+          agente={agente} sociedades={opciones} vista={(yo?.sociedad_vista as string | null) ?? null} porAceptar={porAceptar ?? 0}
           conProveeduria={(cuentas ?? []).some((c) => c.tipo === "proveeduria")}
           soloProveeduria={!!cuentas?.length && cuentas.every((c) => c.tipo === "proveeduria")} />
       </Suspense>
-      {tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} />}
+      {tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} nombre={agente} />}
       {/* Huella del cliente: aviso al hacerse cada guía de Guatemala (solo trae las tiendas que el usuario ve). */}
       {tieneModulo(usuario, "automatizacion") && <AlertaHuella />}
       <main className="relative flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-16 max-w-[1400px]">
@@ -56,7 +58,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
           <div className="mt-16 rounded-xl border border-red/50 bg-red/10 px-4 py-3 text-sm">
             <b className="text-red">🚨 Los webhooks de Effi dejaron de llegar</b>
             {" "}({(caida.cuentas as string[]).map((c) => infoCuenta(c).nombre).join(", ")}) desde {haceCuanto(caida.desde as string)}.
-            <span className="text-muted"> La Torre sigue al día: la API la está actualizando cada minuto. Conviene avisarle a Effi.</span>
+            <span className="text-muted"> El Centro de Control sigue al día: la API la está actualizando cada minuto. Conviene avisarle a Effi.</span>
           </div>
         )}
         {children}

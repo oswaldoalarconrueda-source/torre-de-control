@@ -50,7 +50,7 @@ function CpaReal({ porDia, pedidos }: { porDia: Dia[]; pedidos: { cuenta: string
     </>
   );
   return (
-    <Panel titulo="CPA real por día" detalle="Gasto en Meta del día ÷ pedidos que entraron a LucidSales ese día (los llena la encargada en 📝 Pedidos Lucid)" className="mb-3">
+    <Panel titulo="CPA real por día" detalle="Gasto en Meta del día ÷ pedidos que entraron a LucidSales ese día (los llena la encargada en Data Lucid)" className="mb-3">
       <TablaScroll>
         <thead>
           <tr>

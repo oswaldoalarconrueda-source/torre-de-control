@@ -57,14 +57,14 @@ export function LoginForm() {
         return;
       }
       recordarCorreo();
-      router.replace("/");
+      router.replace("/inicio");
       router.refresh();
     } else {
       const { data, error } = await supabase.auth.signUp({ email, password: clave });
       setCargando(false);
       if (error) return setMensaje({ tipo: "error", texto: error.message });
       if (data.session) {
-        router.replace("/");
+        router.replace("/inicio");
         router.refresh();
       } else {
         setMensaje({ tipo: "ok", texto: "Cuenta creada. Revisa tu correo para confirmarla y luego entra." });

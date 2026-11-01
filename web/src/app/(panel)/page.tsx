@@ -30,7 +30,7 @@ export default async function DatosPage({ searchParams }: PageProps<"/">) {
   return (
     <>
       <Encabezado
-        titulo="🛒 Datos"
+        titulo="🛒 Data Experience"
         tipos={["tienda", "proveeduria"]}
         subtitulo={`${pais.bandera} ${pais.nombre} · montos en ${pais.divisa}. Guías y órdenes creadas en el periodo con su estado actual; el wallet y la cartera mandan (si hay pago, cuenta como entregada).`}
         f={f}

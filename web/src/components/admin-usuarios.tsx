@@ -233,7 +233,7 @@ function Editor({ u, cuentas, sociedades: listaSociedades, nuevo = false, onList
             {todasSociedades.map((s) => (
               <button key={s} type="button" onClick={() => setSociedades(alternar(sociedades, s))} className={chip(sociedades.includes(s))}>
                 <div className="font-semibold text-sm">{sociedades.includes(s) ? "✓ " : ""}{s}</div>
-                <div className="mt-0.5">{cuentas.filter((c) => c.sociedad === s && c.tipo === "tienda").map((c) => `${bandera(c.slug)} ${c.nombre}`).join(" · ") || "Tiendas aún sin conectar a la Torre"}</div>
+                <div className="mt-0.5">{cuentas.filter((c) => c.sociedad === s && c.tipo === "tienda").map((c) => `${bandera(c.slug)} ${c.nombre}`).join(" · ") || "Tiendas aún sin conectar a el Centro de Control"}</div>
               </button>
             ))}
           </div>
@@ -254,7 +254,7 @@ function Editor({ u, cuentas, sociedades: listaSociedades, nuevo = false, onList
                   ))}
                 </div>
               </div>
-            )) : <p className="text-xs text-amber">Todavía no hay cuentas de {rol === "proveedor" ? "Distrilatam" : "tiendas"} conectadas a la Torre.</p>}
+            )) : <p className="text-xs text-amber">Todavía no hay cuentas de {rol === "proveedor" ? "Distrilatam" : "tiendas"} conectadas a el Centro de Control.</p>}
           </div>
           <div>
             <div className="mb-1.5 text-[11px] uppercase tracking-widest font-mono text-muted">3. Módulos que puede ver</div>
