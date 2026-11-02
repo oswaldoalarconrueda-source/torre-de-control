@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
-import { rangoActivo, type Rango } from "@/lib/filtros";
+import { etiquetaRango, rangoActivo, type Rango } from "@/lib/filtros";
+
+export { etiquetaRango };
 
 // Calendario tipo Shopify (como el del Dashboard Joalix): un botón con el periodo; al abrirlo,
 // atajos a la izquierda y dos meses a la derecha. Nada cambia hasta "Aplicar".
@@ -12,14 +14,6 @@ const MESES_LARGO = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "jul
 const DIAS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
 
 const partes = (iso: string) => ({ a: Number(iso.slice(0, 4)), m: Number(iso.slice(5, 7)) - 1, d: Number(iso.slice(8, 10)) });
-
-export function etiquetaRango(d: string, h: string) {
-  const x = partes(d), y = partes(h);
-  if (d === h) return `${x.d} ${MESES[x.m]} ${x.a}`;
-  if (x.a !== y.a) return `${x.d} ${MESES[x.m]} ${x.a} – ${y.d} ${MESES[y.m]} ${y.a}`;
-  if (x.m !== y.m) return `${x.d} ${MESES[x.m]} – ${y.d} ${MESES[y.m]} ${y.a}`;
-  return `${x.d}–${y.d} ${MESES[x.m]} ${x.a}`;
-}
 
 // "YYYY-MM" ± n meses.
 const moverMes = (ym: string, n: number) => {

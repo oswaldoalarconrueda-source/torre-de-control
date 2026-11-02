@@ -31,6 +31,9 @@ export const dias = (v: unknown) => {
   return x == null ? "—" : `${x.toFixed(1).replace(".", ",")} d`;
 };
 
+// Nombres de personas: iniciales en mayúscula y lo demás en minúscula ("ANA maria" → "Ana Maria").
+export const nombrePropio = (s: string) => s.trim().toLocaleLowerCase("es").replace(/(^|[\s-])(\p{L})/gu, (_, a: string, b: string) => a + b.toLocaleUpperCase("es"));
+
 export function haceCuanto(iso: string | null | undefined) {
   if (!iso) return "sin datos";
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);

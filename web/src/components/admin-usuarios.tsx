@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Link2, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { haceCuanto } from "@/lib/formato";
+import { haceCuanto, nombrePropio } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
 import { MODULOS, ROLES, type Rol } from "@/lib/modulos";
 
@@ -135,7 +135,7 @@ function Persona({ u }: { u: UsuarioAdmin }) {
   return (
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">{u.nombre ?? u.email}</span>
+        <span className="font-semibold">{u.nombre ? nombrePropio(u.nombre) : u.email}</span>
         <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ color: r.color, background: "color-mix(in srgb, var(--tinte) 6%, transparent)" }}>{r.texto}</span>
         {!u.activo && <span className="rounded-full bg-red/15 px-2 py-0.5 text-[11px] font-semibold text-red">Desactivado</span>}
       </div>

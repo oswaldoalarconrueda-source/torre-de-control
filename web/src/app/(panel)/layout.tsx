@@ -9,6 +9,7 @@ import { AlertaHuella } from "@/components/alerta-huella";
 import { tieneModulo } from "@/lib/modulos";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { SelectorTema } from "@/components/selector-tema";
+import { Latido } from "@/components/latido";
 
 export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
@@ -43,6 +44,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
 
   return (
     <div className="lg:flex">
+      <Latido />
       <Suspense>
         <Sidebar acceso={usuario} email={usuario.email} sociedad={sociedad} ultimoSync={haceCuanto(ultimo as string | null)}
           agente={agente} sociedades={opciones} vista={(yo?.sociedad_vista as string | null) ?? null} porAceptar={porAceptar ?? 0}

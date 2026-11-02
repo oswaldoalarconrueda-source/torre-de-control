@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { dinero, entero, minutosDesde, transCorta } from "@/lib/formato";
+import { dinero, entero, minutosDesde, nombrePropio, transCorta } from "@/lib/formato";
 import { sumarDias } from "@/lib/filtros";
 import { BarraHorizontal } from "./barra-horizontal";
 import { infoCuenta } from "@/lib/paises";
@@ -383,7 +383,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
             <tbody>
               {asesoras.map((a) => (
                 <tr key={a.email} className="border-b border-line/60">
-                  <td className="px-3 py-2 font-semibold">{a.nombre}</td>
+                  <td className="px-3 py-2 font-semibold">{nombrePropio(a.nombre)}</td>
                   <td className="px-3 py-2 num">{entero(a.llamadas)}</td>
                   <td className="px-3 py-2 num">{entero(a.contactados)} <span className="text-muted text-xs">{a.llamadas ? `${Math.round((a.contactados / a.llamadas) * 100)}%` : ""}</span></td>
                   <td className="px-3 py-2 num text-blue-2">{entero(a.solucionadas)}</td>

@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, Menu, X } from "lucide-react";
+import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
 import { esSocio, tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
+
+const MENU_OCULTO = "centro.menu-oculto";
 
 export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, agente, porAceptar = 0, conProveeduria = false, soloProveeduria = false }: {
   acceso: Acceso; email: string; ultimoSync: string; sociedad: string; sociedades: string[] | null; vista: string | null;
@@ -23,6 +25,13 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [grupos, setGrupos] = useState<Record<string, boolean>>({}); // grupos que la persona abrió o cerró a mano
+  // Ocultar el menú en computador para ganar espacio; se recuerda en este navegador.
+  const [oculto, setOculto] = useState(false);
+  useEffect(() => { try { setOculto(localStorage.getItem(MENU_OCULTO) === "1"); } catch { /* sin almacenamiento */ } }, []);
+  const ocultar = (v: boolean) => {
+    setOculto(v);
+    try { localStorage.setItem(MENU_OCULTO, v ? "1" : "0"); } catch { /* sin almacenamiento */ }
+  };
   const [cambiando, start] = useTransition();
   // Dueño: qué sociedad mira. Se guarda en su usuario y la base filtra todo por esa sociedad; el país elegido se suelta
   // porque puede ser de otra sociedad.
@@ -88,7 +97,13 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
       <div className="flex items-center gap-2.5 px-3 pt-5 pb-4">
         <Link href="/inicio" aria-label="Ir a Inicio" className="shrink-0"><Logo /></Link>
         <div className="min-w-0 flex-1">
-          <Link href="/inicio" className="block font-display font-semibold tracking-tight leading-tight">Centro de Control</Link>
+          <div className="flex items-center justify-between gap-1">
+            <Link href="/inicio" className="min-w-0 truncate font-display font-semibold tracking-tight leading-tight">Centro de Control</Link>
+            <button type="button" onClick={() => ocultar(true)} title="Ocultar el menú" aria-label="Ocultar el menú"
+              className="hidden shrink-0 rounded-md p-1 text-muted hover:bg-tinte/[0.06] hover:text-text lg:inline-flex">
+              <PanelLeftClose size={15} aria-hidden />
+            </button>
+          </div>
           <div className="mt-0.5 flex items-center gap-1.5">
             {sociedades ? (
               <select value={vista ?? ""} onChange={(e) => verSociedad(e.target.value)} disabled={cambiando}
@@ -164,9 +179,16 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
       )}
 
       {/* Escritorio: menú lateral fijo */}
-      <aside className="hidden lg:flex sticky top-0 h-dvh w-60 shrink-0 flex-col border-r border-line bg-panel/60 backdrop-blur">
-        {contenido}
-      </aside>
+      {oculto ? (
+        <button type="button" onClick={() => ocultar(false)} title="Mostrar el menú" aria-label="Mostrar el menú"
+          className="fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rounded-r-xl border border-l-0 border-line bg-panel py-3 pl-1 pr-1.5 text-muted shadow-lg hover:text-text lg:inline-flex">
+          <PanelLeftOpen size={17} aria-hidden />
+        </button>
+      ) : (
+        <aside className="hidden lg:flex sticky top-0 h-dvh w-60 shrink-0 flex-col border-r border-line bg-panel/60 backdrop-blur">
+          {contenido}
+        </aside>
+      )}
     </>
   );
 }

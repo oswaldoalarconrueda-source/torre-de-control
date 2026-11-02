@@ -52,3 +52,14 @@ export function mismoDiaMesAnterior(iso: string) {
   const ultimo = new Date(Date.UTC(a, m, 0)).getUTCDate();
   return new Date(Date.UTC(a, m - 1, Math.min(d, ultimo))).toISOString().slice(0, 10);
 }
+
+const MESES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+// Periodo en texto: "29–31 oct 2026".
+export function etiquetaRango(d: string, h: string) {
+  const parte = (iso: string) => ({ a: Number(iso.slice(0, 4)), m: Number(iso.slice(5, 7)) - 1, d: Number(iso.slice(8, 10)) });
+  const x = parte(d), y = parte(h);
+  if (d === h) return `${x.d} ${MESES_CORTO[x.m]} ${x.a}`;
+  if (x.a !== y.a) return `${x.d} ${MESES_CORTO[x.m]} ${x.a} – ${y.d} ${MESES_CORTO[y.m]} ${y.a}`;
+  if (x.m !== y.m) return `${x.d} ${MESES_CORTO[x.m]} – ${y.d} ${MESES_CORTO[y.m]} ${y.a}`;
+  return `${x.d}–${y.d} ${MESES_CORTO[x.m]} ${x.a}`;
+}
