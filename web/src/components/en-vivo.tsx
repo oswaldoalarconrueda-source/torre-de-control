@@ -156,7 +156,9 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
   useEffect(() => {
     try {
       const g = JSON.parse(localStorage.getItem(GUARDADO) ?? "null");
-      if (Array.isArray(g?.sel) && g.sel.length && g.sel.every((c: string) => TIENDAS.includes(c))) setSel(g.sel);
+      // Solo se recuerda un país suelto. Varios guardados significan "Todas": así un país nuevo (Costa Rica) entra solo
+      // a quien había escogido Todas cuando eran menos.
+      if (Array.isArray(g?.sel) && g.sel.length === 1 && TIENDAS.includes(g.sel[0])) setSel(g.sel);
       if (VENTANAS.some((v) => v.min === g?.ventana)) setVentana(g.ventana);
       // "Hoy" y "Ayer" se guardan como atajo (al día siguiente siguen siendo hoy y ayer); otro rango, tal cual.
       const a = atajos().find((r) => r.id === g?.atajo);
