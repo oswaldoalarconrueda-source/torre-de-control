@@ -48,6 +48,7 @@ const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la rem
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const MAX_GUIAS_AHORA = 10;   // "Ejecutar ahora": guías por corrida, de a 10 para no cargar el sistema (regla del dueño)
 const ESPERA_GUIA_MIN = 15;   // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía
+const REINTENTO_GUIA_MIN = 9; // una guía que falló se reintenta una vez cada corrida de 10 minutos (no en la de antes de un corte)
 const PAGINAS_REGLAS = 30;    // guías y remisiones de 10 días (Ecuador hace unas 250 guías al día)
 const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIENDA_CO: 'COP', TIENDA_CR: 'CRC', AUNCLIC_GT: 'GTQ', VALKA_GT: 'GTQ' };
 // Países que escogen transportadora por dirección (ids de transportadora en Effi). Los demás usan la más común.
@@ -101,10 +102,19 @@ function asesoraCO(direccion: string, ciudad: string, dpto: string, soloInter: b
   if (dp === 'ATLANTICO' || dp === 'MAGDALENA' || c.startsWith('BUENAVENTURA')) return { id: 4, regla: 'Atlántico, Magdalena o Buenaventura' };
   return null;
 }
-async function recomendacionCO(direccion: string, ciudad: string, dpto: string) {
+async function recomendacionCO(direccion: string, ciudad: string, dpto: string, remitente: string | number) {
   const r = (await rpc('auto_matriz_ruta', { p_destino: ciudad ?? '', p_dpto: dpto ?? '' })) as Json;
-  const opciones = ((r?.opciones ?? []) as Json[]).filter((o) => CO_HABILITADAS.includes(Number(o.id)));
-  const recomendada = CO_HABILITADAS.includes(Number(r?.recomendada)) ? Number(r.recomendada) : null;
+  // Regla del dueño (3-nov): solo se recomienda lo que desde la ciudad del remitente sea local, regional o nacional.
+  // Una sin dato en la matriz de cobertura solo si ninguna otra lo confirma: la de Servientrega casi no trae destinos desde Bogotá.
+  const trayectos = (await rpc('auto_trayectos_ruta', { p_cuenta: 'TIENDA_CO', p_remitente: Number(remitente), p_ciudad: ciudad ?? '', p_dpto: dpto ?? '' }).catch(() => null)) as Json | null;
+  const clase = new Map(((trayectos?.opciones ?? []) as Json[]).map((x) => [Number(x.id), String(x.clase)]));
+  const opciones = ((r?.opciones ?? []) as Json[]).filter((o) => CO_HABILITADAS.includes(Number(o.id)))
+    .map((o) => ({ ...o, trayecto: clase.get(Number(o.id)) ?? null }));
+  const fueraDeTrayecto = opciones.filter((o) => o.trayecto === 'otro').map((o) => Number(o.id));
+  // auto_matriz_ruta las trae de mayor a menor % de entrega; una sin flete es "sin datos" y no se recomienda.
+  const conFlete = opciones.filter((o) => o.flete != null);
+  const estrella = conFlete.find((o) => o.trayecto && o.trayecto !== 'otro') ?? conFlete.find((o) => !o.trayecto);
+  const recomendada = estrella ? Number(estrella.id) : null;
   // Transportadora fija de las asesoras para la ciudad (auto_restricciones, desde el 31-oct): manda sobre las demás reglas,
   // salvo la entrega en oficina. Esas ciudades se hacen manual (la condición no deja que vayan solas).
   const fija = oficinaCO(direccion) ? null : (await rpc('auto_transportadora_fija', { p_cuenta: 'TIENDA_CO', p_ciudad: ciudad ?? '', p_dpto: dpto ?? '' })) as Json | null;
@@ -114,14 +124,16 @@ async function recomendacionCO(direccion: string, ciudad: string, dpto: string) 
   // Regla del dueño (28-oct): si la regla de las asesoras y la ⭐ de la matriz dicen la misma transportadora, va sola
   // (remisión y guía, o solo la guía de una remisión hecha a mano), aunque Colombia esté en Manual.
   const coincide = asesora && !asesora.deMatriz && asesora.id === recomendada ? asesora.id : null;
-  return { asesora, numeros: { nivel: r?.nivel ?? null, recomendada, opciones }, coincide };
+  return { asesora, numeros: { nivel: r?.nivel ?? null, recomendada, opciones }, coincide, fueraDeTrayecto, oficina: !!oficinaCO(direccion) };
 }
-// Transportadora por defecto para Colombia: la de la asesora; si no hay, la ⭐; si no, la que traía el plan.
+// Transportadora por defecto para Colombia: la de la asesora, salvo que ese trayecto no sea local, regional o nacional
+// (la entrega en oficina no cambia); si no, la ⭐; si tampoco hay, la de la asesora o la que traía el plan.
 const escogerCO = (reglas: Json, rec: Awaited<ReturnType<typeof recomendacionCO>>, porDefecto: { t: Json; motivo: string }) => {
-  const id = rec.asesora?.id ?? rec.numeros.recomendada;
+  const deAsesora = !!rec.asesora && (rec.oficina || !rec.fueraDeTrayecto.includes(rec.asesora.id) || !rec.numeros.recomendada);
+  const id = deAsesora ? rec.asesora!.id : rec.numeros.recomendada;
   const t = id ? reglas?.transportes?.[String(id)] : null;
   if (!t) return porDefecto;
-  return { t, motivo: rec.asesora ? `Asesora: ${rec.asesora.regla}` : '⭐ Mayor % de entrega a esa ciudad (matriz de entrega)' };
+  return { t, motivo: deAsesora ? `Asesora: ${rec.asesora!.regla}` : '⭐ Mayor % de entrega con trayecto local, regional o nacional (matrices)' };
 };
 // Valor declarado en Colombia según la transportadora: Servientrega e Inter el valor del recaudo (Inter mínimo $45.000);
 // Envía $10.000; Coordinadora el valor del pedido hasta $100.000.
@@ -261,8 +273,10 @@ const esLimite = (g: { status: number; respuesta: Json | null }, p: Json | undef
 // cobertura y se repite con la de respaldo. Si el fallo es el límite de peticiones de Effi, no se toca la memoria ni
 // se cambia de transportadora: la guía se reintenta en la próxima corrida. Con "fija" (el dueño escogió la
 // transportadora) nunca se cambia por otra. Si Effi responde 500 vacío (pide las medidas del paquete), se repite con 1×1×1.
+// Con porPersona: si un intento anterior dejó esa llave usada, se mira esa guía en Effi; si sigue vigente ya está hecha y
+// si la anularon se intenta con llave nueva (Effi no deja dos guías vigentes para la misma remisión).
 async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, destino: { ciudad: number; nombre: string },
-  ev: (ok: boolean | null, mensaje: string, datos?: Json | null) => Promise<unknown>, fija = false) {
+  ev: (ok: boolean | null, mensaje: string, datos?: Json | null) => Promise<unknown>, fija = false, porPersona = false) {
   guia = conMedidas(cuenta, guia);
   let g = await api.post('guia_transporte', guia);
   if (g.status === 500 && !guia.alto && !(g.respuesta?.texto ?? '').trim()) {
@@ -270,6 +284,14 @@ async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, de
     g = await api.post('guia_transporte', guia);
   }
   let p = primeraGuia(g);
+  const llaveUsada = porPersona && !g.ok ? detalleGuia(g, p).match(/idempotency_key.*\bid (\d+)/i) : null;
+  if (llaveUsada) {
+    const [previa] = (await api.get('guia_transporte', { id: llaveUsada[1], sucursal: Number(guia.sucursal), por_pagina: 1, pagina: 1 })).data;
+    if (previa && previa.vigente !== '0') return { g: { ...g, ok: true }, p: previa, guia, ok: true, detalle: '' };
+    guia = { ...guia, idempotency_key: `${guia.idempotency_key}-${Date.now()}` };
+    g = await api.post('guia_transporte', guia);
+    p = primeraGuia(g);
+  }
   const tp = TRANSPORTE_PAIS[cuenta];
   const respaldo = tp && reglas?.transportes?.[String(tp.respaldo)];
   if (!fija && fallaGuia(g, p) && !esLimite(g, p) && tp && respaldo && Number(guia.transportadora) === tp.domicilio) {
@@ -292,6 +314,21 @@ async function sinCoberturaTotal(cuenta: string) {
     `auto_eventos?cuenta=eq.${cuenta}&paso=eq.guia&ok=is.false&creado_en=gte.${desde}&select=mensaje` +
     '&or=(mensaje.ilike.*No%20hay%20cobertura*Servientrega*,mensaje.ilike.*Ya%20existe%20una%20gu*a%20de%20transporte%20vigente*)');
   return new Map(filas.map((f) => [Number(f.mensaje.match(/remisión (\d+)/)?.[1]), f.mensaje.replace(/^.*?: /, '')] as const).filter(([id]) => id));
+}
+
+// Último fallo de guía de cada remisión en 3 días, para no reintentar antes de tiempo. Lo que no se arregla repitiendo
+// (llave ya usada, remitente sin el código de la transportadora, remisión que ya tiene guía) queda solo para una persona.
+const SIN_REINTENTO = /idempotency_key|no tiene configurado|ya tiene una gu.a/i;
+async function fallosDeGuia(cuenta: string) {
+  const desde = new Date(Date.now() - 3 * DAY_MS).toISOString();
+  const filas: { mensaje: string; creado_en: string }[] = await tabla(
+    `auto_eventos?cuenta=eq.${cuenta}&paso=eq.guia&ok=is.false&creado_en=gte.${desde}&order=creado_en.desc&limit=2000&select=mensaje,creado_en`);
+  const fallos = new Map<number, { mensaje: string; en: number }>();
+  for (const f of filas) {
+    const id = Number(f.mensaje.match(/remisión (\d+)/i)?.[1]);
+    if (id && !fallos.has(id)) fallos.set(id, { mensaje: f.mensaje, en: Date.parse(f.creado_en) });
+  }
+  return fallos;
 }
 
 // Memoria de cobertura: ciudades donde la transportadora de domicilio no dejó hacer guías.
@@ -490,7 +527,7 @@ async function convertir(cuenta: string, ahora = false) {
     if (!remitente) { revision(`No hay guías anteriores con el convenio ${convenio} para saber el remitente`); continue; }
     let elegido = elegirTransporte(cuenta, reglas, memoria, String(o.direccion_cliente ?? ''), Number(o.ciudad_cliente), String(o.nombre_ciudad ?? ''));
     if (!elegido) { revision('No hay guías anteriores para saber la transportadora'); continue; }
-    const rec = cuenta === 'TIENDA_CO' ? await recomendacionCO(String(o.direccion_cliente ?? ''), String(o.nombre_ciudad ?? ''), String(o.nombre_provincia ?? '')) : null;
+    const rec = cuenta === 'TIENDA_CO' ? await recomendacionCO(String(o.direccion_cliente ?? ''), String(o.nombre_ciudad ?? ''), String(o.nombre_provincia ?? ''), remitente) : null;
     if (rec) elegido = escogerCO(reglas, rec, elegido);
 
     plan.remision = {
@@ -575,7 +612,7 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
     if (!remitente) { planes.push({ ...base, estado: 'revision', motivo: `No hay guías anteriores con el convenio ${r.convenio_dropshipping} para saber el remitente`, plan }); continue; }
     let elegido = elegirTransporte(cuenta, reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
     if (!elegido) { planes.push({ ...base, estado: 'revision', motivo: 'No hay guías anteriores para saber la transportadora', plan }); continue; }
-    const rec = cuenta === 'TIENDA_CO' ? await recomendacionCO(String(r.direccion_cliente ?? ''), String(r.nombre_ciudad ?? ''), String(r.nombre_provincia ?? '')) : null;
+    const rec = cuenta === 'TIENDA_CO' ? await recomendacionCO(String(r.direccion_cliente ?? ''), String(r.nombre_ciudad ?? ''), String(r.nombre_provincia ?? ''), remitente) : null;
     if (rec) elegido = escogerCO(reglas, rec, elegido);
     plan.guia = guiaDeRemision(r, elegido.t, remitente, centros.centro_normal);
     plan.resumen = {
@@ -600,19 +637,26 @@ async function guiasPendientes(cuenta: string, ahora = false) {
   const api = new Effi(key);
   const memoria = await memoriaCobertura(cuenta);
   const sinCobertura = await sinCoberturaTotal(cuenta);
+  const fallos = await fallosDeGuia(cuenta);
   const hoy = Date.now();
   const desde = new Date(hoy - 3 * DAY_MS).toISOString().slice(0, 10), hasta = new Date(hoy + 2 * DAY_MS).toISOString().slice(0, 10);
+  const puedeReintentar = (id: number) => {
+    const f = fallos.get(id);
+    return !f || (!SIN_REINTENTO.test(f.mensaje) && hoy - f.en > REINTENTO_GUIA_MIN * 60_000);
+  };
   const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0 && !conAbono(r.nombre_cliente))
     .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > espera)
-    .filter((r) => !sinCobertura.has(Number(r.id)))
+    .filter((r) => !sinCobertura.has(Number(r.id)) && puedeReintentar(Number(r.id)))
     .slice(0, ahora ? MAX_GUIAS_AHORA : MAX_CREAR);
   const hechas: Json[] = [];
   for (const r of rems) {
     if (!ahora && !(await sigueAutomatico(cuenta))) break;
-    const [orden] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${r.sucursal}&id_remision=eq.${r.id}&select=sucursal,id,guia`);
+    const [orden] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${r.sucursal}&id_remision=eq.${r.id}&select=sucursal,id,guia,plan,plan_estado,decision,decision_en`);
     // Effi a veces no marca la guía en la remisión aunque exista (hecha a mano): si la Torre ya la tiene, no se hace otra.
     if (orden?.guia) continue;
+    // Una persona la acaba de mandar a crear desde "Ejecutar": no se le cruza el agente.
+    if (orden?.decision === 'ejecutar' && hoy - Date.parse(orden.decision_en) < 5 * 60_000) continue;
     const ev = (ok: boolean | null, mensaje: string, datos: Json | null = null) =>
       rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: orden?.sucursal ?? null, p_id: orden?.id ?? null, p_paso: 'guia', p_ok: ok, p_mensaje: mensaje, p_datos: datos });
     const remitente = cfg.reglas.remitentes?.[r.convenio_dropshipping];
@@ -623,11 +667,22 @@ async function guiasPendientes(cuenta: string, ahora = false) {
     await ev(null, `${ahora ? 'Ejecutar ahora' : 'Automático'}: haciendo la guía de la remisión ${r.id} (estaba sin guía)${elegido.motivo ? ` por ${String(elegido.t.nombre).split('|')[0].trim()}: ${elegido.motivo}` : ''}…`, { enviado: guia });
     const h = await hacerGuia(api, cuenta, cfg.reglas, guia, { ciudad: Number(r.ciudad_cliente), nombre: String(r.nombre_ciudad ?? '') }, ev);
     if (!h.ok) {
-      await ev(false, `Effi no dejó crear la guía de la remisión ${r.id}: ${h.detalle}`, { enviado: h.guia, respuesta: h.g.respuesta, status: h.g.status });
+      const motivo = `Effi no dejó crear la guía de la remisión ${r.id}: ${h.detalle}`;
+      await ev(false, motivo, { enviado: h.guia, respuesta: h.g.respuesta, status: h.g.status });
+      // Regla del dueño (3-nov): desde el primer fallo queda en "Novedad en la orden" para que una persona la haga desde
+      // "Ejecutar", aunque el agente la siga reintentando. Sin cobertura y pedido repetido siguen como "Pendiente".
+      if (orden?.plan?.guia && !/No hay cobertura|Ya existe una gu.a de transporte vigente/i.test(h.detalle)) {
+        await rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: orden.sucursal, p_id: orden.id, p_estado: 'error', p_motivo: motivo, p_resultado: {
+          paso: 'guia', remision: { id: Number(r.id), sucursal: Number(r.sucursal), id_transaccion: r.id_transaccion }, enviado: h.guia, respuesta: h.g.respuesta, status: h.g.status } });
+      }
       hechas.push({ remision: r.id, ok: false });
       continue;
     }
     await ev(true, `Guía ${h.p?.guia ?? ''} creada para la remisión ${r.id}`, { respuesta: h.g.respuesta });
+    if (orden?.plan_estado === 'error') {
+      await rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: orden.sucursal, p_id: orden.id, p_estado: 'creada', p_motivo: null, p_resultado: {
+        remision: { id: Number(r.id), sucursal: Number(r.sucursal), id_transaccion: r.id_transaccion }, guia: h.p } });
+    }
     hechas.push({ remision: r.id, ok: true, guia: h.p?.guia });
   }
   return hechas;
@@ -671,7 +726,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
     rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_estado: estado, p_motivo: motivo, p_resultado: datos });
 
   if (!(automatico ? PAISES_CREACION : PAISES_POR_ORDEN).includes(cuenta)) throw new Error('La creación no está montada para este país');
-  const [fila] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id=eq.${id}&select=plan,plan_estado,decision,ciudad,provincia`);
+  const [fila] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id=eq.${id}&select=plan,plan_estado,decision,decision_por,ciudad,provincia,id_remision,sucursal_remision`);
   // Colombia en Manual: solo va sola la entrega en oficina (por la transportadora de esa oficina) o cuando asesora y
   // matriz coinciden (por esa transportadora). En Automático o con "Ejecutar ahora" va toda orden lista, como en los
   // demás países.
@@ -716,7 +771,11 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   // 1. Remisión (si un intento anterior ya la creó, se reutiliza y solo se reintenta la guía). Si la remisión ya
   // existía (la hizo una persona), se revisa que siga vigente y sin guía.
   let remision = previo.remision as Json | undefined;
-  const existente = plan.remision_existente as { sucursal: number; id: number } | undefined;
+  // Una persona pulsó "Ejecutar" en una orden cuya remisión ya existe aunque el plan no lo diga (por ejemplo, la creación
+  // se cortó justo después de hacerla): se le hace la guía a esa remisión.
+  const porPersona = !automatico && fila.decision_por !== 'reintento automático';
+  const existente = (plan.remision_existente ?? (porPersona && paso !== 'remision' && fila.id_remision
+    ? { sucursal: Number(fila.sucursal_remision ?? sucursal), id: Number(fila.id_remision) } : undefined)) as { sucursal: number; id: number } | undefined;
   if (!remision?.id && existente) {
     await ev('remision', null, `Revisando en Effi que la remisión ${existente.id} siga vigente y sin guía`);
     const hoy = Date.now();
@@ -794,7 +853,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   await ev('guia', null, `Creando la guía de transporte en Effi${escogida ? ` por ${String(escogida.nombre ?? '').split('|')[0].trim()}` : ''}…`, { enviado: guiaBase });
   const h = await hacerGuia(api, cuenta, cfgReglas?.reglas, guiaBase,
     { ciudad: Number(plan.guia?.id_ciudad_destinatario?.[0]), nombre: String(plan.resumen?.ciudad ?? '') },
-    (ok, mensaje, datos = null) => ev('guia', ok, mensaje, datos), !!escogida);
+    (ok, mensaje, datos = null) => ev('guia', ok, mensaje, datos), !!escogida, porPersona);
   const { g, p: primera, guia } = h;
   if (!h.ok) {
     const motivo = `Remisión ${remision!.id_transaccion ?? remision!.id} creada, pero Effi no dejó crear la guía: ${h.detalle}`;
