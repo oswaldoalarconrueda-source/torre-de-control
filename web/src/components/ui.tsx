@@ -57,7 +57,7 @@ export function Vacio({ children }: { children: ReactNode }) {
 
 export function TablaScroll({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto -mx-4 sm:-mx-5 px-4 sm:px-5">
+    <div className="overflow-x-auto -mx-4 sm:-mx-5 md:px-5">
       <table className="tabla w-full min-w-max">{children}</table>
     </div>
   );
