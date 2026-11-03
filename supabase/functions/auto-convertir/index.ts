@@ -628,6 +628,9 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
 // Automático: guía para las remisiones vigentes sin guía de los últimos 3 días (las que hizo alguien a mano o las que
 // quedaron sin guía por un error), con más de ESPERA_GUIA_MIN minutos para no chocar con quien la esté haciendo.
 async function guiasPendientes(cuenta: string, ahora = false) {
+  // Regla del dueño (3-nov): en Colombia la remisión sin guía se queda en el panel para una persona; solo va sola con una
+  // regla clara para ese remitente y destino (entrega en oficina, o asesora y ⭐ coinciden), y de eso se encarga oficinasCO.
+  if (cuenta === 'TIENDA_CO') return [];
   const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,centro_normal`);
   if ((cfg?.modo !== 'automatico' && !ahora) || !PAISES_CREACION.includes(cuenta) || !cfg.reglas) return [];
   const espera = (ahora ? ESPERA_GUIA_AHORA_MIN : ESPERA_GUIA_MIN) * 60_000;
@@ -702,7 +705,7 @@ async function oficinasCO(cuenta: string) {
   const filas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&plan_estado=eq.lista&guia=is.null&select=sucursal,id,plan,ciudad,provincia,id_remision,decision&order=id.asc&limit=300`);
   const vaSola = (x: Json) => !x.plan?.abono && x.decision !== 'descartar' && (
     (x.plan?.remision && x.id_remision == null && (oficinaCO(x.plan.remision.direccion_cliente) || coincideCO(x.plan))) ||
-    (x.plan?.remision_existente && x.plan?.guia && coincideCO(x.plan)));
+    (x.plan?.remision_existente && x.plan?.guia && (oficinaCO(x.plan.guia.direccion_destinatario?.[0]) || coincideCO(x.plan))));
   const hechas: Json[] = [];
   for (const f of filas.filter(vaSola)) {
     if (hechas.length >= MAX_CREAR) break;
@@ -711,7 +714,7 @@ async function oficinasCO(cuenta: string) {
     // fija cuando la orden es a una oficina (va por la de la oficina).
     const direccion = String(f.plan.remision?.direccion_cliente ?? f.plan.guia?.direccion_destinatario?.[0] ?? '');
     const r = (await rpc('auto_restriccion', { p_cuenta: cuenta, p_ciudad: f.ciudad ?? '', p_dpto: f.provincia ?? '', p_direccion: direccion })) as Json | null;
-    if (r && !condicionCumplida(r, f.plan.remision?.direccion_cliente)) continue;
+    if (r && !condicionCumplida(r, direccion)) continue;
     hechas.push(await crear(cuenta, Number(f.sucursal), Number(f.id), true, true));
   }
   return hechas;
@@ -730,7 +733,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   // Colombia en Manual: solo va sola la entrega en oficina (por la transportadora de esa oficina) o cuando asesora y
   // matriz coinciden (por esa transportadora). En Automático o con "Ejecutar ahora" va toda orden lista, como en los
   // demás países.
-  const ofi = sola && cuenta === 'TIENDA_CO' ? oficinaCO(fila?.plan?.remision?.direccion_cliente) : null;
+  const ofi = sola && cuenta === 'TIENDA_CO' ? oficinaCO(fila?.plan?.remision?.direccion_cliente ?? fila?.plan?.guia?.direccion_destinatario?.[0]) : null;
   const coincide = sola && cuenta === 'TIENDA_CO' && !ofi ? coincideCO(fila?.plan) : null;
   if (sola && cuenta === 'TIENDA_CO' && !ofi && !coincide) return { creada: false, motivo: 'Colombia solo crea sola la entrega en oficina o cuando asesora y matriz coinciden' };
   // Orden recién llegada que la vigilancia (cada 2 minutos) aún no registra: no es error, se crea en la próxima corrida.
@@ -740,7 +743,7 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   if (automatico && fila?.plan) {
     const direccion = String(fila.plan.remision?.direccion_cliente ?? fila.plan.guia?.direccion_destinatario?.[0] ?? '');
     const r = (await rpc('auto_restriccion', { p_cuenta: cuenta, p_ciudad: fila.ciudad ?? '', p_dpto: fila.provincia ?? '', p_direccion: direccion })) as Json | null;
-    if (r && !condicionCumplida(r, fila.plan.remision?.direccion_cliente)) return { creada: false, motivo: `Condición de envío: ${r.motivo}` };
+    if (r && !condicionCumplida(r, direccion)) return { creada: false, motivo: `Condición de envío: ${r.motivo}` };
   }
   const autorizada = automatico ? fila?.plan_estado === 'lista' : fila?.decision === 'ejecutar';
   if (!fila || !autorizada || !(fila.plan?.remision || (fila.plan?.remision_existente && fila.plan?.guia))) {

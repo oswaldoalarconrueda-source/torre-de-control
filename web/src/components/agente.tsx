@@ -1,11 +1,11 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Clock, Pause, Play, Truck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
-import { infoCuenta } from "@/lib/paises";
+import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { FlujoAgente, type Periodo } from "./flujo-agente";
 import { RemisionesDirectas } from "./remisiones-directas";
 import type { DatosFabrica } from "./fabrica-agente";
@@ -55,6 +55,10 @@ type Recomendacion = {
   numeros: { nivel: string | null; recomendada: number | null; opciones: { id: number; guias?: number; devol: number; entrega?: number; flete?: number | null }[] };
 };
 const CO_HABILITADAS = [1, 4, 6, 10];
+const quienCrea = (cuenta: string) => (nombreAgente(cuenta) === "ValerIA" ? "ValerIA" : "el agente");
+// Transportadora con la que Effi creó la guía: "ENVÍA EFFI | CON RECAUDO | FLETE CRÉDITO" → "ENVÍA".
+const transportadoraDeGuia = (o: { plan: Plan | null }) =>
+  String((o.plan?.resultado as { guia?: { nombre_transportadora?: string } } | undefined)?.guia?.nombre_transportadora ?? "").split("|")[0].replace(" EFFI", "").trim();
 // Igual que oficinaCO del agente (auto-convertir): entrega en oficina de Inter (4) o Servientrega (6).
 const oficinaCO = (direccion: unknown) => {
   const d = String(direccion ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
@@ -187,9 +191,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   };
   const coincide = (o: OrdenAuto) =>
     Number(((o.plan?.resumen as Record<string, unknown> | undefined)?.recomendacion as { coincide?: number } | undefined)?.coincide) || null;
+  const oficinaDeOrden = (o: OrdenAuto) => oficinaCO(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0]);
   const vaSola = (o: OrdenAuto) => cuenta === "TIENDA_CO" && o.plan_estado === "lista" && o.decision !== "descartar" && cumpleCondicion(o) && (
     (o.estado === "sin_remision" && (oficinaCO(o.plan?.remision?.direccion_cliente) !== null || !!coincide(o))) ||
-    (o.estado === "sin_guia" && !!o.plan?.remision_existente && !!coincide(o)));
+    (o.estado === "sin_guia" && !!o.plan?.remision_existente && (oficinaDeOrden(o) !== null || !!coincide(o))));
   // Las de remisión → guía que van solas siguen en su lista (con el aviso) hasta que el agente haga la guía.
   const paraCrear = (o: OrdenAuto) =>
     o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar" && !(vaSola(o) && o.estado === "sin_remision");
@@ -204,6 +209,21 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     o.plan_estado === "error" && (o.estado === "completa" || o.estado === "anulada" || remisionAnulada(o) || (errorDeRemision(o) && conRemision(o)))
       ? { ...o, plan_estado: null, plan_motivo: null } : o), [datos.ordenes]); // eslint-disable-line react-hooks/exhaustive-deps
   const requierePersona = (o: OrdenAuto) => novedad(o) && !paraCrear(o) && !vaSola(o) && !remisionAnulada(o);
+  // Regla del dueño (3-nov): la orden que el agente acaba de crear se ve unos segundos con su transportadora, se desvanece y
+  // sale de la lista. La de remisión anulada no: el pedido sigue sin salir y alguien debe decidir qué hacer.
+  const vistasHechas = useRef(new Set<string>());
+  const [desvaneciendo, setDesvaneciendo] = useState<Set<string>>(new Set());
+  const [ocultas, setOcultas] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (rango) return;
+    for (const o of ordenes) {
+      const clave = `${o.sucursal}-${o.id}`;
+      if (o.plan_estado !== "creada" || remisionAnulada(o) || vistasHechas.current.has(clave)) continue;
+      vistasHechas.current.add(clave);
+      setTimeout(() => setDesvaneciendo((x) => new Set(x).add(clave)), 8000);
+      setTimeout(() => setOcultas((x) => new Set(x).add(clave)), 9000);
+    }
+  }, [ordenes, rango]); // eslint-disable-line react-hooks/exhaustive-deps
   // Las órdenes sin remisión van todas en su lista (la que cuenta "sin remisión" en Agente en vivo): las que necesitan
   // a una persona, de primeras y con su aviso. Novedad queda para las que ya tienen remisión.
   const lista = useMemo(() => ordenes.filter((o) => requierePersona(o) && o.estado !== "sin_remision"),
@@ -421,7 +441,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               <Play size={16} /> {corriendo ? "Ejecutando…" : "Ejecutar ahora"}
             </button>
           ))}
-          {datos.es_owner && creaEnEffi && (confirmarGuias ? (
+          {/* En Colombia la remisión sin guía la hace una persona con "Ejecutar" (o va sola con una regla clara). */}
+          {datos.es_owner && creaEnEffi && cuenta !== "TIENDA_CO" && (confirmarGuias ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted">¿Hacer ya en Effi las guías de las remisiones hechas ({entero(listasGuia.length)}), de a 10?</span>
               <button onClick={pasarAGuia} disabled={guardando === "guias"} className="rounded-full bg-blue px-4 py-2 text-sm font-bold text-white">Sí, hacer guías</button>
@@ -587,9 +608,11 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                 (cuenta === "TIENDA_CO" && modo !== "automatico" ? ` En Manual van solas la entrega en oficina de Interrapidísimo o Servientrega y las que la asesora y la matriz mandan por la misma transportadora${solas.length ? ` (${entero(solas.length)} en camino)` : ""}.` : "")
             : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía.") },
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
-          texto: "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
+          texto: cuenta === "TIENDA_CO"
+            ? "Remisiones ya hechas que solo esperan la guía: las hace una persona con “Ejecutar”. Solo van solas las de entrega en oficina o donde asesora y ⭐ coinciden."
+            : "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
         { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.", conRemision: true, conGuia: true,
-          texto: "Solo lo que necesita una persona. Se concilia sola con Effi cada minuto: sale de aquí apenas la orden tenga remisión y guía (las haga el Centro de Control o alguien a mano) o si la anulan. Al ejecutar o reintentar, el resultado sale en Estado: ✓ hecha, ↻ Effi falló de paso (el agente reintenta solo) o ⚠ requiere verificación humana." },
+          texto: `Solo lo que necesita una persona. Se concilia sola con Effi cada minuto: sale de aquí apenas la orden tenga remisión y guía (las haga ${quienCrea(cuenta)} o alguien a mano) o si la anulan. Al ejecutar o reintentar, el resultado sale en Estado: ✓ hecha, ↻ Effi falló de paso (el agente reintenta solo) o ⚠ requiere verificación humana.` },
         { titulo: "Remisión anulada", filas: anuladasRem, vacio: "Ninguna remisión anulada pendiente.", conRemision: true, conGuia: true,
           texto: "Effi anuló la remisión (el proveedor rechazó el dropshipping o alguien la anuló). No es novedad del agente: queda aquí para decidir si se anula la orden o se hace con otro proveedor, y sale sola cuando eso pase." },
       ]).map((s) => (
@@ -597,7 +620,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       <div className="flex flex-wrap items-baseline gap-2 pt-2">
         <span className="font-display text-lg font-semibold">{s.titulo}</span>
         <span className="text-xs text-muted">{s.texto}</span>
-        <span className="text-xs text-muted ml-auto">{entero(s.filas.length)} {s.filas.length === 1 ? "orden" : "órdenes"}</span>
+        <span className="text-xs text-muted ml-auto">{entero(s.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length)} {s.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length === 1 ? "orden" : "órdenes"}</span>
       </div>
 
       <div className="card overflow-x-auto p-0">
@@ -621,9 +644,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               const est = ESTADOS[o.estado];
               const clave = `${o.sucursal}-${o.id}`;
               const abierto = abierta === clave;
+              if (ocultas.has(clave)) return null;
               return (
                 <Fragment key={clave}>
-                <tr className="align-middle hover:bg-tinte/[0.02]">
+                <tr className={`align-middle hover:bg-tinte/[0.02] ${desvaneciendo.has(clave) ? "desvanece" : ""}`}>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <div className="font-mono font-semibold">OV {o.id}</div>
                     <div className="text-[11px] text-muted">{hora(o.fecha)}</div>
@@ -670,7 +694,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                       <span className="text-muted">—</span>
                     )}
                   </td>}
-                  {s.conGuia && <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{o.guia ?? "—"}</td>}
+                  {s.conGuia && <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">
+                    {o.guia ?? "—"}
+                    {o.guia && transportadoraDeGuia(o) && <div className="mt-0.5 font-sans text-[11px] text-muted">{transportadoraDeGuia(o)}</div>}
+                  </td>}
                   <td className="px-3 py-2 min-w-[10rem] max-w-[18rem]">
                     <span className="inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ color: est.color, background: "color-mix(in srgb, var(--tinte) 5%, transparent)" }}>
                       {o.estado === "sin_remision" && !atrasada(o) ? "Esperando remisión" : est.label}
@@ -704,14 +731,14 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                     )}
                     {vaSola(o) && (
                       <div className="mt-1 text-[11px] text-green">
-                        {o.estado === "sin_remision" && oficinaCO(o.plan?.remision?.direccion_cliente) !== null
+                        {oficinaDeOrden(o) !== null
                           ? "🏢 Va sola a la oficina en la próxima corrida"
                           : `🤝 Va sola en la próxima corrida: asesora y matriz dicen ${String(o.plan?.resumen?.transportadora ?? "la misma").split("|")[0].trim()}`}
                       </div>
                     )}
                     {o.decision === "descartar" && <div className="mt-1 text-[11px] text-muted">Descartada por {o.decision_por ?? "una persona"}</div>}
-                    {o.plan_estado === "creada" && (
-                      <div className="mt-1 text-[11px] text-green">✓ Hecha por el Centro de Control: sale de aquí cuando Effi lo confirme, en unos minutos</div>
+                    {o.plan_estado === "creada" && !remisionAnulada(o) && (
+                      <div className="mt-1 text-[11px] text-green">✓ Hecha por {quienCrea(cuenta)}</div>
                     )}
                   </td>
                   <td className="px-3 py-2 min-w-[13rem] max-w-[17rem]">
@@ -914,10 +941,14 @@ function Indicador({ titulo, valor, color, sub }: { titulo: string; valor: strin
 function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: string; abierto: boolean; onAlternar: () => void }) {
   if (o.plan_estado === "creada") {
     const res = (o.plan?.resultado ?? {}) as { remision?: { id_transaccion?: string; id?: number }; guia?: { guia?: string } };
+    const anulada = o.motivos.some((m) => m.startsWith("La remisión está anulada"));
     return (
       <div className="text-xs">
-        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-green bg-tinte/5">✓ Creada por el Centro de Control</span>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold bg-tinte/5 ${anulada ? "text-amber" : "text-green"}`}>
+          {anulada ? `Creada por ${quienCrea(cuenta)} y anulada después` : `✓ Creada por ${quienCrea(cuenta)}`}
+        </span>
         <div className="text-muted mt-1">RV {res.remision?.id_transaccion ?? res.remision?.id ?? "—"} · guía {res.guia?.guia ?? "—"}</div>
+        {transportadoraDeGuia(o) && <div className="text-muted">{transportadoraDeGuia(o)}</div>}
       </div>
     );
   }
