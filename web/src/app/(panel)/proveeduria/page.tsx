@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { infoCuenta, ordenCuenta } from "@/lib/paises";
 import { haceCuanto } from "@/lib/formato";
 import { TableroProveeduria, type DatosProveeduria } from "@/components/tablero-proveeduria";
 import { SeguimientoTiendas } from "@/components/seguimiento-tiendas";
+import { PestanasProveeduria } from "@/components/pestanas-proveeduria";
 
 // 🏭 Proveeduría (Distrilatam): lo que nos compran las tiendas. Una empresa a la vez (DistriGuatemala, DistriLab,
 // DistriCostaRica): aunque dos sean de Guatemala, nunca se suman. Las cifras son los indicadores que Effi ya calcula,
@@ -19,6 +21,8 @@ export default async function ProveeduriaPage({ searchParams }: PageProps<"/prov
   const supabase = await createClient();
   const { data: cuentasData } = await supabase.from("effi_accounts").select("slug").eq("tipo", "proveeduria").eq("activa", true);
   const cuentas = (cuentasData ?? []).map((c) => c.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
+  // Proveeduría es solo de Distrilatam: mirando otra sociedad no hay nada que mostrar aquí.
+  if (!cuentas.length) redirect("/inicio");
   const cuenta = typeof sp.c === "string" && cuentas.includes(sp.c) ? sp.c : cuentas[0];
   const periodo = PERIODOS.find((p) => p.id === sp.p)?.id ?? "mes";
   const { data } = cuenta ? await supabase.rpc("prov_tablero", { p_cuenta: cuenta, p_periodo: periodo }) : { data: null };
@@ -36,6 +40,7 @@ export default async function ProveeduriaPage({ searchParams }: PageProps<"/prov
           {actualizado ? ` · última ${haceCuanto(actualizado)}` : ""}.
         </p>
       </div>
+      <PestanasProveeduria actual="tablero" cuenta={cuenta} />
       <div className="flex flex-wrap items-center gap-2">
         {cuentas.map((c) => (
           <Link key={c} href={href(c, periodo)} className={chip(c === cuenta)}>{infoCuenta(c).bandera} {infoCuenta(c).nombre}</Link>

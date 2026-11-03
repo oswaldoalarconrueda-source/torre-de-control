@@ -6,14 +6,14 @@ import type { Rango } from "@/lib/filtros";
 import { SelectorFechas } from "./selector-fechas";
 
 // Calendario tipo Shopify que guarda el periodo en la dirección (?d=…&h=…): la pantalla se vuelve a pedir con esas fechas.
-export function CalendarioUrl({ desde, hasta, rangos, hoy }: { desde: string; hasta: string; rangos: Rango[]; hoy: string }) {
+export function CalendarioUrl({ desde, hasta, rangos, hoy, extra = "" }: { desde: string; hasta: string; rangos: Rango[]; hoy: string; extra?: string }) {
   const router = useRouter();
   const path = usePathname();
   const [cargando, start] = useTransition();
   return (
     <div className={cargando ? "opacity-60" : ""}>
       <SelectorFechas desde={desde} hasta={hasta} rangos={rangos} hoy={hoy}
-        onAplicar={(d, h) => start(() => router.push(`${path}?d=${d}&h=${h}`, { scroll: false }))} />
+        onAplicar={(d, h) => start(() => router.push(`${path}?${extra}d=${d}&h=${h}`, { scroll: false }))} />
     </div>
   );
 }

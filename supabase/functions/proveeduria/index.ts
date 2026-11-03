@@ -10,6 +10,7 @@
 // 2 días en cada pasada y, de a 30 días, el historial desde el 1 de enero (prov_sync.avance). Cada remisión trae su
 // centro de costos: así la pestaña separa por mayor y drop y sigue a cada tienda.
 // POST ...?solo=ventas  ← cron cada 10 min: solo las remisiones (sin indicadores).
+// El costo manual de cada remisión (comisiones) va al mismo ritmo: últimos 2 días y, de a 30 días, el historial (prov_sync.avance_costos).
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -133,6 +134,46 @@ async function cargarVentas(cuenta: { slug: string; tz_offset_min: number }, key
   return { nuevas, historial };
 }
 
+// Costo manual de cada remisión, para las comisiones: viene en el reporte de conceptos (una fila por artículo, con la cabecera
+// repetida; hasta 1000 filas por página). Solo se lee de Effi.
+async function costos(cuenta: { slug: string }, key: string, desde: string, hasta: string) {
+  const porRemision = new Map<string, { sucursal: number; id: number; costo_manual: number; suma: number }>();
+  let conceptos = 0;
+  for (let pagina = 1; ; pagina++) {
+    const r = await effiGet(key, 'detalle_remision_v', { desde, hasta, por_pagina: 1000, pagina });
+    for (const x of r.data ?? []) {
+      const sucursal = Number(x.sucursal), id = Number(x.id), k = `${sucursal}|${id}`;
+      const f = porRemision.get(k) ?? { sucursal, id, costo_manual: Number(x.p_costo_manual ?? 0), suma: 0 };
+      f.suma += Number(x.cantidad ?? 0) * Number(x.p_costo_manual_detalle ?? 0);
+      porRemision.set(k, f);
+      conceptos++;
+    }
+    if (pagina >= Number(r.paginacion?.total_paginas ?? 1) || !r.data?.length) break;
+    await sleep(600);
+  }
+  const filas = [...porRemision.values()];
+  const difieren = filas.filter((f) => Math.abs(f.costo_manual - f.suma) > 0.02);
+  let guardadas = 0;
+  for (let i = 0; i < filas.length; i += 1000) {
+    const lote = filas.slice(i, i + 1000).map(({ sucursal, id, costo_manual }) => ({ sucursal, id, costo_manual }));
+    guardadas += Number(await rpc('prov_guardar_costos', { p_cuenta: cuenta.slug, p_filas: lote }));
+  }
+  return { conceptos, remisiones: filas.length, guardadas, difieren: difieren.length, ejemplo: difieren.slice(0, 3), total_cabecera: filas.reduce((a, f) => a + f.costo_manual, 0), total_conceptos: filas.reduce((a, f) => a + f.suma, 0) };
+}
+
+async function cargarCostos(cuenta: { slug: string; tz_offset_min: number }, key: string) {
+  const ahora = Date.now(), reciente = ahora - 2 * DAY_MS, off = cuenta.tz_offset_min;
+  const nuevas = await costos(cuenta, key, local(reciente, off), local(ahora, off));
+  const [st] = await sb(`prov_sync?cuenta=eq.${cuenta.slug}&select=avance_costos`);
+  let historial = null;
+  if (st && Date.parse(st.avance_costos) < reciente) {
+    const a = Date.parse(st.avance_costos), b = Math.min(a + 30 * DAY_MS, reciente);
+    historial = await costos(cuenta, key, local(a, off), local(b, off));
+    await sb(`prov_sync?cuenta=eq.${cuenta.slug}`, { method: 'PATCH', body: JSON.stringify({ avance_costos: new Date(b).toISOString() }) });
+  }
+  return { nuevas, historial };
+}
+
 async function refrescar(cuenta: { slug: string; tz_offset_min: number }, key: string) {
   const mcp = new Mcp(key);
   await mcp.iniciar();
@@ -157,13 +198,26 @@ Deno.serve(async (req) => {
   try {
     const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
     const cuentas: { slug: string; tz_offset_min: number }[] = await sb('effi_accounts?select=slug,tz_offset_min&tipo=eq.proveeduria&activa=eq.true');
-    const soloVentas = new URL(req.url).searchParams.get('solo') === 'ventas';
+    const q = new URL(req.url).searchParams;
+    const soloVentas = q.get('solo') === 'ventas';
     const resumen: Record<string, unknown> = {};
+    // POST ...?solo=costos&desde=2026-07-01&hasta=2026-07-31  ← solo el costo manual de ese rango (días de la empresa).
+    if (q.get('solo') === 'costos') {
+      const desde = q.get('desde') ?? '', hasta = q.get('hasta') ?? '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) return json(400, { ok: false, mensaje: 'desde y hasta: AAAA-MM-DD' });
+      await Promise.all(cuentas.map(async (c) => {
+        const key = keys.find((k) => k.slug === c.slug)?.api_key;
+        if (!key) { resumen[c.slug] = 'sin API key'; return; }
+        try { resumen[c.slug] = await costos(c, key, `${desde} 00:00:00`, `${hasta} 23:59:59`); } catch (e) { resumen[c.slug] = { error: (e as Error).message }; }
+      }));
+      return json(200, { ok: true, resumen });
+    }
     await Promise.all(cuentas.map(async (c) => {
       const key = keys.find((k) => k.slug === c.slug)?.api_key;
       if (!key) { resumen[c.slug] = 'sin API key en el Vault (scripts/push-effi-keys.mjs)'; return; }
       const r: Record<string, unknown> = (resumen[c.slug] = {});
       try { r.ventas = await cargarVentas(c, key); } catch (e) { r.ventas = { error: (e as Error).message }; }
+      try { r.costos = await cargarCostos(c, key); } catch (e) { r.costos = { error: (e as Error).message }; }
       if (!soloVentas) { try { r.indicadores = await refrescar(c, key); } catch (e) { r.indicadores = { error: (e as Error).message }; } }
     }));
     return json(200, { ok: true, resumen });
