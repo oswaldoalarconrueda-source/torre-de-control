@@ -11,6 +11,7 @@
 // centro de costos: así la pestaña separa por mayor y drop y sigue a cada tienda.
 // POST ...?solo=ventas  ← cron cada 10 min: solo las remisiones (sin indicadores).
 // El costo manual de cada remisión (comisiones) va al mismo ritmo: últimos 2 días y, de a 30 días, el historial (prov_sync.avance_costos).
+// Además vuelve a leer los días con remisiones pagadas sin costo, por si ya lo corrigieron en Effi (hasta 3 días por pasada).
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -171,7 +172,17 @@ async function cargarCostos(cuenta: { slug: string; tz_offset_min: number }, key
     historial = await costos(cuenta, key, local(a, off), local(b, off));
     await sb(`prov_sync?cuenta=eq.${cuenta.slug}`, { method: 'PATCH', body: JSON.stringify({ avance_costos: new Date(b).toISOString() }) });
   }
-  return { nuevas, historial };
+  const dias: string[] = await rpc('prov_costos_por_revisar', { p_cuenta: cuenta.slug, p_limite: 3 });
+  const revision = { dias, corregidas: 0 };
+  for (const dia of dias) {
+    const r = await costos(cuenta, key, `${dia} 00:00:00`, `${dia} 23:59:59`);
+    revision.corregidas += r.guardadas;
+    const ini = Date.parse(`${dia}T00:00:00Z`) - off * 60_000;
+    await sb(`prov_remisiones?cuenta=eq.${cuenta.slug}&fecha_trans=gte.${new Date(ini).toISOString()}&fecha_trans=lt.${new Date(ini + DAY_MS).toISOString()}&or=(costo_manual.is.null,costo_manual.eq.0)`,
+      { method: 'PATCH', body: JSON.stringify({ costo_revisado_en: new Date().toISOString() }) });
+    await sleep(600);
+  }
+  return { nuevas, historial, revision };
 }
 
 async function refrescar(cuenta: { slug: string; tz_offset_min: number }, key: string) {
