@@ -625,12 +625,29 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
   return planes;
 }
 
+// Colombia, "Pasar de remisión a guía": las remisiones listas, por la transportadora de su plan y con el valor declarado de
+// su regla (crear). Una ciudad con condición de las asesoras no se crea y sigue en la lista; una que falla queda en Ejecutar.
+async function guiasPorPlanCO(cuenta: string) {
+  const filas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&plan_estado=eq.lista&guia=is.null&id_remision=not.is.null&rem_vigente=not.is.false&select=sucursal,id,plan,decision,rem_fecha&order=id.asc&limit=300`);
+  const hechas: Json[] = [];
+  for (const f of filas) {
+    if (hechas.length >= MAX_GUIAS_AHORA) break;
+    if (!f.plan?.remision_existente || !f.plan?.guia || f.plan?.abono || f.decision === 'descartar') continue;
+    if (Date.now() - Date.parse(f.rem_fecha) < ESPERA_GUIA_AHORA_MIN * 60_000) continue;
+    const r = await crear(cuenta, Number(f.sucursal), Number(f.id), true);
+    if (String(r.motivo ?? '').startsWith('Condición de envío')) continue;
+    hechas.push({ remision: f.plan.remision_existente.id, ok: !!r.creada });
+  }
+  return hechas;
+}
+
 // Automático: guía para las remisiones vigentes sin guía de los últimos 3 días (las que hizo alguien a mano o las que
 // quedaron sin guía por un error), con más de ESPERA_GUIA_MIN minutos para no chocar con quien la esté haciendo.
 async function guiasPendientes(cuenta: string, ahora = false) {
   // Regla del dueño (3-nov): en Colombia la remisión sin guía se queda en el panel para una persona; solo va sola con una
   // regla clara para ese remitente y destino (entrega en oficina, o asesora y ⭐ coinciden), y de eso se encarga oficinasCO.
-  if (cuenta === 'TIENDA_CO') return [];
+  // Con "Pasar de remisión a guía" la manda una persona: cada una va por la transportadora de su plan.
+  if (cuenta === 'TIENDA_CO') return ahora ? guiasPorPlanCO(cuenta) : [];
   const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,centro_normal`);
   if ((cfg?.modo !== 'automatico' && !ahora) || !PAISES_CREACION.includes(cuenta) || !cfg.reglas) return [];
   const espera = (ahora ? ESPERA_GUIA_AHORA_MIN : ESPERA_GUIA_MIN) * 60_000;

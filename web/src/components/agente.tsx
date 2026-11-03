@@ -441,8 +441,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               <Play size={16} /> {corriendo ? "Ejecutando…" : "Ejecutar ahora"}
             </button>
           ))}
-          {/* En Colombia la remisión sin guía la hace una persona con "Ejecutar" (o va sola con una regla clara). */}
-          {datos.es_owner && creaEnEffi && cuenta !== "TIENDA_CO" && (confirmarGuias ? (
+          {datos.es_owner && creaEnEffi && (confirmarGuias ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted">¿Hacer ya en Effi las guías de las remisiones hechas ({entero(listasGuia.length)}), de a 10?</span>
               <button onClick={pasarAGuia} disabled={guardando === "guias"} className="rounded-full bg-blue px-4 py-2 text-sm font-bold text-white">Sí, hacer guías</button>
@@ -609,7 +608,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
             : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía.") },
         { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
           texto: cuenta === "TIENDA_CO"
-            ? "Remisiones ya hechas que solo esperan la guía: las hace una persona con “Ejecutar”. Solo van solas las de entrega en oficina o donde asesora y ⭐ coinciden."
+            ? "Remisiones ya hechas que solo esperan la guía: las hace una persona con “Ejecutar” o “Pasar de remisión a guía”. Solo van solas las de entrega en oficina o donde asesora y ⭐ coinciden."
             : "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
         { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.", conRemision: true, conGuia: true,
           texto: `Solo lo que necesita una persona. Se concilia sola con Effi cada minuto: sale de aquí apenas la orden tenga remisión y guía (las haga ${quienCrea(cuenta)} o alguien a mano) o si la anulan. Al ejecutar o reintentar, el resultado sale en Estado: ✓ hecha, ↻ Effi falló de paso (el agente reintenta solo) o ⚠ requiere verificación humana.` },
