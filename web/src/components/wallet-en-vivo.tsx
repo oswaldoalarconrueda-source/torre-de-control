@@ -97,15 +97,15 @@ export function WalletEnVivo() {
             {lista.map((m, i) => {
               const hora = new Intl.DateTimeFormat("es-CO", { timeZone: infoCuenta(m.cuenta).zona, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(m.fecha));
               return (
-                <li key={`${m.cuenta}-${m.fecha}-${i}`} className="flex items-center gap-3 py-2 text-sm">
-                  <span className="w-36 shrink-0 whitespace-nowrap text-[11px] font-mono text-muted">{hora}</span>
-                  {!elegida && <span className="w-36 shrink-0 truncate text-xs" title={infoCuenta(m.cuenta).nombre}>{infoCuenta(m.cuenta).bandera} {infoCuenta(m.cuenta).nombre}</span>}
-                  <span className="min-w-0 flex-1 truncate">
+                <li key={`${m.cuenta}-${m.fecha}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-2 text-sm sm:flex-nowrap">
+                  <span className="shrink-0 whitespace-nowrap text-[11px] font-mono text-muted sm:w-36">{hora}</span>
+                  {!elegida && <span className="shrink-0 truncate text-xs sm:w-36" title={infoCuenta(m.cuenta).nombre}>{infoCuenta(m.cuenta).bandera} {infoCuenta(m.cuenta).nombre}</span>}
+                  <span className="min-w-0 flex-1 truncate max-sm:order-last max-sm:basis-full">
                     {m.tipo ?? "—"}
                     {m.anulado && <span className="ml-2 rounded-full border border-line px-1.5 text-[10px] text-muted">anulado</span>}
                   </span>
                   {m.guia && <span className="hidden sm:inline font-mono text-[11px] text-muted">{m.guia}</span>}
-                  <span className={`num shrink-0 font-semibold ${m.valor >= 0 ? "text-green" : "text-red"}`}>{conSigno(m.valor, m.cuenta, m.divisa)}</span>
+                  <span className={`num shrink-0 font-semibold max-sm:ml-auto ${m.valor >= 0 ? "text-green" : "text-red"}`}>{conSigno(m.valor, m.cuenta, m.divisa)}</span>
                 </li>
               );
             })}

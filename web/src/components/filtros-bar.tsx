@@ -36,7 +36,7 @@ export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conF
     ir({ c: nuevos.length === cuentas.length ? null : cuentas.filter((x) => nuevos.includes(x)).join(",") });
   };
   const chip = (on: boolean) =>
-    `rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`;
+    `rounded-full border px-3 py-2 sm:py-1.5 text-xs transition-colors ${on ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`;
   const paises = varios ? (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Países">
       {cuentas.length > 1 && <button onClick={() => !todos && ir({ c: null })} aria-pressed={todos} className={chip(todos)}>🌎 Todos</button>}
@@ -61,7 +61,7 @@ export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conF
             role="radio"
             aria-checked={on}
             onClick={() => !on && ir({ c })}
-            className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}
+            className={`rounded-full border px-3 py-2 sm:py-1.5 text-xs transition-colors ${on ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}
           >
             {i.bandera} {i.nombre}
           </button>

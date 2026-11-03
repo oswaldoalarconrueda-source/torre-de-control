@@ -56,10 +56,10 @@ export function PygWallet({ cuenta, lineas, despachos, entregas, variasPlataform
           incluida={incluida} alternar={alternar} $={$} despachos={despachos} conPlataforma={variasPlataformas} />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line border-l-4 bg-green/[0.06] px-6 py-5" style={{ borderLeftColor: "var(--green)" }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line border-l-4 bg-green/[0.06] px-4 py-4 sm:px-6 sm:py-5" style={{ borderLeftColor: "var(--green)" }}>
         <div className="text-xs uppercase tracking-widest font-mono text-muted">Utilidad neta (según wallet)</div>
-        <div className="flex items-center gap-3">
-          <span className={`num text-4xl font-semibold ${utilidad >= 0 ? "text-green" : "text-red"}`}>{$(utilidad)}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`num text-3xl sm:text-4xl font-semibold ${utilidad >= 0 ? "text-green" : "text-red"}`}>{$(utilidad)}</span>
           <span className="rounded-full border border-green/40 bg-green/15 px-3 py-1 text-xs font-mono font-semibold text-green">{pct(margen)} margen</span>
         </div>
       </div>

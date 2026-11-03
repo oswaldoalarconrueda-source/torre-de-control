@@ -18,10 +18,10 @@ export function BarraHorizontal({ children }: { children: ReactNode }) {
   const sincronizar = (de: HTMLDivElement | null, a: HTMLDivElement | null) => { if (de && a && Math.abs(a.scrollLeft - de.scrollLeft) > 1) a.scrollLeft = de.scrollLeft; };
   return (
     <div>
-      <div ref={tabla} onScroll={() => sincronizar(tabla.current, barra.current)} className="card overflow-x-auto p-0 barra-x">{children}</div>
+      <div ref={tabla} onScroll={() => sincronizar(tabla.current, barra.current)} className="card fichas-caja overflow-x-auto p-0 barra-x">{children}</div>
       {ancho > 0 && (
         <div ref={barra} onScroll={() => sincronizar(barra.current, tabla.current)} aria-label="Correr la tabla a los lados"
-          className="barra-x sticky bottom-0 z-20 overflow-x-auto overflow-y-hidden rounded-b-xl border border-t-0 border-line bg-bg/90 backdrop-blur">
+          className="barra-x sticky bottom-0 z-20 max-md:hidden overflow-x-auto overflow-y-hidden rounded-b-xl border border-t-0 border-line bg-bg/90 backdrop-blur">
           <div style={{ width: ancho, height: 1 }} />
         </div>
       )}

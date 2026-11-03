@@ -31,7 +31,7 @@ function Mes({ ym, hoy, minimo, inicio, fin, hover, onDia, onHover }: {
   const vacios = (new Date(Date.UTC(a, m, 1)).getUTCDay() + 6) % 7; // lunes = 0
   const finVista = fin ?? (hover && hover >= inicio ? hover : null);
   return (
-    <div className="w-[15.5rem]">
+    <div className="w-full sm:w-[15.5rem]">
       <div className="text-sm font-medium text-center mb-2 capitalize">{MESES_LARGO[m]} {a}</div>
       <div className="grid grid-cols-7 text-[11px] text-muted mb-1">
         {DIAS.map((d) => <span key={d} className="text-center py-1">{d}</span>)}
@@ -52,7 +52,7 @@ function Mes({ ym, hoy, minimo, inicio, fin, hover, onDia, onHover }: {
               onMouseEnter={() => onHover(iso)}
               aria-label={iso}
               aria-pressed={extremo}
-              className={`h-8 text-xs num transition-colors ${
+              className={`h-10 sm:h-8 text-sm sm:text-xs num transition-colors ${
                 extremo
                   ? "bg-blue text-white rounded-lg font-semibold"
                   : dentro
@@ -140,7 +140,7 @@ export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar, inactivo,
         onClick={() => (abierto ? cerrar() : abrir())}
         aria-expanded={abierto}
         aria-haspopup="dialog"
-        className={`flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs transition-colors ${abierto ? "border-blue/50 bg-blue/15 text-text" : inactivo ? "border-line text-muted hover:text-text hover:bg-tinte/[0.04]" : "border-line text-text hover:border-tinte/20 hover:bg-tinte/[0.04]"}`}
+        className={`flex items-center gap-2 rounded-full border px-3.5 py-2 sm:py-1.5 text-xs transition-colors ${abierto ? "border-blue/50 bg-blue/15 text-text" : inactivo ? "border-line text-muted hover:text-text hover:bg-tinte/[0.04]" : "border-line text-text hover:border-tinte/20 hover:bg-tinte/[0.04]"}`}
       >
         <CalendarDays size={14} className="text-blue-2" />
         <span className="num">{etiqueta}</span>
@@ -148,7 +148,7 @@ export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar, inactivo,
       </button>
 
       {abierto && (
-        <div role="dialog" aria-label="Elegir periodo" className={`card z-40 p-0 overflow-hidden ${pos === "fijo" ? "fixed inset-x-3 top-24 max-h-[80dvh] overflow-y-auto" : `absolute mt-2 w-[44rem] ${pos === "der" ? "right-0" : "left-0"}`}`}>
+        <div role="dialog" aria-label="Elegir periodo" className={`card z-40 p-0 overflow-hidden ${pos === "fijo" ? "fixed inset-x-3 top-16 max-h-[calc(100dvh-5rem)] overflow-y-auto" : `absolute mt-2 w-[44rem] ${pos === "der" ? "right-0" : "left-0"}`}`}>
           <div className="flex flex-col sm:flex-row">
             <div className="flex sm:flex-col gap-1 overflow-x-auto sm:overflow-visible border-b sm:border-b-0 sm:border-r border-line p-2 sm:w-40 shrink-0">
               {rangos.map((r) => (
@@ -165,14 +165,14 @@ export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar, inactivo,
 
             <div className="p-4 flex-1">
               <div className="flex items-center justify-between mb-2">
-                <button type="button" onClick={() => setMesDer(moverMes(mesDer, -1))} className="rounded-lg p-1.5 text-muted hover:text-text hover:bg-tinte/[0.06]" aria-label="Ver mes anterior">
+                <button type="button" onClick={() => setMesDer(moverMes(mesDer, -1))} className="rounded-lg p-2.5 sm:p-1.5 text-muted hover:text-text hover:bg-tinte/[0.06]" aria-label="Ver mes anterior">
                   <ChevronLeft size={16} />
                 </button>
                 <button
                   type="button"
                   onClick={() => setMesDer(moverMes(mesDer, 1))}
                   disabled={mesDer >= hoy.slice(0, 7)}
-                  className="rounded-lg p-1.5 text-muted hover:text-text hover:bg-tinte/[0.06] disabled:opacity-30 disabled:hover:bg-transparent"
+                  className="rounded-lg p-2.5 sm:p-1.5 text-muted hover:text-text hover:bg-tinte/[0.06] disabled:opacity-30 disabled:hover:bg-transparent"
                   aria-label="Ver mes siguiente"
                 >
                   <ChevronRight size={16} />
@@ -187,13 +187,13 @@ export function SelectorFechas({ desde, hasta, rangos, hoy, onAplicar, inactivo,
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
             <span className="text-xs text-muted num">{fin ? etiquetaRango(ini, fin) : `${etiquetaRango(ini, ini)} → elige el día final`}</span>
             <div className="flex gap-2">
-              <button type="button" onClick={cerrar} className="rounded-full border border-line px-3.5 py-1.5 text-xs text-muted hover:text-text">
+              <button type="button" onClick={cerrar} className="rounded-full border border-line px-3.5 py-2 sm:py-1.5 text-xs text-muted hover:text-text">
                 Cancelar
               </button>
-              <button type="button" onClick={aplicar} disabled={!fin} className="btn-primary rounded-full px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50">
+              <button type="button" onClick={aplicar} disabled={!fin} className="btn-primary rounded-full px-4 py-2 sm:py-1.5 text-xs font-medium text-white disabled:opacity-50">
                 Aplicar
               </button>
             </div>

@@ -8,7 +8,7 @@ import { Moon, Sun } from "lucide-react";
 type Tema = "dark" | "light";
 const CLAVE = "torre-tema";
 
-export function SelectorTema({ className = "" }: { className?: string }) {
+export function SelectorTema({ className = "", compacto = false }: { className?: string; compacto?: boolean }) {
   const [tema, setTema] = useState<Tema>("dark");
   useEffect(() => {
     setTema(document.documentElement.dataset.theme === "light" ? "light" : "dark");
@@ -19,6 +19,16 @@ export function SelectorTema({ className = "" }: { className?: string }) {
     else delete document.documentElement.dataset.theme;
     try { localStorage.setItem(CLAVE, t); } catch { /* sin almacenamiento: vale solo por esta visita */ }
   };
+  // Barra del celular: un solo botón que cambia de modo, sin ocupar espacio del título.
+  if (compacto) {
+    const otro: Tema = tema === "light" ? "dark" : "light";
+    return (
+      <button onClick={() => poner(otro)} aria-label={otro === "light" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+        className={`rounded-xl border border-line p-2 text-muted hover:text-text ${className}`}>
+        {tema === "light" ? <Moon size={18} /> : <Sun size={18} />}
+      </button>
+    );
+  }
   const boton = (t: Tema, Icono: typeof Sun, texto: string) => (
     <button onClick={() => poner(t)} aria-pressed={tema === t}
       className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition-colors ${tema === t ? "bg-blue/15 text-text font-semibold" : "text-muted hover:text-text"}`}>

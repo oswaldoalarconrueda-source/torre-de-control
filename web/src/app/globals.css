@@ -107,17 +107,17 @@ body {
 
 [data-theme="light"] .glow-bg {
   background:
-    radial-gradient(60rem 28rem at 50% -8rem, rgb(37 99 235 / 0.10), transparent 70%),
-    radial-gradient(30rem 30rem at 100% 40%, rgb(8 145 178 / 0.04), transparent 70%),
+    radial-gradient(60rem 28rem at 50% -8rem, rgb(37 99 235 / 0.10), transparent 70%) no-repeat,
+    radial-gradient(30rem 30rem at 100% 40%, rgb(8 145 178 / 0.04), transparent 70%) no-repeat,
     var(--bg);
 }
 
-/* Brillo azul de fondo, como en la referencia. */
+/* Brillo azul de fondo, como en la referencia. Sin repetir: si no, en las páginas largas sale un corte de color a cada alto de pantalla. */
 .glow-bg {
   background:
-    radial-gradient(60rem 28rem at 50% -8rem, rgb(47 123 255 / 0.28), transparent 70%),
-    radial-gradient(30rem 30rem at 100% 40%, rgb(69 200 255 / 0.07), transparent 70%),
-    radial-gradient(30rem 30rem at 0% 70%, rgb(47 123 255 / 0.06), transparent 70%),
+    radial-gradient(60rem 28rem at 50% -8rem, rgb(47 123 255 / 0.28), transparent 70%) no-repeat,
+    radial-gradient(30rem 30rem at 100% 40%, rgb(69 200 255 / 0.07), transparent 70%) no-repeat,
+    radial-gradient(30rem 30rem at 0% 70%, rgb(47 123 255 / 0.06), transparent 70%) no-repeat,
     var(--bg);
 }
 
@@ -282,3 +282,63 @@ body {
 .barra-x::-webkit-scrollbar-track { background: rgb(255 255 255 / 0.04); }
 .barra-x::-webkit-scrollbar-thumb { background: rgb(120 160 255 / 0.5); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
 .barra-x::-webkit-scrollbar-thumb:hover { background-color: rgb(120 160 255 / 0.8); }
+
+/* 📱 Celular y tablet. Con letra de menos de 16 px, el iPhone acerca la pantalla al tocar un campo y no la devuelve. */
+@media (max-width: 1023px) {
+  input:not([type="checkbox"], [type="radio"]), select, textarea { font-size: 16px; }
+}
+@media (max-width: 767px) {
+  /* Tablas que siguen corriéndose de lado: la primera columna queda fija para saber de qué fila son los datos. */
+  main .overflow-x-auto > table:not(.fichas) :is(th, td):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--panel);
+    box-shadow: 1px 0 0 var(--line);
+  }
+}
+
+/* 📱 Tablas de trabajo (Disponible en oficina, Novedades): en celular cada línea es una ficha. Va en una capa para que
+   cada celda pueda decir su lugar con clases (max-md:col-span-6, max-md:order-3); la ficha tiene 6 columnas. */
+@layer components {
+  @media (max-width: 767px) {
+    .fichas-caja { overflow: visible !important; border: 0 !important; background: none !important; box-shadow: none !important; }
+    .fichas, .fichas tbody { display: block; width: 100%; min-width: 0 !important; }
+    .fichas thead { display: none; }
+    .fichas tr {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 0.7rem 0.6rem;
+      margin-bottom: 0.75rem;
+      padding: 0.85rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 1rem;
+      background-color: var(--panel);
+    }
+    .fichas td {
+      display: block;
+      grid-column: span 3;
+      min-width: 0 !important;
+      max-width: none !important;
+      padding: 0 !important;
+      font-size: 0.85rem;
+      white-space: normal !important;
+      overflow-wrap: anywhere;
+    }
+    .fichas td[colspan] { grid-column: 1 / -1; }
+    .fichas td[data-l]::before {
+      content: attr(data-l);
+      display: block;
+      margin-bottom: 0.2rem;
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    /* La primera celda deja de estar fija: en la ficha no hay nada que correr. */
+    .fichas td:first-child { position: static !important; background: none !important; box-shadow: none !important; }
+    .fichas td select, .fichas td input:not([type="checkbox"], [type="radio"]) { width: 100% !important; max-width: 100% !important; height: 2.5rem !important; }
+    .fichas td div { max-width: none !important; }
+  }
+}

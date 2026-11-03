@@ -130,6 +130,7 @@ export function AgenteAdmin({ cuenta, configs, cierres, novedades }: { cuenta: s
                   </button>
                   {abiertoAqui && (
                     <div className="border-t border-line px-3 py-3 space-y-3">
+                      <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
@@ -156,6 +157,7 @@ export function AgenteAdmin({ cuenta, configs, cierres, novedades }: { cuenta: s
                           ))}
                         </tbody>
                       </table>
+                      </div>
                       {!!c.resumen.compras_sin_remision && (
                         <p className="text-xs text-amber">
                           {entero(c.resumen.compras_sin_remision)} compras ({dinero(c.resumen.compras_sin_remision_valor, cuenta)}) quedaron por fuera: no tienen remisión de compra pendiente en Effi. Están abajo en novedades y entran solas cuando aparezca la remisión.

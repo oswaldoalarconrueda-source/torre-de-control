@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Send, X } from "lucide-react";
+import { Copy, PhoneCall, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, minutosDesde, nombrePropio, transCorta } from "@/lib/formato";
 import { sumarDias } from "@/lib/filtros";
@@ -201,19 +201,19 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
               className={`rounded-lg px-3 py-1 font-semibold transition-colors ${filtro.estado === e.id ? "bg-blue/25 text-text" : "text-muted hover:text-text"}`}>{e.label}</button>
           ))}
         </div>
-        <select value={filtro.transp} onChange={(e) => setFiltro((x) => ({ ...x, transp: e.target.value }))} className={`${sel} h-8`}>
+        <select value={filtro.transp} onChange={(e) => setFiltro((x) => ({ ...x, transp: e.target.value }))} className={`${sel} h-8 max-md:h-10 max-md:w-full`}>
           <option value="">Todas las transportadoras</option>
           {transportadoras.map((t) => <option key={t} value={t} className="bg-bg">{t}</option>)}
         </select>
-        <select value={filtro.novedad} onChange={(e) => setFiltro((x) => ({ ...x, novedad: e.target.value }))} className={`${sel} h-8 max-w-[16rem]`}>
+        <select value={filtro.novedad} onChange={(e) => setFiltro((x) => ({ ...x, novedad: e.target.value }))} className={`${sel} h-8 max-w-[16rem] max-md:h-10 max-md:w-full max-md:max-w-none`}>
           <option value="">Todas las novedades</option>
           {tipos.map((t) => <option key={t} value={t} className="bg-bg">{t}</option>)}
         </select>
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={filtro.mias} onChange={(e) => setFiltro((x) => ({ ...x, mias: e.target.checked }))} /> Solo las mías
         </label>
-        <input value={filtro.buscar} onChange={(e) => setFiltro((x) => ({ ...x, buscar: e.target.value }))} placeholder="Buscar guía, teléfono o cliente" className={`${inp} h-8 w-56`} />
-        <span className="ml-auto text-xs text-muted">{entero(vista.length)} {vista.length === 1 ? "novedad" : "novedades"} · llegan solas cada minuto</span>
+        <input value={filtro.buscar} onChange={(e) => setFiltro((x) => ({ ...x, buscar: e.target.value }))} placeholder="Buscar guía, teléfono o cliente" className={`${inp} h-8 w-56 max-md:h-10 max-md:w-full`} />
+        <span className="ml-auto text-xs text-muted max-md:ml-0">{entero(vista.length)} {vista.length === 1 ? "novedad" : "novedades"} · llegan solas cada minuto</span>
       </div>
 
       {/* Clientes que pidieron que los llamaran hoy (o antes) y la novedad sigue abierta: siempre a la vista. */}
@@ -229,7 +229,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
       )}
 
       <BarraHorizontal>
-        <table className="w-full min-w-max text-xs">
+        <table className="fichas w-full min-w-max text-xs">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wider text-muted border-b border-line">
               {/* Dirección y recaudo a la izquierda: al trabajar la línea se ven juntos guía, cliente, teléfono y las llamadas. */}
@@ -251,7 +251,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
               const seg = toca(f), sigue = b.sol === SEGUIR;
               return (
                 <tr key={`${f.empresa}-${f.id}`} className={`border-b border-line/60 align-middle ${seg ? "bg-naranja/[0.08] hover:bg-naranja/[0.12] shadow-[inset_3px_0_0_var(--naranja)]" : `hover:bg-tinte/[0.03] ${fondo}`}`}>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap text-muted" title={new Date(f.llego).toLocaleString("es-CO")} suppressHydrationWarning>
+                  <td data-l="Llegó" className="max-md:order-1 px-1.5 py-1.5 whitespace-nowrap text-muted" title={new Date(f.llego).toLocaleString("es-CO")} suppressHydrationWarning>
                     {seg && (
                       <div className="mb-1 inline-block rounded-full bg-naranja px-2 py-0.5 text-[10px] font-bold text-black">
                         📌 {seg === hoy ? "Hoy" : ddmm(seg)}
@@ -259,18 +259,18 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     )}
                     <div suppressHydrationWarning>{minutosDesde(f.llego, ahora)}</div>
                   </td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap" title={f.transportadora ?? ""}>{transCorta(f.transportadora)}</td>
-                  <td className="px-1.5 py-1.5 max-w-[10rem]">
-                    <div className="font-semibold truncate" title={f.novedad ?? ""}>{f.novedad}</div>
-                    <div className="text-muted truncate" title={f.aclaracion ?? ""}>{f.aclaracion}</div>
+                  <td data-l="Trans." className="max-md:order-13 px-1.5 py-1.5 whitespace-nowrap" title={f.transportadora ?? ""}>{transCorta(f.transportadora)}</td>
+                  <td data-l="Novedad" className="max-md:order-5 max-md:col-span-6 px-1.5 py-1.5 max-w-[10rem]">
+                    <div className="font-semibold md:truncate" title={f.novedad ?? ""}>{f.novedad}</div>
+                    <div className="text-muted md:truncate" title={f.aclaracion ?? ""}>{f.aclaracion}</div>
                   </td>
-                  <td className="px-1.5 py-1.5 min-w-[6rem] max-w-[8.5rem] font-semibold text-blue-2" title={f.contenido ?? ""}>
-                    <div className="line-clamp-2">{f.contenido ?? "—"}</div>
+                  <td data-l="Contenido" className="max-md:order-6 max-md:col-span-6 px-1.5 py-1.5 min-w-[6rem] max-w-[8.5rem] font-semibold text-blue-2" title={f.contenido ?? ""}>
+                    <div className="md:line-clamp-2">{f.contenido ?? "—"}</div>
                   </td>
-                  <td className="px-1.5 py-1.5 max-w-[4.5rem] truncate" title={[f.ciudad, f.provincia].filter(Boolean).join(", ")}>{f.ciudad}</td>
-                  <td className="px-1.5 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-32`} /></td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap num">{f.recaudo != null ? dinero(f.recaudo, f.cuenta) : "—"}</td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap">
+                  <td data-l="Ciudad" className="max-md:order-12 px-1.5 py-1.5 max-w-[4.5rem] truncate" title={[f.ciudad, f.provincia].filter(Boolean).join(", ")}>{f.ciudad}</td>
+                  <td data-l="Dirección" className="max-md:order-11 max-md:col-span-6 px-1.5 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-32`} /></td>
+                  <td data-l="Recaudo" className="max-md:order-2 px-1.5 py-1.5 whitespace-nowrap num max-md:text-right max-md:font-semibold">{f.recaudo != null ? dinero(f.recaudo, f.cuenta) : "—"}</td>
+                  <td data-l="Guía" className="max-md:order-14 px-1.5 py-1.5 whitespace-nowrap">
                     {f.guia && (
                       <button onClick={() => copiar(f.guia!)} title="Copiar guía" className="group inline-flex items-center gap-1 font-mono font-semibold hover:text-blue-2">
                         {f.guia}<Copy size={10} className="opacity-40 group-hover:opacity-100" />
@@ -279,15 +279,23 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     )}
                     <div className="max-w-[7.5rem] truncate text-[10px] text-muted" title={f.estado_guia ?? ""}>{f.estado_guia}</div>
                   </td>
-                  <td className="px-1.5 py-1.5 max-w-[7rem] truncate" title={f.cliente ?? ""}>{f.cliente}</td>
-                  <td className="px-1.5 py-1.5"><input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { tel: e.target.value })} className={`${inp} w-24`} /></td>
+                  <td data-l="Cliente" className="max-md:order-3 max-md:font-semibold px-1.5 py-1.5 max-w-[7rem] truncate" title={f.cliente ?? ""}>{f.cliente}</td>
+                  <td data-l="Teléfono" className="max-md:order-4 px-1.5 py-1.5">
+                    <input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { tel: e.target.value })} className={`${inp} w-24`} />
+                    {/* En celular: llamar de un toque. */}
+                    {(b.tel ?? f.telefono) && (
+                      <a href={`tel:${b.tel ?? f.telefono}`} className="mt-1.5 flex items-center justify-center gap-1 rounded-lg border border-green/40 bg-green/10 py-2 text-xs font-semibold text-green md:hidden">
+                        <PhoneCall size={13} /> Llamar
+                      </a>
+                    )}
+                  </td>
                   {[1, 2, 3].map((i) => {
                     const l = f.llamadas[String(i)];
                     const res = l ? RESULTADOS[l.r] : null;
                     // Cerrado muestra solo la sigla (C, NC, NA) con su color; al abrir salen los nombres completos.
                     return (
-                      <td key={i} className="px-1 py-1.5">
-                        <div className="relative w-10">
+                      <td key={i} data-l={`C${i}`} className="max-md:order-7 max-md:col-span-2 px-1 py-1.5">
+                        <div className="relative w-10 max-md:w-full">
                           <select value={l?.r ?? ""} onChange={(e) => marcar(f, i, e.target.value)} title={res ? `${res.label}${l?.u ? ` · ${l.u.split("@")[0]}` : ""}` : "Sin llamar"}
                             className={`${sel} w-full appearance-none text-transparent`} style={res ? { borderColor: res.color } : undefined}>
                             <option value="" className="bg-bg text-text">—</option>
@@ -300,7 +308,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                       </td>
                     );
                   })}
-                  <td className="px-1.5 py-1.5">
+                  <td data-l="Solución" className="max-md:order-8 max-md:col-span-6 px-1.5 py-1.5">
                     {/* Seguimiento interno guardado: el día y la nota (completa al pasar el mouse), con ✕ para quitarlo. */}
                     {f.seguimiento && (
                       <div className="mb-1 flex items-center gap-1" title={`Seguimiento ${ddmm(f.seguimiento.fecha)}${f.seguimiento.nota ? ` · ${f.seguimiento.nota}` : ""}${f.seguimiento.u ? ` · ${f.seguimiento.u.split("@")[0]}` : ""}`}>
@@ -323,7 +331,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                       </select>
                     )}
                   </td>
-                  <td className="px-1.5 py-1.5">
+                  <td data-l="Entrega" className={`max-md:order-9 max-md:col-span-6 px-1.5 py-1.5 ${(sigue || s?.pide_entrega) && !enviada ? "" : "max-md:hidden"}`}>
                     {sigue && !enviada
                       ? <input type="date" value={b.fecha ?? ""} min={hoy} disabled={bloqueada} title="Día en que el cliente pidió que lo llamen"
                           onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-28 border-naranja/60`} />
@@ -331,25 +339,27 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                       ? <input type="date" value={b.fecha ?? ""} min={sumarDias(hoy, 1)} max={sumarDias(hoy, 5)} disabled={bloqueada} onChange={(e) => cambiar(f, { fecha: e.target.value })} className={`${inp} w-28`} />
                       : <span className="text-muted">—</span>}
                   </td>
-                  <td className="px-1.5 py-1.5">
+                  <td data-l="Qué se habló" className="max-md:order-9 max-md:col-span-6 px-1.5 py-1.5">
                     {enviada ? <span className="text-muted">{env!.estado === "enviando" ? "Enviando a Effi…" : env!.mensaje ?? "Recibida por Effi"}</span> : (
                       <input value={b.ges ?? ""} disabled={bloqueada} maxLength={sigue ? 500 : 1024} placeholder={sigue ? "Llámeme el martes en la tarde" : "Recibe el jueves en la tarde"}
-                        onChange={(e) => cambiar(f, { ges: e.target.value })} onKeyDown={(e) => e.key === "Enter" && enviar(f)} className={`${inp} w-40`} />
+                        onChange={(e) => cambiar(f, { ges: e.target.value })} enterKeyHint="done"
+                        // En celular, la tecla de terminar solo cierra el teclado: lo enviado no se puede deshacer en Effi.
+                        onKeyDown={(e) => { if (e.key !== "Enter") return; if (window.matchMedia("(pointer: coarse)").matches) e.currentTarget.blur(); else enviar(f); }} className={`${inp} w-40`} />
                     )}
                   </td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap">
+                  <td className="max-md:order-10 max-md:col-span-6 px-1.5 py-1.5 whitespace-nowrap">
                     {env?.estado === "enviada" ? <span className="font-semibold text-green">✓ En Effi</span>
                       : env?.estado === "enviando" ? <span className="text-amber">Enviando…</span>
                       : (
                         <div>
                           {sigue ? (
                             <button onClick={() => enviar(f)} disabled={ocupada[f.id]} title="Se guarda en el Centro de Control; no se envía a Effi"
-                              className="inline-flex items-center gap-1 rounded-md bg-naranja px-2.5 py-1 text-[11px] font-bold text-black disabled:opacity-40">
+                              className="inline-flex items-center gap-1 rounded-md bg-naranja px-2.5 py-1 max-md:w-full max-md:justify-center max-md:py-2.5 max-md:text-sm text-[11px] font-bold text-black disabled:opacity-40">
                               📌 Guardar
                             </button>
                           ) : (
                             <button onClick={() => enviar(f)} disabled={ocupada[f.id] || !sols.length}
-                              className="inline-flex items-center gap-1 rounded-md bg-blue px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-40">
+                              className="inline-flex items-center gap-1 rounded-md bg-blue px-2.5 py-1 max-md:w-full max-md:justify-center max-md:py-2.5 max-md:text-sm text-[11px] font-semibold text-white disabled:opacity-40">
                               <Send size={11} /> Enviar
                             </button>
                           )}
@@ -357,7 +367,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                         </div>
                       )}
                   </td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap text-muted">{asesora ? asesora.split("@")[0] : "—"}</td>
+                  <td data-l="Asesora" className="max-md:order-15 px-1.5 py-1.5 whitespace-nowrap text-muted">{asesora ? asesora.split("@")[0] : "—"}</td>
                 </tr>
               );
             })}
@@ -369,7 +379,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
           </tbody>
         </table>
       </BarraHorizontal>
-      <p className="text-[11px] text-muted">Tab pasa de casilla en casilla dentro de la línea; Enter en “Qué se habló” envía la línea a Effi. Lo enviado no se puede deshacer en Effi.</p>
+      <p className="text-[11px] text-muted max-md:hidden">Tab pasa de casilla en casilla dentro de la línea; Enter en “Qué se habló” envía la línea a Effi. Lo enviado no se puede deshacer en Effi.</p>
 
       <div className="space-y-2">
         <div className="font-display text-lg font-semibold">{verEquipo ? "Rendimiento por asesora" : "Tu rendimiento"}</div>

@@ -9,6 +9,7 @@ import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/men
 import { esSocio, tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
+import { SelectorTema } from "./selector-tema";
 
 const MENU_OCULTO = "centro.menu-oculto";
 
@@ -43,6 +44,12 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   const qs = sp.toString() ? `?${sp.toString()}` : "";
 
   useEffect(() => setAbierto(false), [path]);
+  // Con el menú abierto en celular, la pantalla de atrás no se mueve.
+  useEffect(() => {
+    if (!abierto) return;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, [abierto]);
 
   const visible = (it: ItemMenu) => {
     if (it.soloOwner && !esOwner) return false;
@@ -60,7 +67,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         key={it.href}
         href={`${it.href}${qs}`}
         aria-current={activo ? "page" : undefined}
-        className={`group flex items-center gap-2.5 rounded-xl py-2 pr-3 text-sm transition-colors ${sub ? "pl-7" : "pl-3"} ${
+        className={`group flex items-center gap-2.5 rounded-xl py-2 max-lg:py-2.5 pr-3 text-sm transition-colors ${sub ? "pl-7" : "pl-3"} ${
           activo ? "bg-blue/15 text-text shadow-[inset_2px_0_0_var(--blue-2)]" : "text-muted hover:text-text hover:bg-tinte/[0.04]"
         }`}
       >
@@ -82,7 +89,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
     return (
       <div key={it.href}>
         <button type="button" onClick={() => setGrupos((g) => ({ ...g, [it.href]: !desplegado }))} aria-expanded={desplegado}
-          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-tinte/[0.04] hover:text-text ${dentro ? "text-text" : "text-muted"}`}>
+          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 max-lg:py-2.5 text-left text-sm transition-colors hover:bg-tinte/[0.04] hover:text-text ${dentro ? "text-text" : "text-muted"}`}>
           <span className="w-5 text-center text-base leading-none" aria-hidden>{it.emoji}</span>
           <span className="flex-1 truncate">{it.label}</span>
           <ChevronDown size={14} className={`shrink-0 transition-transform ${desplegado ? "rotate-180" : ""}`} aria-hidden />
@@ -167,9 +174,12 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
           <Logo />
           <span className="font-display font-semibold tracking-tight">Centro de Control</span>
         </div>
-        <button onClick={() => setAbierto(!abierto)} className="rounded-xl border border-line p-2 text-muted hover:text-text" aria-label={abierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={abierto}>
-          {abierto ? <X size={18} /> : <Menu size={18} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <SelectorTema compacto />
+          <button onClick={() => setAbierto(!abierto)} className="rounded-xl border border-line p-2 text-muted hover:text-text" aria-label={abierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={abierto}>
+            {abierto ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        </div>
       </div>
       {abierto && (
         <div className="lg:hidden fixed inset-0 z-40 flex">

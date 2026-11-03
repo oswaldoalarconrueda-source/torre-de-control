@@ -44,6 +44,12 @@ export function AgenteFlotante({ esOwner, nombre }: { esOwner: boolean; nombre: 
     const t = setInterval(cargar, abierto ? 20_000 : 120_000);
     return () => clearInterval(t);
   }, [abierto, cargar]);
+  // Abierto en celular, la pantalla de atrás no se mueve.
+  useEffect(() => {
+    if (!abierto) return;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, [abierto]);
   useEffect(() => {
     if (!abierto) return;
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setAbierto(false);
@@ -69,11 +75,12 @@ export function AgenteFlotante({ esOwner, nombre }: { esOwner: boolean; nombre: 
     <>
       {!abierto && (
         <button onClick={() => setAbierto(true)} title="Abrir el agente sin salir de esta pantalla"
-          className="fixed right-0 top-1/2 z-30 -translate-y-1/2 flex flex-col items-center gap-1.5 rounded-l-2xl border border-r-0 border-blue/40 bg-panel/95 px-2 py-3 shadow-[0_0_24px_rgb(47_123_255_/_0.25)] backdrop-blur hover:bg-blue/15">
+          aria-label={`Abrir ${nombre}`}
+          className="fixed z-30 flex items-center justify-center border border-blue/40 bg-panel/95 shadow-[0_0_24px_rgb(47_123_255_/_0.25)] backdrop-blur hover:bg-blue/15 max-lg:bottom-4 max-lg:right-4 max-lg:size-12 max-lg:rounded-full lg:right-0 lg:top-1/2 lg:-translate-y-1/2 lg:flex-col lg:gap-1.5 lg:rounded-l-2xl lg:border-r-0 lg:px-2 lg:py-3">
           <span className="text-lg leading-none">🤖</span>
-          <span className="text-[11px] font-semibold tracking-wider text-text [writing-mode:vertical-rl] rotate-180">{nombre}</span>
-          {corriendo && <span className="pulso size-2 rounded-full bg-green shadow-[0_0_8px_var(--green)]" title="Corriendo" />}
-          {alertas > 0 && <span className="rounded-full bg-red px-1.5 py-0.5 text-[10px] font-bold text-white">{alertas}</span>}
+          <span className="hidden text-[11px] font-semibold tracking-wider text-text [writing-mode:vertical-rl] rotate-180 lg:inline">{nombre}</span>
+          {corriendo && <span className="pulso size-2 rounded-full bg-green shadow-[0_0_8px_var(--green)] max-lg:absolute max-lg:left-0.5 max-lg:top-0.5" title="Corriendo" />}
+          {alertas > 0 && <span className="rounded-full bg-red px-1.5 py-0.5 text-[10px] font-bold text-white max-lg:absolute max-lg:-right-1 max-lg:-top-1">{alertas}</span>}
         </button>
       )}
       {abierto && (
@@ -125,9 +132,9 @@ export function AgenteFlotante({ esOwner, nombre }: { esOwner: boolean; nombre: 
                           ) : (
                             <div className="mt-2.5 flex flex-wrap gap-2">
                               <button onClick={() => setConfirmar({ cuenta: p.cuenta, accion: "ahora" })} disabled={p.corriendo}
-                                className="rounded-full bg-green px-3 py-1.5 text-xs font-bold text-black disabled:opacity-40">▶ Ejecutar ahora</button>
+                                className="rounded-full bg-green px-3 py-1.5 max-lg:py-2 text-xs font-bold text-black disabled:opacity-40">▶ Ejecutar ahora</button>
                               <button onClick={() => setConfirmar({ cuenta: p.cuenta, accion: "guias" })} disabled={p.corriendo}
-                                className="rounded-full border border-blue/50 px-3 py-1.5 text-xs font-bold text-blue-2 disabled:opacity-40">Pasar de remisión a guía</button>
+                                className="rounded-full border border-blue/50 px-3 py-1.5 max-lg:py-2 text-xs font-bold text-blue-2 disabled:opacity-40">Pasar de remisión a guía</button>
                             </div>
                           )
                         )}

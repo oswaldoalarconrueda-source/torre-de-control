@@ -88,6 +88,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
   const [locales, setLocales] = useState<Record<string, Llamada[]>>({});
   const [obs, setObs] = useState<Record<string, { codigo: CodigoObs | ""; fecha: string | null; texto?: string }>>({});
   const [mostrar, setMostrar] = useState(POR_PAGINA);
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set()); // fichas con todos los datos a la vista (celular)
   const [copiada, setCopiada] = useState<string | null>(null);
 
   const llamadasDe = (g: GuiaOficina) => {
@@ -227,16 +228,16 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
             {f.label}{f.id === "seguimiento" ? ` (${entero(porSeguir)})` : f.id === "volver" ? ` (${entero(porVolver)})` : ""}
           </button>
         ))}
-        <label className="ml-auto flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-sm">
+        <label className="ml-auto flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-sm max-md:w-full">
           <Search size={14} className="text-muted" />
           <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Guía, cliente, teléfono, ciudad, producto u observación"
-            className="bg-transparent outline-none w-72 placeholder:text-muted" />
+            className="bg-transparent outline-none w-72 min-w-0 max-md:flex-1 placeholder:text-muted" />
         </label>
       </div>
       {error && <p className="text-sm text-red">{error}</p>}
 
       <BarraHorizontal>
-        <table className="w-full min-w-max text-sm">
+        <table className="fichas w-full min-w-max text-sm">
           <thead>
             <tr className="bg-green/15 text-left text-[11px] uppercase tracking-wider font-semibold whitespace-nowrap">
               <th className="sticky left-0 z-10 bg-verde-fondo px-2 py-3">Llegó</th>
@@ -258,17 +259,19 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
               {esDueno && <th className="px-2 py-3">Quién lo hizo</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-line">
+          <tbody className="md:divide-y md:divide-line">
             {lista.slice(0, mostrar).map((g) => {
               const ls = llamadasDe(g);
               const dias = g.llegada ? (Date.now() - Date.parse(g.llegada)) / 86_400_000 : 0;
               const tels = telefonos(g.telefono);
               const seg = seguimiento(g);
               const ret = volverALlamar(g);
+              // En celular, lo que casi no se usa al llamar queda detrás de "Ver más datos".
+              const extra = abiertas.has(g.guia) ? "" : "max-md:hidden";
               return (
                 <tr key={g.guia} className={`align-middle ${seg && !ret ? "bg-naranja/[0.07] hover:bg-naranja/[0.11]" : "hover:bg-tinte/[0.02]"}`}
                   style={ret ? { background: `${MORADO}12` } : undefined}>
-                  <td className={`sticky left-0 z-10 px-2 py-2 whitespace-nowrap text-xs font-mono ${seg && !ret ? "bg-naranja-fondo shadow-[inset_3px_0_0_var(--naranja)]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`}
+                  <td data-l="Llegó" className={`max-md:order-1 sticky left-0 z-10 px-2 py-2 whitespace-nowrap text-xs font-mono ${seg && !ret ? "bg-naranja-fondo shadow-[inset_3px_0_0_var(--naranja)]" : "bg-panel"} ${dias >= 3 ? "text-red" : dias >= 1 ? "text-amber" : "text-muted"}`}
                     style={ret ? { boxShadow: `inset 3px 0 0 ${MORADO}` } : undefined} title={g.llegada ? hora(g.llegada) : ""}>
                     {ret && (
                       <div className="mb-1 inline-block rounded-full px-2 py-0.5 font-sans text-[10px] font-bold text-black" style={{ background: MORADO }} title={ret.titulo}>
@@ -282,20 +285,20 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                     )}
                     <div suppressHydrationWarning>{minutosDesde(g.llegada)}</div>
                   </td>
-                  <td className="px-2 py-2 whitespace-nowrap">{g.centro_costos ?? "—"}</td>
-                  <td className="px-2 py-2 whitespace-nowrap text-xs text-muted">{g.fecha_trans ? hora(g.fecha_trans) : "—"}</td>
-                  <td className="px-2 py-2 max-w-[9rem] truncate font-semibold" title={g.destinatario ?? ""}>{g.destinatario ?? "—"}</td>
-                  <td className="px-2 py-2 max-w-[5.5rem] truncate" title={g.provincia ?? ""}>{g.provincia ?? "—"}</td>
-                  <td className="px-2 py-2 max-w-[5.5rem] truncate" title={g.ciudad ?? ""}>{g.ciudad ?? "—"}</td>
-                  <td className="px-2 py-2 min-w-[9rem] max-w-[11rem] text-xs text-muted"><div className="line-clamp-2" title={g.direccion ?? ""}>{g.direccion ?? "—"}</div></td>
-                  <td className="px-2 py-2">
-                    <div className="flex flex-col gap-1">
+                  <td data-l="C. costos" className={`max-md:order-16 ${extra} px-2 py-2 whitespace-nowrap`}>{g.centro_costos ?? "—"}</td>
+                  <td data-l="Creada" className={`max-md:order-17 ${extra} px-2 py-2 whitespace-nowrap text-xs text-muted`}>{g.fecha_trans ? hora(g.fecha_trans) : "—"}</td>
+                  <td data-l="Destinatario" className="max-md:order-3 max-md:col-span-6 px-2 py-2 max-w-[9rem] truncate font-semibold" title={g.destinatario ?? ""}>{g.destinatario ?? "—"}</td>
+                  <td data-l="Depto." className="max-md:order-9 px-2 py-2 max-w-[5.5rem] truncate" title={g.provincia ?? ""}>{g.provincia ?? "—"}</td>
+                  <td data-l="Ciudad" className="max-md:order-8 px-2 py-2 max-w-[5.5rem] truncate" title={g.ciudad ?? ""}>{g.ciudad ?? "—"}</td>
+                  <td data-l="Dirección" className="max-md:order-10 max-md:col-span-6 px-2 py-2 min-w-[9rem] max-w-[11rem] text-xs text-muted"><div className="md:line-clamp-2" title={g.direccion ?? ""}>{g.direccion ?? "—"}</div></td>
+                  <td data-l="Teléfonos" className="max-md:order-5 max-md:col-span-6 px-2 py-2">
+                    <div className="flex flex-col gap-1 max-md:gap-2">
                       {tels.map((t) => (
-                        <span key={t} className="inline-flex items-center gap-1">
-                          <a href={`tel:${t}`} title="Llamar" className="inline-flex items-center gap-1 rounded-lg border border-green/40 bg-green/10 px-2 py-0.5 font-mono text-xs font-semibold text-green hover:bg-green/20">
+                        <span key={t} className="inline-flex items-center gap-1 max-md:gap-2">
+                          <a href={`tel:${t}`} title="Llamar" className="inline-flex items-center gap-1 rounded-lg border border-green/40 bg-green/10 px-2 py-0.5 max-md:flex-1 max-md:justify-center max-md:py-2 max-md:text-sm font-mono text-xs font-semibold text-green hover:bg-green/20">
                             <PhoneCall size={12} />{t}
                           </a>
-                          <a href={whatsapp(t, cuenta)} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp" className="rounded-lg border border-green/40 p-1 text-green hover:bg-green/20">
+                          <a href={whatsapp(t, cuenta)} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp" className="rounded-lg border border-green/40 p-1 max-md:p-2.5 text-green hover:bg-green/20">
                             <MessageCircle size={12} />
                           </a>
                         </span>
@@ -303,37 +306,42 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                       {!tels.length && <span className="text-xs text-red">Sin teléfono</span>}
                     </div>
                   </td>
-                  <td className="px-2 py-2 whitespace-nowrap" title={g.transportadora ?? ""}>{transCorta(g.transportadora)}</td>
-                  <td className="px-2 py-2 whitespace-nowrap">
+                  <td data-l="Trans." className="max-md:order-12 px-2 py-2 whitespace-nowrap" title={g.transportadora ?? ""}>{transCorta(g.transportadora)}</td>
+                  <td data-l="Guía" className="max-md:order-11 px-2 py-2 whitespace-nowrap">
                     <button onClick={() => copiar(g.guia)} title="Copiar guía" className="group inline-flex items-center gap-1 font-mono font-semibold hover:text-blue-2">
                       {g.guia}<Copy size={11} className="opacity-40 group-hover:opacity-100" />
                     </button>
                     {copiada === g.guia && <span className="ml-1 text-[10px] text-green">copiada</span>}
                   </td>
-                  <td className="px-2 py-2 text-right num whitespace-nowrap">{dinero(g.valor, cuenta)}</td>
-                  <td className="px-2 py-2 min-w-[7rem] max-w-[10rem] font-semibold text-blue-2"><div className="line-clamp-2" title={g.contenido ?? ""}>{g.contenido ?? "—"}</div></td>
-                  <td className="px-2 py-2 max-w-[7rem] truncate text-xs" title={g.estado ?? ""}>{g.estado ?? "—"}</td>
-                  <td className="px-2 py-2 max-w-[7rem] truncate text-xs" title={g.estado_efficommerce ?? ""}>{g.estado_efficommerce ?? "—"}</td>
+                  <td data-l="Recaudo" className="max-md:order-2 px-2 py-2 text-right num whitespace-nowrap max-md:font-semibold">{dinero(g.valor, cuenta)}</td>
+                  <td data-l="Contenido" className="max-md:order-4 max-md:col-span-6 px-2 py-2 min-w-[7rem] max-w-[10rem] font-semibold text-blue-2"><div className="md:line-clamp-2" title={g.contenido ?? ""}>{g.contenido ?? "—"}</div></td>
+                  <td data-l="Est. guía" className={`max-md:order-13 ${extra} px-2 py-2 max-w-[7rem] truncate text-xs`} title={g.estado ?? ""}>{g.estado ?? "—"}</td>
+                  <td data-l="Est. global" className={`max-md:order-14 ${extra} px-2 py-2 max-w-[7rem] truncate text-xs`} title={g.estado_efficommerce ?? ""}>{g.estado_efficommerce ?? "—"}</td>
                   {CONTACTOS.map((c) => {
                     const l = ls.find((x) => x.intento === c.intento);
                     // Se llena en orden: el contacto 2 se habilita cuando ya hay contacto 1, y así.
                     const habilitado = !!l || ls.length === c.intento - 1;
                     const col = l ? RESULTADOS[l.resultado].color : null;
                     return (
-                      <td key={c.intento} className="px-2 py-2">
+                      <td key={c.intento} data-l={c.label} className="max-md:order-6 max-md:col-span-2 px-2 py-2">
+                        <div className="relative">
                         <select value={l?.resultado ?? ""} disabled={!habilitado || guardando === `${g.guia}|${c.intento}`}
                           onChange={(e) => marcar(g, c.intento, c.canal, e.target.value as Resultado | "")}
                           title={l ? `${hora(l.creado_en)}${l.usuario ? ` · ${l.usuario}` : ""}` : habilitado ? `Marcar ${c.label}` : "Primero el contacto anterior"}
-                          className="w-[7.5rem] rounded-full border px-2 py-1 text-xs font-semibold outline-none disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
+                          className="w-[7.5rem] rounded-full border px-2 py-1 text-xs font-semibold outline-none disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed max-md:appearance-none max-md:text-transparent!"
                           style={col ? { color: col, borderColor: `color-mix(in srgb, ${col} 50%, transparent)`, background: `color-mix(in srgb, ${col} 14%, transparent)` } : { borderColor: "var(--line)", background: "color-mix(in srgb, var(--tinte) 3%, transparent)" }}>
                           <option value="" className="bg-bg text-text">—</option>
                           {(Object.keys(RESULTADOS) as Resultado[]).map((r) => <option key={r} value={r} className="bg-bg text-text">{RESULTADOS[r].label}</option>)}
                         </select>
+                        <span className={`pointer-events-none absolute inset-0 flex items-center justify-center text-center text-[11px] font-semibold leading-tight md:hidden ${habilitado ? "" : "opacity-35"}`} style={{ color: col ?? "var(--muted)" }}>
+                          {l ? RESULTADOS[l.resultado].label : "—"}
+                        </span>
+                        </div>
                         {esDueno && l?.usuario && <div className="mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] text-muted">{quien(l.usuario)} · {hora(l.creado_en)}</div>}
                       </td>
                     );
                   })}
-                  <td className="px-2 py-2">
+                  <td data-l="Observación" className="max-md:order-7 max-md:col-span-6 px-2 py-2">
                     {(() => {
                       const actual = obs[g.guia] ?? {
                         codigo: g.observacion?.codigo ?? "", fecha: g.observacion?.fecha ?? null,
@@ -364,7 +372,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                               onChange={(e) => setObs((o) => ({ ...o, [g.guia]: { codigo: "otro", fecha: null, texto: e.target.value } }))}
                               onBlur={(e) => e.target.value.trim() !== guardado && guardarObs(g, "otro", null, e.target.value)}
                               onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                              className={`basis-full min-w-0 rounded-lg border bg-tinte/[0.03] px-2 py-1 text-xs outline-none ${(actual.texto ?? "").trim() ? "border-line text-text" : "border-amber/60"}`} />
+                              enterKeyHint="done" className={`basis-full min-w-0 rounded-lg border bg-tinte/[0.03] px-2 py-1 text-xs outline-none ${(actual.texto ?? "").trim() ? "border-line text-text" : "border-amber/60"}`} />
                           )}
                           {actual.codigo === "otro" && !(actual.texto ?? "").trim() && <span className="text-[10px] text-amber">Escribe lo que dijo el cliente</span>}
                           {guardando === `${g.guia}|obs` && <span className="text-[10px] text-muted">Guardando…</span>}
@@ -378,11 +386,17 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                     const u = g.observacion?.usuario ? { email: g.observacion.usuario, en: g.observacion.actualizado_en }
                       : ultimo?.usuario ? { email: ultimo.usuario, en: ultimo.creado_en } : null;
                     return (
-                      <td className="px-2 py-2 whitespace-nowrap text-xs">
+                      <td data-l="Quién lo hizo" className={`max-md:order-15 max-md:col-span-6 ${extra} px-2 py-2 whitespace-nowrap text-xs`}>
                         {u ? <><div className="font-semibold">{quien(u.email)}</div><div className="text-[10px] text-muted">{hora(u.en)}</div></> : <span className="text-muted">—</span>}
                       </td>
                     );
                   })()}
+                  <td className="max-md:order-last max-md:col-span-6 md:hidden">
+                    <button onClick={() => setAbiertas((a) => { const n = new Set(a); if (!n.delete(g.guia)) n.add(g.guia); return n; })}
+                      aria-expanded={abiertas.has(g.guia)} className="w-full rounded-lg border border-line py-2 text-xs text-muted">
+                      {abiertas.has(g.guia) ? "Ver menos" : "Ver más datos"}
+                    </button>
+                  </td>
                 </tr>
               );
             })}

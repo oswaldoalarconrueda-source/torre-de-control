@@ -54,10 +54,10 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
       {tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} nombre={agente} />}
       {/* Huella del cliente: aviso al hacerse cada guía de Guatemala (solo trae las tiendas que el usuario ve). */}
       {tieneModulo(usuario, "automatizacion") && <AlertaHuella />}
-      <main className="relative flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-16 max-w-[1400px]">
-        <SelectorTema className="absolute right-4 sm:right-6 lg:right-8 top-6 z-30" />
+      <main className="relative flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-24 lg:pb-16 max-w-[1400px]">
+        <div className="absolute right-8 top-6 z-30 hidden lg:block"><SelectorTema /></div>
         {caida && (
-          <div className="mt-16 rounded-xl border border-red/50 bg-red/10 px-4 py-3 text-sm">
+          <div className="mt-4 lg:mt-16 rounded-xl border border-red/50 bg-red/10 px-4 py-3 text-sm">
             <b className="text-red">🚨 Los webhooks de Effi dejaron de llegar</b>
             {" "}({(caida.cuentas as string[]).map((c) => infoCuenta(c).nombre).join(", ")}) desde {haceCuanto(caida.desde as string)}.
             <span className="text-muted"> El Centro de Control sigue al día: la API la está actualizando cada minuto. Conviene avisarle a Effi.</span>

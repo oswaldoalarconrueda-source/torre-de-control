@@ -84,10 +84,11 @@ function Equipo({ gente, periodo }: { gente: Miembro[]; periodo: string }) {
   return (
     <section className="card min-w-0 p-4 sm:p-5">
       <h2 className="font-display text-base font-semibold tracking-tight">Rendimiento del equipo <span className="text-xs font-normal text-muted">· {periodo}</span></h2>
-      <div className="mt-3 grid items-start gap-x-8 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-3 grid items-start gap-x-8 gap-y-0 md:gap-y-4 md:grid-cols-2 xl:grid-cols-3">
         {columnas.map((col, i) => (
           <table key={i} className="w-full text-[13px]">
-            <thead>
+            {/* En celular las columnas quedan una debajo de otra: un solo encabezado. */}
+            <thead className={i ? "max-md:hidden" : undefined}>
               <tr className="text-left text-[10px] uppercase tracking-wider text-muted">
                 <th className="pb-1.5 font-medium">Usuario</th>
                 <th className="pb-1.5 font-medium">Estado</th>
@@ -141,7 +142,7 @@ export default async function InicioPage({ searchParams }: PageProps<"/inicio">)
 
   return (
     <>
-      <header className="pt-8 mb-5 pr-28">
+      <header className="pt-6 lg:pt-8 mb-5 lg:pr-28">
         <h1 className="font-display text-2xl font-semibold tracking-tight">Hola, {primerNombre}</h1>
         <p className="mt-0.5 text-sm text-muted">Gracias por hacer parte del equipo de {nombreEquipo || "Centro de Control"}</p>
         <p className="mt-1.5 text-xs text-muted"><span className="italic">“{v.texto}”</span> <span className="whitespace-nowrap">— {v.cita}</span></p>

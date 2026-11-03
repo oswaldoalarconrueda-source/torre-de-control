@@ -100,13 +100,13 @@ export function Tarjeta({ titulo, valor, badge, ayuda, pie, pendiente, children 
   titulo: string; valor: string; badge?: string | null; ayuda?: string; pie?: string; pendiente?: boolean; children?: ReactNode;
 }) {
   return (
-    <div title={ayuda} className={`card flex flex-col p-4 border-t-2 ${pendiente ? "border-t-white/15" : "border-t-blue"}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-[11px] uppercase tracking-widest font-mono text-muted leading-snug">{titulo}</div>
+    <div title={ayuda} className={`card flex min-w-0 flex-col p-3 sm:p-4 border-t-2 ${pendiente ? "border-t-white/15" : "border-t-blue"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1 sm:flex-nowrap">
+        <div className="min-w-0 text-[11px] uppercase tracking-wider sm:tracking-widest font-mono text-muted leading-snug">{titulo}</div>
         {badge && <span className="shrink-0 rounded-full bg-blue/20 text-blue-2 px-2 py-0.5 text-[11px] font-mono font-semibold">{badge}</span>}
       </div>
-      {/* Los montos en pesos colombianos son largos: letra un poco menor para que no se corten. */}
-      <div className={`num font-semibold mt-2 whitespace-nowrap ${valor.length > 12 ? "text-xl" : "text-2xl"} ${pendiente ? "text-muted" : ""}`}>{valor}</div>
+      {/* Los montos en pesos colombianos son largos: letra un poco menor para que no se corten (en celular, más aún). */}
+      <div className={`num font-semibold mt-2 whitespace-nowrap ${valor.length > 13 ? "text-base" : valor.length > 9 ? "text-lg" : "text-2xl"} ${valor.length > 12 ? "sm:text-xl" : "sm:text-2xl"} ${pendiente ? "text-muted" : ""}`}>{valor}</div>
       {children}
       {pie != null && (
         <div className="mt-auto pt-3">
@@ -124,9 +124,9 @@ export function Tarjeta({ titulo, valor, badge, ayuda, pie, pendiente, children 
 export function UtilidadNeta({ u, ventaTotal, cuenta }: { u: Pick<Utilidad, "utilidad_neta">; ventaTotal: number; cuenta: string }) {
   const neta = u.utilidad_neta;
   return (
-    <div className="card card-glow p-5">
+    <div className="card card-glow p-4 sm:p-5">
       <div className="text-[11px] uppercase tracking-widest font-mono text-green">Resumen real: utilidad neta</div>
-      <div className={`num text-4xl font-semibold mt-1 ${neta >= 0 ? "text-green" : "text-red"}`}>{dinero(neta, cuenta)}</div>
+      <div className={`num text-3xl sm:text-4xl font-semibold mt-1 ${neta >= 0 ? "text-green" : "text-red"}`}>{dinero(neta, cuenta)}</div>
       <div className="text-sm text-muted mt-1">
         {ventaTotal ? `${((neta / ventaTotal) * 100).toFixed(1).replace(".", ",")}%` : "—"} de utilidad neta real sobre venta total
       </div>
