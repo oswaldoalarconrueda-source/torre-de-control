@@ -5,15 +5,17 @@ import { entero, fechaHora } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
 import { Panel, TablaScroll, Vacio } from "@/components/ui";
 import { Cargador } from "@/components/cargador";
+import { DocumentosCarga, type Documento } from "@/components/documentos-carga";
 
 // 📤 Cargar archivos: Dropi (órdenes, productos, cartera) y Meta (CSV por BM) mientras no hay API.
 export default async function CargasPage() {
   const u = await getUsuario();
   if (u?.rol !== "owner") redirect("/");
   const supabase = await createClient();
-  const [{ data: cargas }, { data: estado }] = await Promise.all([
+  const [{ data: cargas }, { data: estado }, { data: documentos }] = await Promise.all([
     supabase.from("app_cargas").select("id,tipo,cuenta,archivo,filas,resumen,creado_en").order("id", { ascending: false }).limit(30),
     supabase.rpc("app_estado_cargas"),
+    supabase.from("app_documentos").select("id,tipo,cuenta,mes,nota,archivo,ruta,bytes,subido_por,creado_en").order("id", { ascending: false }).limit(100),
   ]);
   const filasEstado = (estado ?? []) as { cuenta: string; fuente: string; filas: number; desde: string | null; hasta: string | null }[];
 
@@ -28,6 +30,8 @@ export default async function CargasPage() {
       </div>
 
       <Cargador />
+
+      <DocumentosCarga documentos={(documentos ?? []) as Documento[]} usuario={u?.email ?? null} />
 
       <Panel titulo="Qué hay cargado" detalle="Por tienda y fuente">
         {filasEstado.length ? (
