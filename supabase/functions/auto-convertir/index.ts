@@ -188,14 +188,14 @@ class Effi {
   }
   // Crear en Effi: devuelve la respuesta tal cual (ok o el mensaje de error de Effi), sin lanzar excepción. Si Effi
   // responde "Demasiadas peticiones" (429) no procesó nada: se espera lo que pida y se reintenta.
-  async post(recurso: string, cuerpo: Json): Promise<{ status: number; ok: boolean; respuesta: Json | null }> {
+  async post(recurso: string, cuerpo: Json, metodo = 'POST'): Promise<{ status: number; ok: boolean; respuesta: Json | null }> {
     let res: Response;
     for (let intento = 0; ; intento++) {
       const espera = this.ultimo + MIN_GAP_MS - Date.now();
       if (espera > 0) await sleep(espera);
       this.ultimo = Date.now();
       res = await fetch(`${EFFI_API}/${recurso}`, {
-        method: 'POST',
+        method: metodo,
         headers: { Authorization: `Bearer ${this.key}`, Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(cuerpo),
       });
@@ -888,6 +888,61 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
   return { creada: true, remision: remision!.id, guia: numero };
 }
 
+// Regla del dueño (4-nov), Colombia: guía con recaudo menor de $150.000 y flete mayor de $30.000 (auto_guias_flete_alto). Una
+// persona la aprueba o la anula en ValerIA; con relación de despacho ya no sale. Effi no avisa cuándo se la ponen: se revisa en
+// cada corrida.
+async function revisarFletes(cuenta: string) {
+  const guias: { sucursal: number; id: number }[] = await rpc('auto_fletes_por_revisar', { p_cuenta: cuenta });
+  if (!guias.length) return;
+  const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
+  const key = keys.find((k) => k.slug === cuenta)?.api_key;
+  if (!key) return;
+  const api = new Effi(key);
+  for (const g of guias) {
+    const [e] = (await api.get('guia_transporte', { id: g.id, sucursal: g.sucursal, por_pagina: 1, pagina: 1 })).data;
+    if (e) await rpc('auto_flete_relacion', { p_cuenta: cuenta, p_sucursal: g.sucursal, p_id: g.id, p_relacion: e.id_relacion_despacho ?? null });
+  }
+}
+
+// Anula la guía que una persona mandó a anular (auto_flete_anular). Se revisa otra vez en Effi; si no deja, queda el motivo en
+// la alerta. Si anula, la remisión queda en "Novedad en la orden" para que esa persona cambie la transportadora con
+// "Ejecutar", omita el envío o pida anticipo: el agente no le vuelve a hacer la guía solo.
+async function anularGuiaFlete(cuenta: string, sucursal: number, id: number) {
+  const [alerta] = await tabla(`auto_flete_alertas?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id_guia=eq.${id}&decision=eq.anulando&select=decision_por`);
+  if (!alerta) return { ok: false, motivo: 'No está marcada para anular' };
+  const fin = (ok: boolean, mensaje: string | null) => rpc('auto_flete_resultado', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_ok: ok, p_mensaje: mensaje });
+  const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
+  const key = keys.find((k) => k.slug === cuenta)?.api_key;
+  if (!key) { await fin(false, 'Sin llave de Effi'); return { ok: false }; }
+  const api = new Effi(key);
+  const [g] = (await api.get('guia_transporte', { id, sucursal, por_pagina: 1, pagina: 1 })).data;
+  if (!g) { await fin(false, 'Effi no encuentra esta guía'); return { ok: false }; }
+  if (g.vigente !== '0') {
+    if (g.id_relacion_despacho) {
+      await rpc('auto_flete_relacion', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_relacion: g.id_relacion_despacho });
+      await fin(false, `Ya tiene la relación de despacho ${g.id_relacion_despacho}`);
+      return { ok: false };
+    }
+    const r = await api.post('guia_transporte', { sucursal, id, observacion_anular: `Flete alto: anulada desde ValerIA por ${alerta.decision_por ?? 'una persona'}`.slice(0, 255) }, 'DELETE');
+    if (!r.ok) {
+      const mensaje = r.respuesta?.mensaje ?? r.respuesta?.texto ?? `HTTP ${r.status}`;
+      await fin(false, `Effi no dejó anular: ${typeof mensaje === 'string' ? mensaje.slice(0, 300) : JSON.stringify(mensaje).slice(0, 300)}`);
+      return { ok: false };
+    }
+  }
+  await fin(true, null);
+  if (String(g.t_trans_ref) === '4' && g.id_ref) {
+    const [o] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${g.sucursal_ref}&id_remision=eq.${g.id_ref}&select=sucursal,id`);
+    if (o) {
+      const motivo = `Guía ${g.guia} anulada por flete alto. Remisión ${g.id_ref}: cambia la transportadora con Ejecutar, omite el envío o pide anticipo`;
+      await rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_paso: 'guia', p_ok: null, p_mensaje: `${motivo} (${alerta.decision_por ?? 'una persona'})`, p_datos: null });
+      await rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_estado: 'error', p_motivo: motivo, p_resultado: {
+        paso: 'guia', remision: { id: Number(g.id_ref), sucursal: Number(g.sucursal_ref), id_transaccion: g.id_ref } } });
+    }
+  }
+  return { ok: true };
+}
+
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 Deno.serve(async (req) => {
@@ -897,6 +952,17 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const cuenta = url.searchParams.get('cuenta') ?? '';
   if (!/^[A-Z0-9_]+$/.test(cuenta)) return json(400, { ok: false, mensaje: 'Falta cuenta' });
+  const anularParam = url.searchParams.get('anular_guia');
+  if (anularParam) {
+    const [suc, id] = anularParam.split('-').map(Number);
+    if (!suc || !id) return json(400, { ok: false, mensaje: 'anular_guia=sucursal-id' });
+    try {
+      return json(200, await anularGuiaFlete(cuenta, suc, id));
+    } catch (e) {
+      await rpc('auto_flete_resultado', { p_cuenta: cuenta, p_sucursal: suc, p_id: id, p_ok: false, p_mensaje: `Falla inesperada: ${String(e).slice(0, 300)}` }).catch(() => {});
+      return json(500, { ok: false, mensaje: String(e) });
+    }
+  }
   const crearParam = url.searchParams.get('crear');
   if (crearParam) {
     const [suc, id] = crearParam.split('-').map(Number);
@@ -934,6 +1000,7 @@ Deno.serve(async (req) => {
         try { await oficinasCO(cuenta); }
         catch (e) { await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {}); }
         await guiasPendientes(cuenta, ahora);
+        if (cuenta === 'TIENDA_CO') await revisarFletes(cuenta).catch((e) => rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {}));
       }
     } catch (e) {
       await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {});

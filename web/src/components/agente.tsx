@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Clock, Pause, Play, Truck } from "lucide-rea
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
+import { FleteAlto } from "./flete-alto";
 import { FlujoAgente, type Periodo } from "./flujo-agente";
 import { RemisionesDirectas } from "./remisiones-directas";
 import type { DatosFabrica } from "./fabrica-agente";
@@ -546,6 +547,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
 
       {/* Remisiones que llegan sin orden de venta (Lucid) y solo esperan la guía: no salen en las listas de órdenes. */}
       <RemisionesDirectas cuenta={cuenta} zona={zona} rango={rango} />
+
+      {!rango && cuenta === "TIENDA_CO" && <FleteAlto cuenta={cuenta} onCambio={() => router.refresh()} />}
 
       {!rango && conAbono.length > 0 && (
         <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
