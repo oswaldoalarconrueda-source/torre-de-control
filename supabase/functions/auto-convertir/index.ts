@@ -165,6 +165,18 @@ async function tabla(path: string) {
   return res.json();
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Prueba de capacidad (pedido del dueño, 5-nov): con auto_config.paralelo > 1 se crean varias órdenes (o guías) a la vez,
+// cada una con su propia conexión a Effi, hasta auto_config.max_crear por corrida y sin empezar ninguna después de
+// CORRIDA_MAX_MS (el candado de la corrida dura 360 s). Con paralelo = 1 todo sigue en serie como antes.
+const CORRIDA_MAX_MS = 240_000;
+async function enParalelo<T>(items: T[], n: number, inicio: number, fn: (x: T) => Promise<unknown>) {
+  const cola = [...items];
+  const salida: unknown[] = [];
+  await Promise.all(Array.from({ length: Math.min(n, cola.length) }, async () => {
+    for (let x = cola.shift(); x !== undefined && Date.now() - inicio < CORRIDA_MAX_MS; x = cola.shift()) salida.push(await fn(x));
+  }));
+  return salida;
+}
 // Se revisa antes de cada creación: si el dueño pausó el automático, la corrida se detiene ahí mismo.
 const sigueAutomatico = async (cuenta: string) =>
   ((await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo`))[0]?.modo === 'automatico');
@@ -395,7 +407,8 @@ async function aprenderReglas(api: Effi, off: number, cuenta: string) {
 
 // ahora = "Ejecutar ahora" del dueño: crea lo que esté listo aunque el país esté en Manual.
 async function convertir(cuenta: string, ahora = false) {
-  const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,reglas_en`);
+  const inicio = Date.now();
+  const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,reglas_en,paralelo,max_crear`);
   if (!cfg || !['simular', 'automatico'].includes(cfg.modo)) return { omitida: 'modo sin conversión' };
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
   const key = keys.find((k) => k.slug === cuenta)?.api_key;
@@ -571,9 +584,21 @@ async function convertir(cuenta: string, ahora = false) {
   const salida: Json = { pendientes: pendientes.length, planes: planes.length, listas: planes.filter((p) => p.estado === 'lista').length, guardadas: n };
   if ((cfg.modo === 'automatico' || ahora) && PAISES_REMISION.includes(cuenta)) {
     salida.creadas = [];
-    for (const p of planes.filter((x) => x.estado === 'lista').slice(0, MAX_CREAR)) {
-      if (!ahora && !(await sigueAutomatico(cuenta))) break;
-      salida.creadas.push(await crear(cuenta, p.sucursal, p.id, true));
+    if (Number(cfg.paralelo) > 1) {
+      // Varias a la vez: todas las listas de la Torre, de la más antigua a la más nueva (no solo las preparadas en esta corrida).
+      const listas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&plan_estado=eq.lista&id_remision=is.null&guia=is.null`
+        + `&or=(decision.is.null,decision.neq.descartar)&select=sucursal,id&order=id.asc&limit=${Number(cfg.max_crear) || MAX_CREAR}`);
+      salida.creadas = await enParalelo(listas, Number(cfg.paralelo), inicio, async (p) =>
+        ahora || (await sigueAutomatico(cuenta)) ? crear(cuenta, Number(p.sucursal), Number(p.id), true)
+          .catch((e) => ({ creada: false, error: String(e) })) : { creada: false, motivo: 'automático pausado' });
+      await rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: null, p_id: null, p_paso: 'corrida', p_ok: true,
+        p_mensaje: `Corrida con ${cfg.paralelo} a la vez: ${listas.length} listas, ${(salida.creadas as Json[]).filter((c) => c?.creada).length} creadas en ${Math.round((Date.now() - inicio) / 1000)} s`,
+        p_datos: { paralelo: Number(cfg.paralelo), listas: listas.length, resultados: salida.creadas } }).catch(() => {});
+    } else {
+      for (const p of planes.filter((x) => x.estado === 'lista').slice(0, MAX_CREAR)) {
+        if (!ahora && !(await sigueAutomatico(cuenta))) break;
+        salida.creadas.push(await crear(cuenta, p.sucursal, p.id, true));
+      }
     }
   }
   return salida;
@@ -654,13 +679,16 @@ async function guiasPendientes(cuenta: string, ahora = false) {
   // regla clara para ese remitente y destino (entrega en oficina, o asesora y ⭐ coinciden), y de eso se encarga oficinasCO.
   // Con "Pasar de remisión a guía" la manda una persona: cada una va por la transportadora de su plan.
   if (cuenta === 'TIENDA_CO') return ahora ? guiasPorPlanCO(cuenta) : [];
-  const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,centro_normal`);
+  const inicio = Date.now();
+  const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,centro_normal,paralelo,max_crear`);
   if ((cfg?.modo !== 'automatico' && !ahora) || !PAISES_CREACION.includes(cuenta) || !cfg.reglas) return [];
+  const paralelo = Number(cfg.paralelo) > 1 ? Number(cfg.paralelo) : 1;
   const espera = (ahora ? ESPERA_GUIA_AHORA_MIN : ESPERA_GUIA_MIN) * 60_000;
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
   const key = keys.find((k) => k.slug === cuenta)?.api_key;
   if (!key) return [];
-  const api = new Effi(key);
+  const apiSerie = new Effi(key);
+  const api = apiSerie;
   const memoria = await memoriaCobertura(cuenta);
   const sinCobertura = await sinCoberturaTotal(cuenta);
   const fallos = await fallosDeGuia(cuenta);
@@ -674,21 +702,23 @@ async function guiasPendientes(cuenta: string, ahora = false) {
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0 && !conAbono(r.nombre_cliente))
     .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > espera)
     .filter((r) => !sinCobertura.has(Number(r.id)) && puedeReintentar(Number(r.id)))
-    .slice(0, ahora ? MAX_GUIAS_AHORA : MAX_CREAR);
+    .slice(0, ahora ? MAX_GUIAS_AHORA : paralelo > 1 ? Number(cfg.max_crear) || MAX_CREAR : MAX_CREAR);
   const hechas: Json[] = [];
-  for (const r of rems) {
-    if (!ahora && !(await sigueAutomatico(cuenta))) break;
+  // Con paralelo = 1 va una por una; con más, cada guía usa su propia conexión a Effi (prueba de capacidad).
+  await enParalelo(rems, paralelo, inicio, async (r) => {
+    if (!ahora && !(await sigueAutomatico(cuenta))) return;
+    const api = paralelo > 1 ? new Effi(key) : apiSerie;
     const [orden] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${r.sucursal}&id_remision=eq.${r.id}&select=sucursal,id,guia,plan,plan_estado,decision,decision_en`);
     // Effi a veces no marca la guía en la remisión aunque exista (hecha a mano): si la Torre ya la tiene, no se hace otra.
-    if (orden?.guia) continue;
+    if (orden?.guia) return;
     // Una persona la acaba de mandar a crear desde "Ejecutar": no se le cruza el agente.
-    if (orden?.decision === 'ejecutar' && hoy - Date.parse(orden.decision_en) < 5 * 60_000) continue;
+    if (orden?.decision === 'ejecutar' && hoy - Date.parse(orden.decision_en) < 5 * 60_000) return;
     const ev = (ok: boolean | null, mensaje: string, datos: Json | null = null) =>
       rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: orden?.sucursal ?? null, p_id: orden?.id ?? null, p_paso: 'guia', p_ok: ok, p_mensaje: mensaje, p_datos: datos });
     const remitente = cfg.reglas.remitentes?.[r.convenio_dropshipping];
-    if (!remitente) { await ev(false, `Remisión ${r.id}: no hay guías anteriores con el convenio ${r.convenio_dropshipping} para saber el remitente`); continue; }
+    if (!remitente) { await ev(false, `Remisión ${r.id}: no hay guías anteriores con el convenio ${r.convenio_dropshipping} para saber el remitente`); return; }
     const elegido = elegirTransporte(cuenta, cfg.reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
-    if (!elegido) { await ev(false, `Remisión ${r.id}: no hay guías anteriores para saber la transportadora`); continue; }
+    if (!elegido) { await ev(false, `Remisión ${r.id}: no hay guías anteriores para saber la transportadora`); return; }
     const guia = guiaDeRemision(r, elegido.t, remitente, cfg.centro_normal);
     await ev(null, `${ahora ? 'Ejecutar ahora' : 'Automático'}: haciendo la guía de la remisión ${r.id} (estaba sin guía)${elegido.motivo ? ` por ${String(elegido.t.nombre).split('|')[0].trim()}: ${elegido.motivo}` : ''}…`, { enviado: guia });
     const h = await hacerGuia(api, cuenta, cfg.reglas, guia, { ciudad: Number(r.ciudad_cliente), nombre: String(r.nombre_ciudad ?? '') }, ev);
@@ -702,7 +732,7 @@ async function guiasPendientes(cuenta: string, ahora = false) {
           paso: 'guia', remision: { id: Number(r.id), sucursal: Number(r.sucursal), id_transaccion: r.id_transaccion }, enviado: h.guia, respuesta: h.g.respuesta, status: h.g.status } });
       }
       hechas.push({ remision: r.id, ok: false });
-      continue;
+      return;
     }
     await ev(true, `Guía ${h.p?.guia ?? ''} creada para la remisión ${r.id}`, { respuesta: h.g.respuesta });
     if (orden?.plan_estado === 'error') {
@@ -710,7 +740,7 @@ async function guiasPendientes(cuenta: string, ahora = false) {
         remision: { id: Number(r.id), sucursal: Number(r.sucursal), id_transaccion: r.id_transaccion }, guia: h.p } });
     }
     hechas.push({ remision: r.id, ok: true, guia: h.p?.guia });
-  }
+  });
   return hechas;
 }
 
