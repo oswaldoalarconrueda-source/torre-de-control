@@ -417,7 +417,8 @@ async function convertir(cuenta: string, ahora = false) {
   const desde = new Date(hoy.getTime() - 3 * DAY_MS).toISOString().slice(0, 10);
   const hasta = new Date(hoy.getTime() + DAY_MS).toISOString().slice(0, 10);
   // Van primero las que nunca se han preparado y luego las preparadas hace más tiempo: con muchas órdenes (Colombia, ~40
-  // por hora) tomar siempre las 15 primeras de la lista dejaba el resto sin preparar (28-oct).
+  // por hora) tomar siempre las 15 primeras de la lista dejaba el resto sin preparar (28-oct). Entre las nunca preparadas,
+  // la más vieja primero: Effi lista de la más nueva a la más vieja y en hora pico las viejas se quedaban atrás (5-nov).
   const sinRemision = (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => !o.id_remision_v);
   const preparadas = new Map<string, number>();
   for (let i = 0; i < sinRemision.length; i += 150) {
@@ -428,7 +429,7 @@ async function convertir(cuenta: string, ahora = false) {
   }
   const pendientes = sinRemision
     .map((o, i) => ({ o, i, t: preparadas.get(`${o.sucursal}-${o.id}`) ?? 0 }))
-    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .sort((a, b) => a.t - b.t || Number(a.o.id) - Number(b.o.id) || a.i - b.i)
     .slice(0, MAX_ORDENES)
     .map((x) => x.o);
   const planesGuia = await planearGuias(api, cuenta, reglas, memoria, await sinCoberturaTotal(cuenta), desde, hasta);
