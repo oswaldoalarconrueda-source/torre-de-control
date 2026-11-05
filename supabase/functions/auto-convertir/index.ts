@@ -29,7 +29,9 @@
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const EFFI_API = 'https://effi.com.co/api';
-const MIN_GAP_MS = 560;
+// Effi subió el límite de su API de 2 a 10 peticiones por segundo por llave (5-nov). El agente usa hasta ~6,7 por segundo
+// entre todas sus conexiones con la misma llave y deja el resto a la vigilancia y la sincronización.
+const MIN_GAP_MS = 150;
 const DAY_MS = 86_400_000;
 const REGLAS_HORAS = 6;
 const MAX_ORDENES = 15;
@@ -182,16 +184,21 @@ const sigueAutomatico = async (cuenta: string) =>
   ((await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo`))[0]?.modo === 'automatico');
 
 class Effi {
-  private ultimo = 0;
+  // Turno compartido por llave: con varias órdenes a la vez el ritmo total sigue dentro del límite de Effi.
+  private static proximo = new Map<string, number>();
+  private async turno() {
+    const ahora = Date.now();
+    const t = Math.max(ahora, Effi.proximo.get(this.key) ?? 0);
+    Effi.proximo.set(this.key, t + MIN_GAP_MS);
+    if (t > ahora) await sleep(t - ahora);
+  }
   constructor(private key: string) {}
   async get(recurso: string, params: Record<string, string | number>): Promise<{ data: Json[]; paginas: number; total: number }> {
     const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
     let res: Response, j: Json | null;
     // Si Effi responde "Demasiadas peticiones" (429), se espera lo que pida y se reintenta en vez de cortar la corrida.
     for (let intento = 0; ; intento++) {
-      const espera = this.ultimo + MIN_GAP_MS - Date.now();
-      if (espera > 0) await sleep(espera);
-      this.ultimo = Date.now();
+      await this.turno();
       res = await fetch(`${EFFI_API}/${recurso}?${qs}`, { headers: { Authorization: `Bearer ${this.key}`, Accept: 'application/json' } });
       if (res.status !== 429 || intento >= 4) break;
       await sleep(1000 * Math.min(30, Number(res.headers.get('retry-after')) || 8));
@@ -205,9 +212,7 @@ class Effi {
   async post(recurso: string, cuerpo: Json, metodo = 'POST'): Promise<{ status: number; ok: boolean; respuesta: Json | null }> {
     let res: Response;
     for (let intento = 0; ; intento++) {
-      const espera = this.ultimo + MIN_GAP_MS - Date.now();
-      if (espera > 0) await sleep(espera);
-      this.ultimo = Date.now();
+      await this.turno();
       res = await fetch(`${EFFI_API}/${recurso}`, {
         method: metodo,
         headers: { Authorization: `Bearer ${this.key}`, Accept: 'application/json', 'Content-Type': 'application/json' },
@@ -289,7 +294,23 @@ const esLimite = (g: { status: number; respuesta: Json | null }, p: Json | undef
 // transportadora) nunca se cambia por otra. Si Effi responde 500 vacío (pide las medidas del paquete), se repite con 1×1×1.
 // Con porPersona: si un intento anterior dejó esa llave usada, se mira esa guía en Effi; si sigue vigente ya está hecha y
 // si la anularon se intenta con llave nueva (Effi no deja dos guías vigentes para la misma remisión).
-async function hacerGuia(api: Effi, cuenta: string, reglas: Json, guia: Json, destino: { ciudad: number; nombre: string },
+// Las guías van de a una aunque las remisiones vayan varias a la vez: con 4 guías en el mismo segundo la transportadora
+// respondió "Violation of PRIMARY KEY constraint 'PK_SC_DESTINATARIOS_NE'" (Ecuador, 5-nov).
+// Lo mismo con las remisiones: varias a la vez Effi respondió "Error al intentar crear la transacción Dropshipping" en la
+// mitad de ellas. Van de a una, pero mientras se hace la guía de una orden ya se puede hacer la remisión de la siguiente.
+let filaRemisiones: Promise<unknown> = Promise.resolve();
+function enFilaRemision<T>(fn: () => Promise<T>): Promise<T> {
+  const turno = filaRemisiones.then(fn);
+  filaRemisiones = turno.catch(() => {});
+  return turno;
+}
+let filaGuias: Promise<unknown> = Promise.resolve();
+function hacerGuia(...args: Parameters<typeof hacerGuiaSola>): ReturnType<typeof hacerGuiaSola> {
+  const turno = filaGuias.then(() => hacerGuiaSola(...args));
+  filaGuias = turno.catch(() => {});
+  return turno;
+}
+async function hacerGuiaSola(api: Effi, cuenta: string, reglas: Json, guia: Json, destino: { ciudad: number; nombre: string },
   ev: (ok: boolean | null, mensaje: string, datos?: Json | null) => Promise<unknown>, fija = false, porPersona = false) {
   guia = conMedidas(cuenta, guia);
   let g = await api.post('guia_transporte', guia);
@@ -871,7 +892,13 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
       return { creada: false, motivo };
     }
     await ev('remision', null, 'Creando la remisión de venta en Effi…', { enviado: plan.remision });
-    const r = await api.post('remision_v', plan.remision);
+    // "Error al intentar crear la transacción Dropshipping" es un choque con otra remisión del mismo proveedor en ese mismo
+    // segundo (no deja nada creado: revisado en 119 casos el 5-nov); unos segundos después pasa, así que se reintenta.
+    let r = await enFilaRemision(() => api.post('remision_v', plan.remision));
+    for (let intento = 1; !r.ok && intento <= 4 && /transacci.n Dropshipping/i.test(String(r.respuesta?.mensaje ?? '')); intento++) {
+      await sleep(1500 + Math.random() * 1500 * intento);
+      r = await enFilaRemision(() => api.post('remision_v', plan.remision));
+    }
     if (!r.ok) {
       const motivo = `Effi no dejó crear la remisión: ${r.respuesta?.mensaje ?? `HTTP ${r.status}`}`;
       await ev('remision', false, motivo, { enviado: plan.remision, respuesta: r.respuesta, status: r.status });
