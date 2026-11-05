@@ -658,9 +658,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                     <div className="font-semibold leading-snug">{o.cliente ?? "—"}</div>
                     <span
                       className="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                      style={o.recuperado ? { background: "rgba(180,140,255,.15)", color: "#b48cff" } : { background: "color-mix(in srgb, var(--tinte) 5%, transparent)", color: "var(--muted)" }}
+                      style={o.cliente?.trim().startsWith("+") ? { background: "rgba(245,180,70,.15)", color: "#d9992b" } : o.recuperado ? { background: "rgba(180,140,255,.15)", color: "#b48cff" } : { background: "color-mix(in srgb, var(--tinte) 5%, transparent)", color: "var(--muted)" }}
                     >
-                      {o.recuperado ? "Recuperado" : "Principal"}
+                      {o.cliente?.trim().startsWith("+") ? "Sin confirmar" : o.recuperado ? "Recuperado" : "Principal"}
                     </span>
                   </td>
                   {/* Ciudad - departamento y, debajo, la dirección de entrega (la del plan de remisión o de guía). */}
@@ -988,7 +988,7 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
         <button onClick={onAlternar} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-green bg-tinte/5 hover:bg-tinte/10">
           {abierto ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Guía lista para crear
         </button>
-        <div className="mt-1 text-muted">Remisión {String(r.remision)} · remitente {String(r.remitente)}{r.recuperado ? " · Recuperado" : ""}</div>
+        <div className="mt-1 text-muted">Remisión {String(r.remision)} · remitente {String(r.remitente)}{r.sin_confirmar ? " · Sin confirmar" : r.recuperado ? " · Recuperado" : ""}</div>
         {transporte}
         {o.plan_en && <div className="text-[10px] text-muted">simulada {haceCuanto(o.plan_en)}</div>}
       </div>
@@ -1005,7 +1005,7 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
           : <><span className="font-semibold">{String(r.cantidad)} × {String(r.producto)}</span> a {precio2(Number(r.precio), cuenta)} c/u</>}
       </div>
       <div className="text-muted">
-        Centro {r.recuperado ? "Recuperado" : "Principal"} · remitente {String(r.remitente)} · {r.fuente === "orden" ? "cantidad de la orden" : `${Number(r.antecedentes).toLocaleString("es-CO")} antecedentes`}
+        Centro {r.sin_confirmar ? "Sin confirmar" : r.recuperado ? "Recuperado" : "Principal"} · remitente {String(r.remitente)} · {r.fuente === "orden" ? "cantidad de la orden" : `${Number(r.antecedentes).toLocaleString("es-CO")} antecedentes`}
       </div>
       {transporte}
       {o.plan_en && <div className="text-[10px] text-muted">simulada {haceCuanto(o.plan_en)}</div>}

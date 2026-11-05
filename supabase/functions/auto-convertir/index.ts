@@ -12,6 +12,8 @@
 // Reglas (Guatemala, pedidas por el dueño):
 // - Remisión desde la orden (action 3) con el convenio de dropshipping que trae la orden, sin cambiarlo.
 // - Cliente con * al inicio del nombre (pedido recuperado de LucidBot) → centro de costos Recuperado.
+// - Cliente con + al inicio del nombre (regla del dueño, 5-nov) → centro de costos Sin confirmar. Si el país no lo tiene, una
+//   persona revisa la orden: no se crea por otro centro.
 // - Productos: se detectan con el filtro "articulo" de api/orden_v (la API no da el detalle de la orden).
 //   Cantidad y precio: los de la orden (api/detalle_orden_v, desde el 29-oct). Si no se pueden leer, la que siempre tuvo
 //   ese producto con ese total en las guías anteriores; sin antecedentes → revisión.
@@ -442,7 +444,7 @@ async function convertir(cuenta: string, ahora = false) {
     .map((a) => ({ id: Number(a.id), nombre: norm(a.descripcion ?? ''), descripcion: String(a.descripcion ?? '') }));
   const guardadas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id=in.(${pendientes.map((o) => o.id).join(',')})&select=sucursal,id,articulos`);
   const historial: { total: string; contenido: string; n: number }[] = await rpc('auto_historial_contenido', { p_cuenta: cuenta });
-  const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado`);
+  const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado,centro_sin_confirmar`);
   // Detalle de las órdenes pendientes (api/detalle_orden_v: artículo, cantidad y precio de cada concepto, 29-oct): la
   // cantidad sale de la orden y ya no se adivina con las guías anteriores (un producto nuevo quedaba "sin antecedentes").
   // La fila no trae la sucursal: la orden se reconoce por id y fecha. Si la llave no tiene permiso de reportes, sigue
@@ -497,7 +499,9 @@ async function convertir(cuenta: string, ahora = false) {
     const convenio = String(o.observacion ?? '').match(/Dropshipping:\s*([A-Za-z0-9]+)/)?.[1];
     if (!convenio) { revision('La orden no trae convenio de dropshipping'); continue; }
     const recuperado = String(o.nombre_cliente ?? '').trim().startsWith('*');
-    const centro = recuperado ? centros.centro_recuperado : centros.centro_normal;
+    const sinConfirmar = String(o.nombre_cliente ?? '').trim().startsWith('+');
+    if (sinConfirmar && !centros.centro_sin_confirmar) { revision('Cliente con +: este país no tiene el centro de costos Sin confirmar'); continue; }
+    const centro = sinConfirmar ? centros.centro_sin_confirmar : recuperado ? centros.centro_recuperado : centros.centro_normal;
 
     // 3. Cantidades: las de la orden (detalle) o la combinación de productos y total que ya existe en las guías.
     const total = Number(o.total);
@@ -555,7 +559,7 @@ async function convertir(cuenta: string, ahora = false) {
     };
     plan.resumen = {
       producto: conceptos.length > 1 ? conceptos.map((c) => `${c.cantidad} × ${c.nombre}`).join(' + ') : conceptos[0].nombre,
-      cantidad, precio, total, convenio, recuperado, centro, varios: conceptos.length > 1, fuente: deLaOrden ? 'orden' : 'guias',
+      cantidad, precio, total, convenio, recuperado, sin_confirmar: sinConfirmar, centro, varios: conceptos.length > 1, fuente: deLaOrden ? 'orden' : 'guias',
       remitente: Number(remitente), transportadora: elegido.t.nombre, motivo_transportadora: elegido.motivo, ciudad: o.nombre_ciudad,
       antecedentes: candidatas[0]?.n ?? null, ...(rec ? { recomendacion: rec } : {}),
     };
@@ -593,7 +597,7 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0 && !conAbono(r.nombre_cliente));
   if (!rems.length) return [];
   const ordenes: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id_remision=in.(${rems.map((r) => r.id).join(',')})&select=sucursal,id,sucursal_remision,id_remision,guia`);
-  const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado`);
+  const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado,centro_sin_confirmar`);
   const planes: Json[] = [];
   for (const r of rems) {
     const o = ordenes.find((x) => Number(x.id_remision) === Number(r.id) && Number(x.sucursal_remision) === Number(r.sucursal));
@@ -618,7 +622,8 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
     plan.resumen = {
       solo_guia: true, remision: Number(r.id_transaccion ?? r.id), total: Number(r.total), ciudad: r.nombre_ciudad,
       transportadora: elegido.t.nombre, motivo_transportadora: elegido.motivo, remitente: Number(remitente),
-      recuperado: Number(r.centro_costos) === Number(centros.centro_recuperado), ...(rec ? { recomendacion: rec } : {}),
+      recuperado: Number(r.centro_costos) === Number(centros.centro_recuperado),
+      sin_confirmar: !!centros.centro_sin_confirmar && Number(r.centro_costos) === Number(centros.centro_sin_confirmar), ...(rec ? { recomendacion: rec } : {}),
     };
     planes.push({ ...base, estado: 'lista', motivo: null, plan });
   }

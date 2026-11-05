@@ -4,7 +4,7 @@
 // POST /functions/v1/auto-vigilancia?mes=1   → cron cada hora: trae todo el mes en curso (para los totales del mes)
 //
 // Por cada cuenta con modo distinto de "apagado" en auto_config: trae de Effi las órdenes de venta y las
-// remisiones de venta creadas en los últimos 3 días y las reenvía crudas a Postgres (rpc auto_ingest), que
+// remisiones de venta creadas en los últimos 3 días y las pasa a Postgres por lotes (rpc auto_ingest), que
 // cruza cada orden con su remisión y su guía. Las reglas y los estados se calculan en auto_lista.
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -13,6 +13,13 @@ const EFFI_API = 'https://effi.com.co/api';
 const DIAS = 3;
 const MIN_GAP_MS = 550;
 const DAY_MS = 86_400_000;
+// Antes viajaba la respuesta cruda de cada país en una sola petición. A Postgres solo le llegan los campos que usa auto_ingest,
+// de a LOTE órdenes con sus remisiones, para no gastarle memoria (la base se reinició varias veces a la hora del barrido, 5-nov).
+const LOTE = 200;
+const CAMPOS_ORDEN = ['sucursal', 'id', 'fecha_trans', 'nombre_cliente', 'nombre_ciudad', 'nombre_provincia', 'total', 'nombre_ecommerce',
+  'name_venta_ecommerce', 'observacion', 'estado', 'vigente', 'responsable', 'sucursal_remision_v', 'id_remision_v'];
+const CAMPOS_REMISION = ['sucursal', 'id', 'fecha_trans', 'centro_costos', 'nombre_centro_costos', 'convenio_dropshipping',
+  'nombre_convenio_dropshipping', 'vigente', 'responsable', 'id_guia_transporte', 'guia', 'estado_dropshipping'];
 
 async function rpc(fn: string, body: string) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
@@ -35,9 +42,11 @@ async function tabla(path: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Todas las páginas de un recurso en el rango, como respuestas crudas (sin parsear las filas).
-async function traer(key: string, recurso: string, desde: string, hasta: string): Promise<string[]> {
-  const paginas: string[] = [];
+type Fila = Record<string, unknown>;
+
+// Todas las filas de un recurso en el rango, solo con los campos pedidos.
+async function traer(key: string, recurso: string, desde: string, hasta: string, campos: string[]): Promise<Fila[]> {
+  const filas: Fila[] = [];
   for (let pagina = 1, total = 1; pagina <= total && pagina <= 40; pagina++) {
     if (pagina > 1) await sleep(MIN_GAP_MS);
     const qs = new URLSearchParams({ desde, hasta, por_pagina: '100', pagina: String(pagina) });
@@ -49,9 +58,9 @@ async function traer(key: string, recurso: string, desde: string, hasta: string)
       throw new Error(`${recurso} HTTP ${res.status}: ${raw.match(/"mensaje"\s*:\s*"([^"]*)"/)?.[1] ?? raw.slice(0, 120)}`);
     }
     total = Number(raw.match(/"total_paginas"\s*:\s*(\d+)/)?.[1] ?? 1);
-    paginas.push(raw);
+    for (const x of (JSON.parse(raw).data ?? []) as Fila[]) filas.push(Object.fromEntries(campos.map((c) => [c, x[c]])));
   }
-  return paginas;
+  return filas;
 }
 
 async function correr(mes: boolean) {
@@ -81,13 +90,15 @@ async function correr(mes: boolean) {
       }
       let n = 0;
       for (const [d, h] of tramos) {
-        const ordenes = await traer(key, 'orden_v', dia(d), dia(h));
+        const ordenes = await traer(key, 'orden_v', dia(d), dia(h), CAMPOS_ORDEN);
         await sleep(MIN_GAP_MS);
-        const remisiones = await traer(key, 'remision_v', dia(d), dia(Math.min(h + 3 * DAY_MS, manana)));
-        n += await rpc(
-          'auto_ingest',
-          `{"p_cuenta":${JSON.stringify(cuenta)},"p_ordenes":[${ordenes.join(',')}],"p_remisiones":[${remisiones.join(',')}]}`,
-        );
+        const remisiones = new Map((await traer(key, 'remision_v', dia(d), dia(Math.min(h + 3 * DAY_MS, manana)), CAMPOS_REMISION))
+          .map((r) => [`${r.sucursal}-${r.id}`, r] as [string, Fila]));
+        for (let i = 0; i === 0 || i < ordenes.length; i += LOTE) { // sin órdenes igual se llama: anota la última corrida
+          const lote = ordenes.slice(i, i + LOTE);
+          const suyas = lote.map((o) => remisiones.get(`${o.sucursal_remision_v}-${o.id_remision_v}`)).filter(Boolean);
+          n += await rpc('auto_ingest', JSON.stringify({ p_cuenta: cuenta, p_ordenes: [{ data: lote }], p_remisiones: [{ data: suyas }] }));
+        }
         await sleep(MIN_GAP_MS);
       }
       resumen[cuenta] = { cambios: n, tramos: tramos.length };

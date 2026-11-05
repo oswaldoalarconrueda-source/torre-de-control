@@ -55,7 +55,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
     <>
       <Encabezado
         titulo={`🤖 ${nombreAgente(cuenta)}`}
-        subtitulo={`${pais.bandera} ${pais.nombre} · cada orden de venta debe pasar a remisión con su convenio y tener guía. Si el cliente empieza con *, va por el centro de costos Recuperado.`}
+        subtitulo={`${pais.bandera} ${pais.nombre} · cada orden de venta debe pasar a remisión con su convenio y tener guía. Si el cliente empieza con *, va por el centro de costos Recuperado; si empieza con +, por Sin confirmar.`}
         f={{ ...f, desde, hasta }}
         inicio={INICIO_AGENTE}
       />
