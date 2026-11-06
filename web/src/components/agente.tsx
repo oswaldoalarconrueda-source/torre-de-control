@@ -43,6 +43,7 @@ const CONDICIONES = {
   validar: "📞 Validar con el cliente",
   trato_especial: "⭐ Trato especial: no se remisiona",
   transportadora_fija: "🚚 Transportadora fija: se hace manual",
+  revision: "👤 La revisa una persona: no va sola",
 } as const;
 // Transportadoras que usa el país (aprendidas de sus guías): id → nombre y cuántas guías tuvo en los últimos 10 días.
 export type Transportes = Record<string, { nombre?: string; guias?: number }>;
