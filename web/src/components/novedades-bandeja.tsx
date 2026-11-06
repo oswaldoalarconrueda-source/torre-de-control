@@ -24,6 +24,7 @@ export type FilaNovedad = {
   borrador: Borrador | null; // lo escrito en la línea y aún no enviado (se guarda mientras se escribe)
   seguimiento: { fecha: string; nota: string | null; u: string | null; en: string } | null; // interno, no va a Effi
   recaudo: number | null; estado_guia: string | null;
+  devolucion: string | null; // la guía ya va de regreso (p. ej. "Devolución en Tránsito"): igual pide solución de la empresa
   llamadas: Record<string, { r: Resultado; u: string | null; en: string }>;
   envio: { id: number; estado: "enviando" | "enviada" | "error"; mensaje: string | null; solucion: string | null; usuario: string | null; en: string } | null;
 };
@@ -261,6 +262,11 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                   </td>
                   <td data-l="Trans." className="max-md:order-13 px-1.5 py-1.5 whitespace-nowrap" title={f.transportadora ?? ""}>{transCorta(f.transportadora)}</td>
                   <td data-l="Novedad" className="max-md:order-5 max-md:col-span-6 px-1.5 py-1.5 max-w-[10rem]">
+                    {f.devolucion && (
+                      <div className="mb-1 inline-block rounded-full bg-red/15 px-2 py-0.5 text-[10px] font-bold text-red" title={f.devolucion}>
+                        ↩ En devolución
+                      </div>
+                    )}
                     <div className="font-semibold md:truncate" title={f.novedad ?? ""}>{f.novedad}</div>
                     <div className="text-muted md:truncate" title={f.aclaracion ?? ""}>{f.aclaracion}</div>
                   </td>
