@@ -10,7 +10,40 @@ import { AsignarProducto, type ProductoHistorico } from "./asignar-producto";
 export type CampanaHomologar = {
   campana: string; cuentas: string; cop: number; dias: number; desde: string; hasta: string;
   manual: string | null; asignado_por: string | null; regla: string | null; patron: string | null;
+  primer_gasto?: string | null; ultimo_gasto?: string | null; // toda la historia, no solo el periodo
+  creada?: string | null; inicio?: string | null; fin?: string | null; estado?: string | null; // de la API de Meta
 };
+
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const fecha = (d?: string | null) => (d ? `${Number(d.slice(8, 10))} ${MESES[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "–");
+const ESTADO: Record<string, { t: string; c: string }> = {
+  ACTIVE: { t: "Activa", c: "bg-green/15 text-green" },
+  PAUSED: { t: "Pausada", c: "bg-amber/15 text-amber" },
+  CAMPAIGN_PAUSED: { t: "Pausada", c: "bg-amber/15 text-amber" },
+  ARCHIVED: { t: "Archivada", c: "bg-tinte/5 text-muted" },
+  DELETED: { t: "Borrada", c: "bg-red/15 text-red" },
+  IN_PROCESS: { t: "En revisión", c: "bg-blue-2/15 text-blue-2" },
+  WITH_ISSUES: { t: "Con problemas", c: "bg-red/15 text-red" },
+};
+
+// Inicio: el que da Meta (o la creación); si Meta aún no la trae, el primer día con gasto.
+function Fechas({ c }: { c: CampanaHomologar }) {
+  const inicio = c.inicio ?? c.creada ?? c.primer_gasto;
+  const e = c.estado ? ESTADO[c.estado] ?? { t: c.estado, c: "bg-tinte/5 text-muted" } : null;
+  return (
+    <>
+      <td data-l="Inicio" className="num text-left whitespace-nowrap max-md:col-span-2" title={c.inicio || c.creada ? `Meta: creada ${fecha(c.creada)}, inicio ${fecha(c.inicio)}` : "Primer día con gasto (Meta aún no trae la fecha)"}>
+        {fecha(inicio)}
+      </td>
+      <td data-l="Último gasto" className="num text-left whitespace-nowrap max-md:col-span-2" title={c.fin ? `Fin programado en Meta: ${fecha(c.fin)}` : "Último día con gasto en toda la historia"}>
+        {fecha(c.ultimo_gasto)}
+      </td>
+      <td data-l="Estado en Meta" className="text-left max-md:col-span-2">
+        {e ? <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${e.c}`}>{e.t}</span> : <span className="text-muted">–</span>}
+      </td>
+    </>
+  );
+}
 
 export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: {
   cuenta: string; campanas: CampanaHomologar[]; productos: ProductoHistorico[]; puedeEditar: boolean;
@@ -45,7 +78,7 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
       <div className="fichas-caja mt-3 overflow-x-auto -mx-4 sm:-mx-5 max-md:mx-0 md:px-5">
         <table className="tabla fichas w-full min-w-max text-sm">
           <thead>
-            <tr><th className="text-left">Campaña</th><th className="text-left">Cuenta</th><th className="text-right">Gasto (COP)</th><th className="text-right">Días</th><th className="text-left">Producto</th>{puedeEditar && <th className="text-left">Asignar</th>}</tr>
+            <tr><th className="text-left">Campaña</th><th className="text-left">Cuenta</th><th className="text-right">Gasto (COP)</th><th className="text-right">Días</th><th className="text-left">Inicio</th><th className="text-left">Último gasto</th><th className="text-left">Estado en Meta</th><th className="text-left">Producto</th>{puedeEditar && <th className="text-left">Asignar</th>}</tr>
           </thead>
           <tbody>
             {lista.map((c) => {
@@ -54,9 +87,10 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
                 <tr key={c.campana}>
                   <td data-l="Campaña" className="text-left max-w-[26rem] whitespace-normal break-words font-medium max-md:col-span-6">{c.campana}</td>
                   <td data-l="Cuenta" className="text-left text-muted max-w-[10rem] truncate max-md:col-span-6" title={c.cuentas}>{c.cuentas}</td>
-                  <td data-l="Gasto (COP)" className="num text-right max-md:col-span-2 max-md:text-left">{dinero(c.cop, "TIENDA_CO")}</td>
-                  <td data-l="Días" className="num text-right max-md:col-span-1 max-md:text-left">{c.dias}</td>
-                  <td data-l="Producto" className="text-left">
+                  <td data-l="Gasto (COP)" className="num text-right max-md:col-span-4 max-md:text-left">{dinero(c.cop, "TIENDA_CO")}</td>
+                  <td data-l="Días" className="num text-right max-md:col-span-2 max-md:text-left">{c.dias}</td>
+                  <Fechas c={c} />
+                  <td data-l="Producto" className="text-left max-md:col-span-6">
                     {actual ? (
                       <span>
                         {actual}{" "}
@@ -74,7 +108,7 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
                 </tr>
               );
             })}
-            {lista.length === 0 && <tr><td colSpan={puedeEditar ? 6 : 5} className="text-center text-muted">{vista === "sin" ? "✓ Todas las campañas del periodo tienen producto." : "Sin campañas con gasto en el periodo."}</td></tr>}
+            {lista.length === 0 && <tr><td colSpan={puedeEditar ? 9 : 8} className="text-center text-muted">{vista === "sin" ? "✓ Todas las campañas del periodo tienen producto." : "Sin campañas con gasto en el periodo."}</td></tr>}
           </tbody>
         </table>
       </div>

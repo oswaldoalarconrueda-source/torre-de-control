@@ -9,6 +9,8 @@
 //   las cuentas que ve cada token se traen con ese token.
 // El país de entrega decide la tienda; si Meta lo da como "unknown", la etiqueta de la campaña: (COL), (EC), (GT)…
 // Las cuentas en otra divisa se pasan a COP con la TRM del mes (app_trm_mes).
+// En cada pasada también se guardan las campañas de cada cuenta (meta_campanas): creación, inicio, fin y estado, para
+// mostrar en Homologar campañas cuándo empezó cada una y si sigue activa.
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -94,6 +96,8 @@ async function sincronizar(tokens: { nombre: string; token: string }[], desde: s
   const nombres: string[] = [];
   const resumen: Record<string, unknown> = {};
   const sinPais = new Set<string>();
+  let campanasGuardadas = 0;
+  const erroresCampanas: Record<string, string> = {};
   for (const { c, token, portafolio } of cuentas) {
     const id = String(c.account_id), nombre = String(c.name ?? id).trim(), divisa = String(c.currency ?? 'COP');
     try {
@@ -115,6 +119,24 @@ async function sincronizar(tokens: { nombre: string; token: string }[], desde: s
         total += monto;
       }
       if (divisa !== 'COP' && datos.length && !aCop(divisa, desde)) throw new Error(`Sin TRM para ${divisa}`);
+      // Campañas con fechas y estado (también las archivadas). Si falla, el gasto igual se guarda.
+      try {
+        const cp = new URLSearchParams({
+          fields: 'id,name,created_time,start_time,stop_time,effective_status', limit: '500',
+          effective_status: JSON.stringify(['ACTIVE', 'PAUSED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']),
+        });
+        const camps = await todo(`${GRAPH}/act_${id}/campaigns?${cp}`, token);
+        const ahora = new Date().toISOString();
+        for (let i = 0; i < camps.length; i += 500) {
+          await sb('meta_campanas?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify(camps.slice(i, i + 500).map((k) => ({
+              id: String(k.id), cuenta_ads_id: id, cuenta_ads: nombre, nombre: String(k.name ?? ''),
+              creada: k.created_time ?? null, inicio: k.start_time ?? null, fin: k.stop_time ?? null,
+              estado: k.effective_status ?? null, actualizado_en: ahora,
+            }))) });
+        }
+        campanasGuardadas += camps.length;
+      } catch (e) { erroresCampanas[nombre] = (e as Error).message; }
       nombres.push(nombre);
       resumen[nombre] = Math.round(total);
       await sb(`meta_cuentas_ads?on_conflict=id`, { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' },
@@ -126,7 +148,7 @@ async function sincronizar(tokens: { nombre: string; token: string }[], desde: s
     }
   }
   const guardado = nombres.length ? await rpc('meta_guardar', { p_filas: filas, p_cuentas_ads: nombres, p_desde: desde, p_hasta: hasta }) : null;
-  return { desde, hasta, portafolios: tokens.map((t) => t.nombre), tokens_con_error: tokensConError, cuentas: resumen, guardado, sin_pais: [...sinPais].slice(0, 10) };
+  return { desde, hasta, portafolios: tokens.map((t) => t.nombre), tokens_con_error: tokensConError, cuentas: resumen, guardado, sin_pais: [...sinPais].slice(0, 10), campanas: campanasGuardadas, errores_campanas: erroresCampanas };
 }
 
 Deno.serve(async (req) => {
