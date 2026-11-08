@@ -37,7 +37,9 @@ export function AsignarProducto({ cuenta, campana, productos, actual, quitar }: 
       <select value={sel} onChange={(e) => setSel(e.target.value)} className="max-w-[16rem] rounded-lg border border-line bg-panel px-2 py-1 text-sm">
         <option value="">{actual ? "Cambiar producto…" : "Elegir producto…"}</option>
         {productos.map((p) => (
-          <option key={p.producto} value={p.producto}>{p.producto}{p.guias ? ` · ${entero(p.guias)} guías` : ""}</option>
+          <option key={p.producto} value={p.producto}>
+            {p.producto} · {Number(p.guias) > 0 ? `${entero(p.guias)} ${Number(p.guias) === 1 ? "guía" : "guías"}` : "0 guías (solo publicidad)"}
+          </option>
         ))}
         <option value={OTRO}>Otro (escribir)…</option>
       </select>
