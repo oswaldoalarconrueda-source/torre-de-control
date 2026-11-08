@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import { dinero, entero } from "@/lib/formato";
 import { infoCuenta, semaforoDevolucion, COLOR_SEMAFORO } from "@/lib/paises";
+import { AsignarProducto, type ProductoHistorico } from "./asignar-producto";
 
 // 📦 Desempeño por producto (réplica del menú Productos del Dashboard Joalix, skill "menu-productos-joalix"). Recibe
 // los datos de productos_datos por país y arma en pantalla la cascada, el ranking, las campañas sin identificar, la
@@ -45,7 +46,9 @@ function diasEntre(d: string, h: string) {
   return out;
 }
 
-export function Productos({ paises, desde, hasta }: { paises: DatosPais[]; desde: string; hasta: string }) {
+export function Productos({ paises, desde, hasta, puedeEditar = false, productosHist = [] }: {
+  paises: DatosPais[]; desde: string; hasta: string; puedeEditar?: boolean; productosHist?: ProductoHistorico[];
+}) {
   const [sel, setSel] = useState<string[]>([]);
   const [prov, setProv] = useState<string>("");
   const [sort, setSort] = useState<{ k: string; dir: number }>({ k: "venta", dir: -1 });
@@ -172,6 +175,7 @@ export function Productos({ paises, desde, hasta }: { paises: DatosPais[]; desde
     return Object.values(acc).sort((a, b) => b.v - a.v);
   }, [paises, sel, all]);
   const sinTot = sinRows.reduce((s, r) => s + r.v, 0);
+  const editar = puedeEditar && !all; // homologar aquí mismo: un país a la vez
 
   // publicidad por día
   const adsProds = Object.keys(A).filter((p) => A[p].ads > 0.005).sort((a, b) => Number(esSin(a)) - Number(esSin(b)) || A[b].venta - A[a].venta || A[b].ads - A[a].ads);
@@ -324,20 +328,21 @@ export function Productos({ paises, desde, hasta }: { paises: DatosPais[]; desde
             Campañas sin identificar{" "}
             <span className="text-xs font-normal text-muted">{sinRows.length ? `· ${sinRows.length} campaña${sinRows.length === 1 ? "" : "s"} · ${fmz(sinTot)}${gt.ads > 0.005 ? ` (${nf((sinTot / gt.ads) * 100, 1)} % de la publicidad)` : ""}` : ""}</span>
           </h3>
-          {!all && <Link href={`/productos/homologar?c=${una}&d=${desde}&h=${hasta}`} className="text-sm text-blue-2 hover:underline">Homologar campañas →</Link>}
+          {!all && <Link href={`/productos/homologar?c=${una}&d=${desde}&h=${hasta}`} className="text-sm text-blue-2 hover:underline">Ver todas las campañas →</Link>}
         </header>
         <div className="mt-3 overflow-x-auto -mx-4 sm:-mx-5 md:px-5">
           <table className="tabla w-full min-w-max text-sm">
-            <thead><tr><th className="text-left">Campaña</th>{all && <th className="text-left">País</th>}<th className="text-left">Cuenta</th><th className="text-right">Días con gasto</th><th className="text-right">Inversión</th><th className="text-right">% de la publicidad</th></tr></thead>
+            <thead><tr><th className="text-left">Campaña</th>{all && <th className="text-left">País</th>}<th className="text-left">Cuenta</th><th className="text-right">Días con gasto</th><th className="text-right">Inversión</th><th className="text-right">% de la publicidad</th>{editar && <th className="text-left">¿De qué producto es?</th>}</tr></thead>
             <tbody>
               {sinRows.map((r) => (
                 <tr key={`${r.pais}${r.b}${r.c}`}>
                   <td className="text-left">{r.c}</td>{all && <td className="text-left">{infoCuenta(r.pais).bandera}</td>}<td className="text-left">{r.b}</td>
                   <td className="num text-right">{r.ds.size}</td><td className="num text-right">{fmz(r.v)}</td><td className="num text-right">{gt.ads > 0.005 ? `${nf((r.v / gt.ads) * 100, 1)} %` : "–"}</td>
+                  {editar && <td className="text-left"><AsignarProducto cuenta={r.pais} campana={r.c} productos={productosHist} /></td>}
                 </tr>
               ))}
-              {sinRows.length === 0 && <tr><td colSpan={all ? 6 : 5} className="text-center text-muted">{sel.length ? "Con productos elegidos no se muestran." : "✓ Todas las campañas de este período están asignadas a un producto."}</td></tr>}
-              {sinRows.length > 0 && <tr className="font-semibold"><td className="text-left">Total</td>{all && <td />}<td /><td /><td className="num text-right">{fmz(sinTot)}</td><td className="num text-right">{gt.ads > 0.005 ? `${nf((sinTot / gt.ads) * 100, 1)} %` : "–"}</td></tr>}
+              {sinRows.length === 0 && <tr><td colSpan={(all ? 6 : 5) + (editar ? 1 : 0)} className="text-center text-muted">{sel.length ? "Con productos elegidos no se muestran." : "✓ Todas las campañas de este período están asignadas a un producto."}</td></tr>}
+              {sinRows.length > 0 && <tr className="font-semibold"><td className="text-left">Total</td>{all && <td />}<td /><td /><td className="num text-right">{fmz(sinTot)}</td><td className="num text-right">{gt.ads > 0.005 ? `${nf((sinTot / gt.ads) * 100, 1)} %` : "–"}</td>{editar && <td />}</tr>}
             </tbody>
           </table>
         </div>
