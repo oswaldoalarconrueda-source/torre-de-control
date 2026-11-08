@@ -6,3 +6,7 @@ where patron = 'MULLEIN' and producto = 'Mullein';
 update public.prod_campana_reglas set patron = 'MULLE|GORDOLO|GRODOLO', producto = 'Mullein Gordolobo'
 where patron = 'MULLEIN' and producto = 'Mullein';
 update public.prod_campana_asignada set producto = 'Mullein Gordolobo' where producto = 'Mullein';
+
+-- También "GOEDOLOBO" (otro error de escritura en una campaña): cualquier "...DOLOBO" cuenta.
+update public.prod_alias set patron = 'MULLE|GORDOLO|DOLOBO' where producto = 'Mullein Gordolobo';
+update public.prod_campana_reglas set patron = 'MULLE|GORDOLO|DOLOBO' where producto = 'Mullein Gordolobo';
