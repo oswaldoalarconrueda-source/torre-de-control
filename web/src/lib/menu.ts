@@ -47,7 +47,7 @@ export const MENU_EN_VIVO: ItemMenu[] = [
 ];
 
 export const MENU_PRONTO: ItemMenu[] = [
-  { href: "/productos", label: "Productos", emoji: "📦", estado: "pronto", modulo: "resumen" },
+  { href: "/productos", label: "Productos", emoji: "📦", estado: "vivo", modulo: "resumen" },
   { href: "/flujo-caja", label: "Flujo de Caja", emoji: "💵", estado: "pronto", modulo: "dinero" },
   { href: "/pagos-publicidad", label: "Pagos de publicidad", emoji: "💳", estado: "pronto", modulo: "dinero" },
   { href: "/utilidad", label: "Utilidad", emoji: "📈", estado: "pronto", modulo: "resumen" },
