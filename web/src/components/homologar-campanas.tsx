@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { dinero, entero } from "@/lib/formato";
-import { AsignarProducto, type ProductoHistorico } from "./asignar-producto";
+import { AsignarProducto, AceptarSugeridas, type ProductoHistorico } from "./asignar-producto";
 
 // Lista de campañas con gasto y su producto: a mano (manda), por regla de palabra, o "Sin identificar". El dueño o un
 // socio asigna o corrige; al guardar, la pantalla de Productos ya reparte ese gasto en todos los periodos.
@@ -74,6 +74,12 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
         </div>
       </header>
       {!puedeEditar && <p className="mt-2 text-xs text-muted">Solo el dueño o un socio pueden asignar productos.</p>}
+      {puedeEditar && sinId.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span>Las verdes son sugerencias por el nombre de la campaña (clic para aceptarlas); las amarillas, parecidos parciales para revisar.</span>
+          <AceptarSugeridas cuenta={cuenta} campanas={sinId.map((c) => c.campana)} productos={productos} />
+        </div>
+      )}
 
       <div className="fichas-caja mt-3 overflow-x-auto -mx-4 sm:-mx-5 max-md:mx-0 md:px-5">
         <table className="tabla fichas w-full min-w-max text-sm">

@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import { dinero, entero } from "@/lib/formato";
 import { infoCuenta, semaforoDevolucion, COLOR_SEMAFORO } from "@/lib/paises";
-import { AsignarProducto, type ProductoHistorico } from "./asignar-producto";
+import { AsignarProducto, AceptarSugeridas, type ProductoHistorico } from "./asignar-producto";
 
 // 📦 Desempeño por producto (réplica del menú Productos del Dashboard Joalix, skill "menu-productos-joalix"). Recibe
 // los datos de productos_datos por país y arma en pantalla la cascada, el ranking, las campañas sin identificar, la
@@ -328,7 +328,10 @@ export function Productos({ paises, desde, hasta, puedeEditar = false, productos
             Campañas sin identificar{" "}
             <span className="text-xs font-normal text-muted">{sinRows.length ? `· ${sinRows.length} campaña${sinRows.length === 1 ? "" : "s"} · ${fmz(sinTot)}${gt.ads > 0.005 ? ` (${nf((sinTot / gt.ads) * 100, 1)} % de la publicidad)` : ""}` : ""}</span>
           </h3>
-          {!all && <Link href={`/productos/homologar?c=${una}&d=${desde}&h=${hasta}`} className="text-sm text-blue-2 hover:underline">Ver todas las campañas →</Link>}
+          <span className="flex flex-wrap items-center gap-3">
+            {editar && una && <AceptarSugeridas cuenta={una} campanas={sinRows.map((r) => r.c)} productos={productosHist} />}
+            {!all && <Link href={`/productos/homologar?c=${una}&d=${desde}&h=${hasta}`} className="text-sm text-blue-2 hover:underline">Ver todas las campañas →</Link>}
+          </span>
         </header>
         <div className="mt-3 overflow-x-auto -mx-4 sm:-mx-5 md:px-5">
           <table className="tabla w-full min-w-max text-sm">
