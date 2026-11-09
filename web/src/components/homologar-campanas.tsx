@@ -47,15 +47,32 @@ function Fechas({ c }: { c: CampanaHomologar }) {
   );
 }
 
+const SIN_PRODUCTO = "Sin identificar";
+const normal = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: {
   cuenta: string; campanas: CampanaHomologar[]; productos: ProductoHistorico[]; puedeEditar: boolean;
 }) {
   const [vista, setVista] = useState<"sin" | "todas">("sin");
+  // Filtros para revisar: campaña (texto, sin importar tildes), cuenta publicitaria y producto asignado.
+  const [fCampana, setFCampana] = useState("");
+  const [fCuenta, setFCuenta] = useState("");
+  const [fProducto, setFProducto] = useState("");
 
+  const productoDe = (c: CampanaHomologar) => c.manual ?? c.regla ?? SIN_PRODUCTO;
   const sinId = campanas.filter((c) => !c.manual && !c.regla);
-  const lista = vista === "sin" ? sinId : campanas;
   const total = campanas.reduce((s, c) => s + c.cop, 0);
   const totalSin = sinId.reduce((s, c) => s + c.cop, 0);
+  const cuentasAds = [...new Set(campanas.flatMap((c) => c.cuentas.split(", ")))].sort((a, b) => a.localeCompare(b, "es"));
+  const productosAsignados = [...new Set(campanas.map(productoDe))].sort((a, b) =>
+    a === SIN_PRODUCTO ? -1 : b === SIN_PRODUCTO ? 1 : a.localeCompare(b, "es"));
+  const palabras = normal(fCampana).split(/\s+/).filter(Boolean);
+  const filtrando = !!(palabras.length || fCuenta || fProducto);
+  const lista = (vista === "sin" ? sinId : campanas).filter((c) =>
+    palabras.every((w) => normal(c.campana).includes(w))
+    && (!fCuenta || c.cuentas.split(", ").includes(fCuenta))
+    && (!fProducto || productoDe(c) === fProducto));
+  const totalLista = lista.reduce((s, c) => s + c.cop, 0);
 
   return (
     <section className="card p-4 sm:p-5 min-w-0">
@@ -75,6 +92,27 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
           ))}
         </div>
       </header>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <input value={fCampana} onChange={(e) => setFCampana(e.target.value)} placeholder="Buscar campaña…" aria-label="Filtrar por campaña"
+          className="w-full rounded-lg border border-line bg-panel px-2 py-1 sm:w-56" />
+        <select value={fCuenta} onChange={(e) => setFCuenta(e.target.value)} aria-label="Filtrar por cuenta"
+          className="w-full rounded-lg border border-line bg-panel px-2 py-1 sm:w-auto sm:max-w-[14rem]">
+          <option value="">Todas las cuentas</option>
+          {cuentasAds.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select value={fProducto} aria-label="Filtrar por producto"
+          onChange={(e) => { setFProducto(e.target.value); if (e.target.value && e.target.value !== SIN_PRODUCTO) setVista("todas"); }}
+          className="w-full rounded-lg border border-line bg-panel px-2 py-1 sm:w-auto sm:max-w-[16rem]">
+          <option value="">Todos los productos</option>
+          {productosAsignados.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        {filtrando && (
+          <>
+            <span className="text-xs text-muted">{entero(lista.length)} campaña{lista.length === 1 ? "" : "s"} · {dinero(totalLista, "TIENDA_CO")}</span>
+            <button type="button" onClick={() => { setFCampana(""); setFCuenta(""); setFProducto(""); }} className="text-xs text-blue-2 hover:underline">Limpiar filtros</button>
+          </>
+        )}
+      </div>
       {!puedeEditar && <p className="mt-2 text-xs text-muted">Solo el dueño o un socio pueden asignar productos.</p>}
       {campanas.some((c) => c.otros_paises) && (
         <p className="mt-2 text-xs text-muted"><span className="font-bold text-red">*</span> Pauta entregada en otro país donde la sociedad no tiene tienda; se carga a esta (pasa el mouse para ver el país).</p>
@@ -119,7 +157,7 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
                 </tr>
               );
             })}
-            {lista.length === 0 && <tr><td colSpan={puedeEditar ? 9 : 8} className="text-center text-muted">{vista === "sin" ? "✓ Todas las campañas del periodo tienen producto." : "Sin campañas con gasto en el periodo."}</td></tr>}
+            {lista.length === 0 && <tr><td colSpan={puedeEditar ? 9 : 8} className="text-center text-muted">{filtrando ? "Ninguna campaña coincide con los filtros." : vista === "sin" ? "✓ Todas las campañas del periodo tienen producto." : "Sin campañas con gasto en el periodo."}</td></tr>}
           </tbody>
         </table>
       </div>
