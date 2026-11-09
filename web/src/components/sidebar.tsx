@@ -43,6 +43,27 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   }
   const qs = sp.toString() ? `?${sp.toString()}` : "";
 
+  // La sociedad que se mira se guarda en el usuario (una para todas sus pestañas y equipos). La barra lateral no se
+  // vuelve a dibujar al navegar: si se cambió en otra pestaña, aquí seguiría diciendo la vieja mientras la página ya
+  // trae la otra. Al cambiar de página o volver a la pestaña se revisa y, si no coincide, se recarga.
+  useEffect(() => {
+    if (!sociedades) return;
+    let vivo = true;
+    async function revisar() {
+      const supabase = createClient();
+      const { data: s } = await supabase.auth.getSession();
+      const uid = s.session?.user.id;
+      if (!uid) return;
+      const { data } = await supabase.from("app_usuarios").select("sociedad_vista").eq("user_id", uid).maybeSingle();
+      if (vivo && data && ((data.sociedad_vista as string | null) ?? null) !== (vista ?? null)) router.refresh();
+    }
+    revisar();
+    const alVolver = () => { if (document.visibilityState === "visible") revisar(); };
+    document.addEventListener("visibilitychange", alVolver);
+    window.addEventListener("focus", alVolver);
+    return () => { vivo = false; document.removeEventListener("visibilitychange", alVolver); window.removeEventListener("focus", alVolver); };
+  }, [path, vista, sociedades, router]);
+
   useEffect(() => setAbierto(false), [path]);
   // Con el menú abierto en celular, la pantalla de atrás no se mueve.
   useEffect(() => {

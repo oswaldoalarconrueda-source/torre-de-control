@@ -7,12 +7,14 @@ import { FiltrosBar } from "./filtros-bar";
 // Título de la pantalla + filtros de país y calendario (solo muestra las cuentas que el usuario puede ver).
 // tipos: qué cuentas salen en la barra (los módulos de tiendas solo tiendas; Datos también la proveeduría).
 // inicio: primer día que se puede elegir en el calendario (por defecto el inicio de los datos).
-export async function Encabezado({ titulo, subtitulo, f, conFechas = true, varios = false, tipos = ["tienda"], inicio }: {
-  titulo: string; subtitulo: string; f: Filtros; conFechas?: boolean; varios?: boolean; tipos?: string[]; inicio?: string;
+// soloCuentas: además, solo estas (p. ej. el Agente: las tiendas que tienen agente; Honduras y El Salvador no).
+export async function Encabezado({ titulo, subtitulo, f, conFechas = true, varios = false, tipos = ["tienda"], inicio, soloCuentas }: {
+  titulo: string; subtitulo: string; f: Filtros; conFechas?: boolean; varios?: boolean; tipos?: string[]; inicio?: string; soloCuentas?: string[];
 }) {
   const supabase = await createClient();
   const { data } = await supabase.from("effi_accounts").select("slug").eq("activa", true).in("tipo", tipos).order("slug");
-  const cuentas = (data ?? []).map((c) => c.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
+  const cuentas = (data ?? []).map((c) => c.slug as string).filter((c) => !soloCuentas || soloCuentas.includes(c))
+    .sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
   const hoy = hoyBogota();
   return (
     <div className="pt-8 mb-6 space-y-4">

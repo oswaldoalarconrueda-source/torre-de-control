@@ -31,10 +31,12 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
     etiqueta: `${nombre ? `${nombre} · ` : ""}${desde === hasta ? fecha(desde) : `${fecha(desde)} – ${fecha(hasta)}`}${desde !== desdePedido ? " (últimos 7 días del rango)" : ""}`,
   };
   const supabase = await createClient();
-  const [{ data: config }, { data, error }, { data: fabrica }] = await Promise.all([
+  const [{ data: config }, { data, error }, { data: fabrica }, { data: conAgente }] = await Promise.all([
     supabase.from("auto_config").select("cuenta,modo,transportes:reglas->transportes").eq("cuenta", cuenta).maybeSingle(),
     supabase.rpc("auto_lista", rango ? { p_cuenta: cuenta, p_dias: 3, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta, p_dias: 3 }),
     supabase.rpc("auto_fabrica", rango ? { p_cuenta: cuenta, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta }),
+    // Banderas: solo las tiendas que tienen agente (en A un clic, Guatemala; Honduras y El Salvador van por Drop).
+    supabase.from("auto_config").select("cuenta"),
   ]);
   const pais = infoCuenta(cuenta);
   // Historial: una semana de Colombia son ~2.200 órdenes (5 MB). A la pantalla solo va lo que muestra la tabla: el
@@ -58,6 +60,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
         subtitulo={`${pais.bandera} ${pais.nombre} · cada orden de venta debe pasar a remisión con su convenio y tener guía. Si el cliente empieza con *, va por el centro de costos Recuperado; si empieza con +, por Sin confirmar.`}
         f={{ ...f, desde, hasta }}
         inicio={INICIO_AGENTE}
+        soloCuentas={(conAgente ?? []).map((x) => x.cuenta as string)}
       />
       {/* "vigilar" = solo se traen sus órdenes y remisiones (para En vivo); el agente de ese país sigue en prueba. */}
       {!config || config.modo === "vigilar" ? (
