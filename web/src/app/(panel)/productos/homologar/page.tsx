@@ -37,7 +37,7 @@ export default async function HomologarPage({ searchParams }: PageProps<"/produc
       {error || !d ? (
         <p className="text-sm text-red">No se pudieron cargar las campañas: {error?.message ?? "sin datos"}</p>
       ) : (
-        <HomologarCampanas cuenta={cuenta} campanas={d.campanas} productos={productos} puedeEditar={!!u && esSocio(u)} />
+        <HomologarCampanas cuenta={cuenta} campanas={d.campanas} productos={productos} puedeEditar={!!u && esSocio(u)} desde={f.desde} hasta={f.hasta} />
       )}
     </>
   );

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { dinero, entero } from "@/lib/formato";
 import { AsignarProducto, AceptarSugeridas, type ProductoHistorico } from "./asignar-producto";
 import { MarcaOtroPais } from "./marca-otro-pais";
+import { ExportarExcel, SubirExcel } from "./homologar-excel";
 
 // Lista de campañas con gasto y su producto: a mano (manda), por regla de palabra, o "Sin identificar". El dueño o un
 // socio asigna o corrige; al guardar, la pantalla de Productos ya reparte ese gasto en todos los periodos.
@@ -57,8 +58,8 @@ function Filtro({ valor, cambiar, texto }: { valor: string; cambiar: (v: string)
 }
 const normal = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: {
-  cuenta: string; campanas: CampanaHomologar[]; productos: ProductoHistorico[]; puedeEditar: boolean;
+export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar, desde, hasta }: {
+  cuenta: string; campanas: CampanaHomologar[]; productos: ProductoHistorico[]; puedeEditar: boolean; desde: string; hasta: string;
 }) {
   const [vista, setVista] = useState<"sin" | "todas">("sin");
   // Filtros para revisar: campaña (texto, sin importar tildes), cuenta publicitaria y producto asignado.
@@ -96,6 +97,11 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
           ))}
         </div>
       </header>
+      {/* Excel para homologar con un socio: se exporta lo que se está viendo (con filtros) y se sube llenado para revisar. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <ExportarExcel cuenta={cuenta} campanas={lista} productos={productos} desde={desde} hasta={hasta} />
+        {puedeEditar && <SubirExcel cuenta={cuenta} campanas={campanas} productos={productos} />}
+      </div>
       {/* En celular la tabla va en fichas (sin encabezado): los filtros van aquí arriba. */}
       <div className="mt-3 grid gap-2 text-sm md:hidden">
         <Filtro valor={fCampana} cambiar={setFCampana} texto="Buscar campaña…" />
