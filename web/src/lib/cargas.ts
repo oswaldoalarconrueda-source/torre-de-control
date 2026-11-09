@@ -2,7 +2,7 @@
 // historial de cartera) y Meta (CSV por Business Manager). Se procesa en el navegador y solo se envía lo
 // necesario: sin nombre, teléfono, correo, documento ni dirección del cliente.
 
-export type TipoCarga = "dropi_ordenes" | "dropi_productos" | "dropi_cartera" | "meta_bm";
+export type TipoCarga = "dropi_ordenes" | "dropi_productos" | "dropi_cartera" | "meta_bm" | "drop_ordenes" | "drop_billetera" | "icomfly_pedidos";
 export type Celda = string | number | boolean | Date | null | undefined;
 export type Fila = Record<string, unknown>;
 
@@ -11,6 +11,9 @@ export const NOMBRE_TIPO: Record<TipoCarga, string> = {
   dropi_productos: "Otra P · Órdenes por producto",
   dropi_cartera: "Otra P · Historial de cartera",
   meta_bm: "Meta · CSV por BM",
+  drop_ordenes: "Drop · Órdenes",
+  drop_billetera: "Drop · Billetera",
+  icomfly_pedidos: "icomfly · Pedidos",
 };
 
 export type Lectura = {
@@ -28,6 +31,10 @@ const clave = (s: unknown) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/
 
 export function detectarTipo(encabezados: unknown[]): TipoCarga | null {
   const h = new Set(encabezados.map(clave));
+  // Drop (Honduras y El Salvador de A un clic) e icomfly: se reconocen por columnas, no por el nombre del archivo.
+  if (h.has("SALDO RESULTANTE") && h.has("MOVIMIENTO")) return "drop_billetera";
+  if (h.has("PAQUETERA") && h.has("ACREDITACION")) return "drop_ordenes";
+  if (h.has("PLATAFORMA DE ENVIO") && h.has("GUIA") && h.has("PRODUCTO")) return "icomfly_pedidos";
   if (h.has("MONTO PREVIO") && h.has("DESCRIPCION")) return "dropi_cartera";
   if (h.has("PRODUCTO ID") && h.has("CANTIDAD")) return "dropi_productos";
   if (h.has("VALOR DE COMPRA EN PRODUCTOS")) return "dropi_ordenes";
@@ -259,12 +266,202 @@ function metaBm(filas: Record<string, Celda>[]): Lectura {
   };
 }
 
-export function leerTabla(tabla: Celda[][]): Lectura {
+export async function leerTabla(tabla: Celda[][]): Promise<Lectura> {
   const { encabezados, filas } = aObjetos(tabla);
   const tipo = detectarTipo(encabezados);
+  if (tipo === "drop_ordenes") return dropOrdenes(filas);
+  if (tipo === "drop_billetera") return dropBilletera(filas);
+  if (tipo === "icomfly_pedidos") return icomflyPedidos(filas);
   if (tipo === "dropi_ordenes") return dropiOrdenes(filas);
   if (tipo === "dropi_productos") return dropiProductos(filas);
   if (tipo === "dropi_cartera") return dropiCartera(filas);
   if (tipo === "meta_bm") return metaBm(filas);
-  throw new Error("No reconozco el archivo: no es órdenes, órdenes por producto ni historial de cartera, ni un CSV de Meta.");
+  throw new Error("No reconozco el archivo: no es de Dropi (órdenes, productos o cartera), de Drop (órdenes o billetera), de icomfly (pedidos) ni un CSV de Meta.");
+}
+
+// ───────────── Drop + icomfly (A un clic Honduras y El Salvador; skill "a-un-clic-honduras-el-salvador-drop") ─────────────
+// Se guardan en las mismas tablas de Dropi (órdenes, cartera, productos) a nombre de AUNCLIC_HN / AUNCLIC_SV: así
+// Productos, PyG, despacho y pendientes funcionan igual. No se guardan nombre, teléfono ni dirección del cliente: solo
+// una huella (sha-256) del nombre para cruzar la trazabilidad con las órdenes cuando la guía no coincide.
+
+const vacio = (v: Celda) => { const t = texto(v); return t === null || t === "—" || t === "-" ? null : t; };
+const normalNombre = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+async function sha256(t: string) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+const huellaCliente = async (v: Celda) => { const t = vacio(v); return t ? (await sha256(`cliente|${normalNombre(t)}`)).slice(0, 32) : null; };
+// "03:31 PM" / "04:21 p. m." → "15:31"
+function hora12(s: string | null): string | null {
+  if (!s) return null;
+  const m = /(\d{1,2}):(\d{2})\s*([ap])\.?\s*m/i.exec(s);
+  if (!m) return /(\d{1,2}:\d{2})/.exec(s)?.[1] ?? null;
+  let h = +m[1] % 12;
+  if (m[3].toLowerCase() === "p") h += 12;
+  return `${pad(h)}:${m[2]}`;
+}
+// País por el prefijo del teléfono: +504 Honduras, +503 El Salvador (con o sin "+"; 8 dígitos sin prefijo = local).
+function paisTelefono(v: Celda): "HN" | "SV" | null {
+  const d = String(v ?? "").replace(/\D/g, "");
+  if (d.startsWith("504") && d.length >= 11) return "HN";
+  if (d.startsWith("503") && d.length >= 11) return "SV";
+  return null;
+}
+const CUENTA_PAIS = { HN: "AUNCLIC_HN", SV: "AUNCLIC_SV" } as const;
+// Un archivo es de un solo país. Si casi todo es de uno (≥ 95 %), se toma ese y se avisa; si mezcla de verdad, no se guarda.
+function paisDelArchivo(paises: ("HN" | "SV" | null)[], avisos: string[], porDefecto: "HN" | "SV" | null = null) {
+  const hn = paises.filter((p) => p === "HN").length, sv = paises.filter((p) => p === "SV").length;
+  if (!hn && !sv) return porDefecto;
+  const mayor = hn >= sv ? "HN" : "SV", menor = Math.min(hn, sv);
+  if (menor > 0.05 * (hn + sv)) throw new Error(`El archivo mezcla Honduras (${hn}) y El Salvador (${sv}): sepáralo por país antes de subirlo.`);
+  if (menor) avisos.push(`${menor} ${menor === 1 ? "fila tiene" : "filas tienen"} teléfono de ${mayor === "HN" ? "El Salvador" : "Honduras"}; el archivo se toma como ${mayor === "HN" ? "Honduras" : "El Salvador"}.`);
+  return mayor;
+}
+// Estado de Drop → vocabulario de Dropi (v_dropi_ordenes): la billetera manda después.
+function estadoDrop(e: string | null): string | null {
+  const x = (e ?? "").toLowerCase();
+  if (x === "entregado") return "ENTREGADO";
+  if (x === "no entregado") return "DEVOLUCION";
+  if (x === "orden cancelada" || x === "envío cancelado" || x === "envio cancelado") return "CANCELADO";
+  if (x === "orden rechazada") return "RECHAZADO";
+  if (["creado en sistema", "verificar", "pendiente"].includes(x)) return "PENDIENTE";
+  if (x === "problemas en gestión" || x === "problemas en gestion") return "NOVEDAD";
+  return e ? "EN TRANSITO" : null; // En ruta a destino, Recolectado y lo nuevo
+}
+
+async function dropOrdenes(filas: Record<string, Celda>[]): Promise<Lectura> {
+  const avisos: string[] = [];
+  const validas = filas.filter((r) => entero(r["N° DE ORDEN"]) !== null);
+  const pais = paisDelArchivo(validas.map((r) => paisTelefono(r["TELEFONO DEL CLIENTE"])), avisos);
+  const out = await Promise.all(validas.map(async (r) => {
+    const f = texto(r["FECHA DE CREACION"]);
+    return {
+      id: entero(r["N° DE ORDEN"]),
+      fecha: fecha(f),
+      hora: hora12(f?.slice(10) ?? null),
+      guia: vacio(r["N° DE GUIA"]),
+      estatus: estadoDrop(texto(r["ESTADO"])),
+      ultimo_movimiento: texto(r["ESTADO"]),           // el estado original de Drop
+      tipo_envio: vacio(r["TIPO DE PAGO"]),
+      transportadora: vacio(r["PAQUETERA"]),
+      venta: numero(r["MONTO A COBRAR"]),
+      categorias: vacio(r["PROVEEDOR"]),
+      tipo_tienda: "DROP",
+      tienda: "drop",
+      id_orden_tienda: vacio(r["N° DE ORDEN SHOPIFY"]),
+      cliente_hash: await huellaCliente(r["CLIENTE"]),
+    };
+  }));
+  const estados = new Map<string, number>();
+  validas.forEach((r) => estados.set(texto(r["ESTADO"]) ?? "—", (estados.get(texto(r["ESTADO"]) ?? "—") ?? 0) + 1));
+  return {
+    tipo: "drop_ordenes",
+    filas: out.filter((f) => f.fecha),
+    cuenta: pais ? CUENTA_PAIS[pais] : null,
+    ...rango(out.map((f) => f.fecha)),
+    totales: [
+      { etiqueta: "Órdenes", valor: out.length },
+      { etiqueta: "Monto a cobrar", valor: suma(out.map((f) => f.venta)), moneda: true },
+      ...[...estados].sort((a, b) => b[1] - a[1]).map(([e, n]) => ({ etiqueta: e, valor: n })),
+    ],
+    avisos,
+  };
+}
+
+// Billetera de Drop → cartera (descripción al estilo Dropi para que el concepto salga solo: ganancia, devolución, retiro).
+async function dropBilletera(filas: Record<string, Celda>[]): Promise<Lectura> {
+  const validas = filas.filter((r) => texto(r["FECHA"]) && numero(r["MONTO"]) !== null);
+  // La tasa (USD por unidad local) dice la moneda: ≈1 = dólares (El Salvador); si no, lempiras (Honduras).
+  const tasas = validas.map((r) => numero(r["TASA DE CAMBIO (USD)"])).filter((x): x is number => !!x);
+  const pais: "HN" | "SV" | null = tasas.length ? (mediana(tasas) > 0.5 ? "SV" : "HN") : null;
+  const out = await Promise.all(validas.map(async (r) => {
+    const v = r["FECHA"];
+    const utc = v instanceof Date ? v : new Date(String(texto(v)));
+    const local = new Date(utc.getTime() - 6 * 3_600_000); // Honduras y El Salvador: UTC−6, sin horario de verano
+    const fechaLocal = `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())} ${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}:${pad(local.getUTCSeconds())}`;
+    const monto = numero(r["MONTO"]) ?? 0;
+    const concepto = texto(r["CONCEPTO"]) ?? "";
+    const mov = texto(r["MOVIMIENTO"]) ?? "";
+    const saldo = numero(r["SALDO RESULTANTE"]);
+    const esRetiro = /liquidaci[oó]n/i.test(mov) && !/env[ií]o/i.test(mov);
+    const descripcion = /^abono/i.test(mov) ? `ENTRADA POR GANANCIA · Drop: ${mov}`
+      : /no entrega/i.test(mov) ? `SALIDA DE COBRO DE DEVOLUCION · Drop: ${mov}`
+      : esRetiro ? `RETIRO · Drop: ${concepto}`
+      : `Drop: ${mov} · ${concepto}`;
+    const h = await sha256(`drop|${utc.toISOString()}|${concepto}|${monto}|${saldo}`);
+    return {
+      id: parseInt(h.slice(0, 13), 16),               // id estable (< 2^53): el archivo es acumulado y no debe duplicar
+      fecha: fechaLocal,
+      tipo: monto < 0 ? "SALIDA" : "ENTRADA",
+      monto: Math.abs(monto),
+      monto_previo: numero(r["SALDO ANTERIOR"]),
+      orden_id: entero(/Orden\s+(\d+)/i.exec(concepto)?.[1]),
+      descripcion,
+      concepto_retiro: esRetiro ? concepto : null,
+      tasa: numero(r["TASA DE CAMBIO (USD)"]),
+    };
+  }));
+  const abonos = out.filter((f) => f.descripcion.startsWith("ENTRADA POR GANANCIA"));
+  const devol = out.filter((f) => f.descripcion.startsWith("SALIDA DE COBRO"));
+  const retiros = out.filter((f) => f.concepto_retiro);
+  const ultimo = [...validas].sort((a, b) => String(texto(b["FECHA"])).localeCompare(String(texto(a["FECHA"]))))[0];
+  return {
+    tipo: "drop_billetera",
+    filas: out,
+    cuenta: pais ? CUENTA_PAIS[pais] : null,
+    ...rango(out.map((f) => f.fecha)),
+    totales: [
+      { etiqueta: "Movimientos", valor: out.length },
+      { etiqueta: "Abonos (ganancia)", valor: suma(abonos.map((f) => f.monto)), moneda: true },
+      { etiqueta: "Descuentos por no entrega", valor: devol.length },
+      { etiqueta: "Retiros", valor: retiros.length },
+      { etiqueta: "Saldo final", valor: numero(ultimo?.["SALDO RESULTANTE"]) ?? 0, moneda: true },
+    ],
+    avisos: [],
+  };
+}
+
+// Trazabilidad de icomfly: la única fuente del producto. "1x A, 1x B" se separa en líneas.
+async function icomflyPedidos(filas: Record<string, Celda>[]): Promise<Lectura> {
+  const avisos: string[] = [];
+  const validas = filas.filter((r) => texto(r["ID"]));
+  const pais = paisDelArchivo(validas.map((r) => paisTelefono(r["TELEFONO"])), avisos, "HN");
+  const lineas = new Map<string, number>();
+  const out = (await Promise.all(validas.map(async (r) => {
+    const pid = texto(r["ID"])!;
+    const prod = texto(r["PRODUCTO"]) ?? "";
+    const partes = /^\d+\s*x\s/i.test(prod)
+      ? prod.split(/,\s*(?=\d+\s*x\s)/i).map((p) => { const m = /^(\d+)\s*x\s+(.+)$/i.exec(p.trim()); return { producto: (m?.[2] ?? p).trim(), cantidad: m ? +m[1] : 1 }; })
+      : [{ producto: prod, cantidad: numero(r["CANTIDAD"]) ?? 1 }];
+    const hash = await huellaCliente(r["CLIENTE"]);
+    return partes.map((p) => {
+      const linea = (lineas.get(pid) ?? 0) + 1;
+      lineas.set(pid, linea);
+      return {
+        id: pid, linea, fecha: fecha(r["FECHA"]), hora: hora12(texto(r["HORA"])),
+        origen: vacio(r["ORIGEN"]), plataforma_envio: vacio(r["PLATAFORMA DE ENVIO"]),
+        departamento: vacio(r["DEPARTAMENTO"]), municipio: vacio(r["MUNICIPIO"]),
+        producto: p.producto || null, cantidad: p.cantidad, total: numero(r["TOTAL"]),
+        recaudo: vacio(r["RECAUDO"]), pasarela: vacio(r["PASARELA DE PAGO"]),
+        costo_producto: numero(r["COSTO PRODUCTO"]), costo_envio: numero(r["COSTO ENVIO"]),
+        estado: vacio(r["ESTADO"]), guia: vacio(r["GUIA"]), transportadora: vacio(r["TRANSPORTADORA"]),
+        etiquetas: vacio(r["ETIQUETAS"]), motivo_cancelacion: vacio(r["MOTIVO DE CANCELACION"]),
+        fecha_cancelacion: fecha(r["FECHA CANCELACION"]), cliente_hash: hash,
+      };
+    });
+  }))).flat();
+  const productos = new Set(out.map((f) => f.producto).filter(Boolean));
+  return {
+    tipo: "icomfly_pedidos",
+    filas: out.filter((f) => f.fecha),
+    cuenta: pais ? CUENTA_PAIS[pais] : null,
+    ...rango(out.map((f) => f.fecha)),
+    totales: [
+      { etiqueta: "Pedidos", valor: validas.length },
+      { etiqueta: "Líneas de producto", valor: out.length },
+      { etiqueta: "Productos distintos", valor: productos.size },
+      { etiqueta: "Con guía", valor: new Set(out.filter((f) => f.guia).map((f) => f.id)).size },
+    ],
+    avisos,
+  };
 }

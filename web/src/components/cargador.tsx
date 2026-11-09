@@ -24,20 +24,34 @@ type Item = {
 
 const nombreTienda = nombreConSociedad;
 
+// Resumen que devuelve drop_conciliar (formato del skill: "Todo conciliado, excepto: …").
+type Conciliacion = {
+  ordenes: number; por_estado: Record<string, number>; entregadas: number; devoluciones: number; ventas: number; ganancia: number;
+  saldo: number | null; retiros: { fecha: string; concepto: string; monto: number }[];
+  producto: { guia: number; nombre_monto: number; nombre_fecha: number; sin_producto: number; ejemplos_sin: string[] };
+  billetera_sin_orden: number;
+};
+
 // Verificador: con lo ya cargado, de qué tienda del Centro de Control es el archivo. Órdenes: por el número de tienda
 // de Dropi; productos y cartera: por los números de orden. null = no hay cómo saberlo (tienda o órdenes nuevas).
 async function verificar(l: Lectura): Promise<{ cuenta: string; por: string } | null> {
   if (l.tipo === "meta_bm") return null;
   const filas = l.filas as Record<string, unknown>[];
   const tiendas = l.tipo === "dropi_ordenes" ? [...new Set(filas.map((f) => f.tienda).filter(Boolean) as string[])] : [];
-  const ordenes = [...new Set(filas.map((f) => (l.tipo === "dropi_ordenes" ? f.id : f.orden_id)).filter((x) => x != null) as number[])];
-  const { data } = await createClient().rpc("dropi_verificar", { p_tiendas: tiendas, p_ordenes: ordenes.slice(0, 5000) });
-  const v = (data ?? {}) as { tiendas?: Record<string, string[]>; ordenes?: Record<string, number> };
+  // Órdenes: Dropi y Drop por su número; cartera y billetera por la orden de cada movimiento; icomfly por la guía.
+  const ordenes = l.tipo === "icomfly_pedidos" ? []
+    : [...new Set(filas.map((f) => (l.tipo === "dropi_ordenes" || l.tipo === "drop_ordenes" ? f.id : f.orden_id)).filter((x) => x != null) as number[])];
+  const guias = l.tipo === "icomfly_pedidos" ? [...new Set(filas.map((f) => f.guia).filter(Boolean) as string[])] : [];
+  const { data } = await createClient().rpc("dropi_verificar", { p_tiendas: tiendas, p_ordenes: ordenes.slice(0, 5000), p_guias: guias.slice(0, 5000) });
+  const v = (data ?? {}) as { tiendas?: Record<string, string[]>; ordenes?: Record<string, number>; guias?: Record<string, number> };
   const porTienda = [...new Set(Object.values(v.tiendas ?? {}).flat())];
   if (porTienda.length === 1) return { cuenta: porTienda[0], por: `tienda Dropi ${Object.keys(v.tiendas ?? {}).join(", ")}` };
   const porOrden = Object.entries(v.ordenes ?? {}).sort((a, b) => b[1] - a[1]);
   if (porOrden.length && porOrden[0][1] >= 0.5 * porOrden.reduce((s, x) => s + x[1], 0))
     return { cuenta: porOrden[0][0], por: `${nf.format(porOrden[0][1])} órdenes ya cargadas ahí` };
+  const porGuia = Object.entries(v.guias ?? {}).sort((a, b) => b[1] - a[1]);
+  if (porGuia.length && porGuia[0][1] >= 0.5 * porGuia.reduce((s, x) => s + x[1], 0))
+    return { cuenta: porGuia[0][0], por: `${nf.format(porGuia[0][1])} guías de órdenes ya cargadas ahí` };
   return null;
 }
 
@@ -61,6 +75,7 @@ export function Cargador({ tiendas }: { tiendas: string[] }) {
   const [items, setItems] = useState<Item[]>([]);
   const [arrastrando, setArrastrando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
+  const [conciliado, setConciliado] = useState<{ cuenta: string; error: string | null; r: Conciliacion | null }[]>([]);
 
   const cambiar = (key: string, cambio: Partial<Item>) => setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...cambio } : x)));
 
@@ -113,6 +128,12 @@ export function Cargador({ tiendas }: { tiendas: string[] }) {
         cambiar(it.key, { estado: "error", error: (e as Error).message });
       }
     }
+    // Drop + icomfly: con los archivos ya guardados, cruzar producto, recalcular costo (venta − abono) y la tasa del día.
+    const deDrop = [...new Set(cola.filter((x) => x.lectura && /^(drop_|icomfly_)/.test(x.lectura.tipo) && x.cuenta).map((x) => x.cuenta!))];
+    for (const c of deDrop) {
+      const { data, error } = await supabase.rpc("drop_conciliar", { p_cuenta: c });
+      setConciliado((xs) => [...xs.filter((x) => x.cuenta !== c), { cuenta: c, error: error?.message ?? null, r: (data ?? null) as Conciliacion | null }]);
+    }
     setSubiendo(false);
     router.refresh();
   }
@@ -135,6 +156,7 @@ export function Cargador({ tiendas }: { tiendas: string[] }) {
         <div className="font-semibold">Arrastra aquí los archivos o haz clic para elegirlos</div>
         <div className="text-xs text-muted max-w-xl">
           Otra P: <span className="font-mono">ordenes_*.xlsx</span>, <span className="font-mono">ordenes_productos_*.xlsx</span> e <span className="font-mono">historial de cartera-*.xlsx</span>.
+          Drop + icomfly (A un clic Honduras y El Salvador): <span className="font-mono">reporte-ordenes-*.xlsx</span>, <span className="font-mono">movimientos-*.xlsx</span> y <span className="font-mono">trazabilidad_pedidos_*.xlsx</span>, los tres juntos.
           Meta: el CSV de cada Business Manager con país, cuenta, campaña, día y monto gastado en COP. Puedes subir varios a la vez.
         </div>
         <input id="archivos-carga" ref={input} type="file" multiple accept=".xlsx,.csv" className="sr-only"
@@ -202,6 +224,31 @@ export function Cargador({ tiendas }: { tiendas: string[] }) {
               })}
             </tbody>
           </table>
+          {conciliado.map(({ cuenta, error, r }) => (
+            <div key={cuenta} className="border-t border-line p-3 text-xs">
+              <div className="font-semibold">{nombreTienda(cuenta)} · conciliación Drop + icomfly</div>
+              {error && <div className="text-red">No se pudo conciliar: {error}</div>}
+              {r && (
+                <div className="mt-1 space-y-1 text-muted">
+                  <div>
+                    {nf.format(r.ordenes)} órdenes · {nf.format(r.entregadas)} entregadas · {nf.format(r.devoluciones)} devoluciones · ventas {nf.format(r.ventas)} ·
+                    ganancia (abonos) {nf.format(r.ganancia)}{r.saldo != null && <> · saldo billetera {nf.format(r.saldo)}</>}
+                  </div>
+                  <div>Estados: {Object.entries(r.por_estado).map(([e, n]) => `${e} ${nf.format(n)}`).join(" · ")}</div>
+                  <div>
+                    Producto por guía {nf.format(r.producto.guia)}, por cliente y monto {nf.format(r.producto.nombre_monto)}, por cliente y fecha {nf.format(r.producto.nombre_fecha)}
+                    {r.producto.sin_producto ? <span className="text-amber"> · {nf.format(r.producto.sin_producto)} sin producto{r.producto.ejemplos_sin.length ? ` (${r.producto.ejemplos_sin.join(", ")}…)` : ""}</span> : <span className="text-green"> · todas con producto</span>}
+                  </div>
+                  {r.billetera_sin_orden > 0 && <div className="text-amber">{nf.format(r.billetera_sin_orden)} movimientos de la billetera apuntan a órdenes que no están cargadas.</div>}
+                  {r.retiros.length > 0 && (
+                    <div className="text-amber">
+                      Retiros pendientes de pesos y cuenta: {r.retiros.map((x) => `${x.fecha.slice(0, 10)} ${x.concepto} ${nf.format(x.monto)}`).join(" · ")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
           <div className="flex items-center justify-between gap-3 border-t border-line p-3">
             <span className="flex items-center gap-3">
               <button type="button" onClick={() => setItems([])} disabled={subiendo} className="text-sm text-muted hover:text-text">Limpiar lista</button>

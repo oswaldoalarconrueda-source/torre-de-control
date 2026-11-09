@@ -16,10 +16,10 @@ export const CUENTAS: Record<string, InfoCuenta> = {
   TIENDA_CR: { pais: "CR", nombre: "Costa Rica", bandera: "🇨🇷", divisa: "CRC", decimales: 0, verde: 0.25, naranja: 0.35, zona: "America/Costa_Rica", indicativo: "506" },
   // Valka: sociedad aparte, con su propia cuenta de Effi en Guatemala.
   VALKA_GT: { pais: "GT", nombre: "Valka", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
-  // A un clic: Guatemala con Effi; Honduras y El Salvador por ahora solo con su publicidad (en dólares). En las banderas
+  // A un clic: Guatemala con Effi; Honduras (lempiras) y El Salvador (dólares) con Drop + icomfly por archivo. En las banderas
   // sale solo el país, como en Joalix; "sociedad" las distingue donde se mezclan (p. ej. al cargar archivos).
   AUNCLIC_GT: { pais: "GT", nombre: "Guatemala", sociedad: "A un clic", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
-  AUNCLIC_HN: { pais: "HN", nombre: "Honduras", sociedad: "A un clic", bandera: "🇭🇳", divisa: "USD", decimales: 2, verde: 0.22, naranja: 0.3, zona: "America/Tegucigalpa", indicativo: "504" },
+  AUNCLIC_HN: { pais: "HN", nombre: "Honduras", sociedad: "A un clic", bandera: "🇭🇳", divisa: "HNL", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Tegucigalpa", indicativo: "504" },
   AUNCLIC_SV: { pais: "SV", nombre: "El Salvador", sociedad: "A un clic", bandera: "🇸🇻", divisa: "USD", decimales: 2, verde: 0.22, naranja: 0.3, zona: "America/El_Salvador", indicativo: "503" },
   // Distrilatam (proveeduría): tres empresas de Effi, cada una por separado aunque dos sean de Guatemala.
   DISTRI_GT: { pais: "GT", nombre: "DistriGuatemala", bandera: "🇬🇹", divisa: "GTQ", decimales: 2, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },

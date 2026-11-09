@@ -17,6 +17,8 @@ type Wallet = {
   cuenta: string; divisa: string | null; saldo: number; movimientos_total: number; desde: string | null; ultimo: string | null;
   hoy: { entradas: number; salidas: number; neto: number; movimientos: number; recaudos: number; recaudo: number };
   serie: number[]; recientes: Movimiento[];
+  origen?: "drop";                                                    // A un clic HN/SV: billetera de Drop, cargada por archivo
+  retiros?: { fecha: string; concepto: string | null; monto: number }[]; // pendientes de saber cuántos pesos entraron y a qué cuenta
 };
 type Respuesta = { ahora: string; cuentas: Wallet[] };
 
@@ -139,7 +141,10 @@ function Tarjeta({ w, cambio, activa, onClick }: { w: Wallet; cambio?: { delta: 
     >
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-2 text-sm font-semibold">{pais.bandera} {pais.nombre}</span>
-        <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted">{w.divisa ?? pais.divisa}</span>
+        <span className="flex items-center gap-1">
+          {w.origen === "drop" && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Billetera de Drop, cargada por archivo">Drop</span>}
+          <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted">{w.divisa ?? pais.divisa}</span>
+        </span>
       </div>
       <div className="mt-3 text-[11px] uppercase tracking-widest font-mono text-muted">Saldo ahora</div>
       <div className="num text-3xl font-semibold tracking-tight mt-0.5">{plata(w.saldo, w.cuenta, w.divisa)}</div>
@@ -156,6 +161,18 @@ function Tarjeta({ w, cambio, activa, onClick }: { w: Wallet; cambio?: { delta: 
         <span>{entero(w.hoy.recaudos)} {w.hoy.recaudos === 1 ? "entrega pagada" : "entregas pagadas"} hoy</span>
         <span>{w.ultimo ? `último ${haceCuanto(w.ultimo)}` : ""}</span>
       </div>
+      {!!w.retiros?.length && (
+        <div className="mt-3 border-t border-line pt-2 text-[11px]">
+          <div className="uppercase tracking-wider font-mono text-amber">Retiros pendientes de pesos y cuenta</div>
+          {w.retiros.slice(0, 6).map((r) => (
+            <div key={`${r.fecha}${r.concepto}`} className="mt-1 flex justify-between gap-2 text-muted">
+              <span className="truncate">{r.fecha.slice(0, 10)} · {r.concepto ?? "—"}</span>
+              <span className="num shrink-0 text-text">{plata(r.monto, w.cuenta, w.divisa)}</span>
+            </div>
+          ))}
+          {w.retiros.length > 6 && <div className="mt-1 text-muted">… y {w.retiros.length - 6} más</div>}
+        </div>
+      )}
     </button>
   );
 }
