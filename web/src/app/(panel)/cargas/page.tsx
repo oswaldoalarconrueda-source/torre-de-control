@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient, getUsuario } from "@/lib/supabase/server";
 import { NOMBRE_TIPO, type TipoCarga } from "@/lib/cargas";
 import { entero, fechaHora } from "@/lib/formato";
-import { infoCuenta } from "@/lib/paises";
+import { infoCuenta, ordenCuenta } from "@/lib/paises";
 import { Panel, TablaScroll, Vacio } from "@/components/ui";
 import { Cargador } from "@/components/cargador";
 import { DocumentosCarga, type Documento } from "@/components/documentos-carga";
@@ -12,11 +12,14 @@ export default async function CargasPage() {
   const u = await getUsuario();
   if (u?.rol !== "owner") redirect("/");
   const supabase = await createClient();
-  const [{ data: cargas }, { data: estado }, { data: documentos }] = await Promise.all([
+  // Tiendas de la sociedad que el dueño está viendo (la base filtra effi_accounts por esa sociedad).
+  const [{ data: cargas }, { data: estado }, { data: documentos }, { data: tiendasData }] = await Promise.all([
     supabase.from("app_cargas").select("id,tipo,cuenta,archivo,filas,resumen,creado_en").order("id", { ascending: false }).limit(30),
     supabase.rpc("app_estado_cargas"),
     supabase.from("app_documentos").select("id,tipo,cuenta,mes,nota,archivo,ruta,bytes,subido_por,creado_en").order("id", { ascending: false }).limit(100),
+    supabase.from("effi_accounts").select("slug").eq("tipo", "tienda").eq("activa", true),
   ]);
+  const tiendas = (tiendasData ?? []).map((t) => t.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
   const filasEstado = (estado ?? []) as { cuenta: string; fuente: string; filas: number; desde: string | null; hasta: string | null }[];
 
   return (
@@ -29,7 +32,7 @@ export default async function CargasPage() {
         </p>
       </div>
 
-      <Cargador />
+      <Cargador tiendas={tiendas} />
 
       <DocumentosCarga documentos={(documentos ?? []) as Documento[]} usuario={u?.email ?? null} />
 
