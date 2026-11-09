@@ -66,3 +66,10 @@ export const COLOR_SEMAFORO: Record<Semaforo, string> = {
   rojo: "var(--red)",
   nada: "var(--muted)",
 };
+
+// Nombre del país por código (para avisos como "pauta entregada en Colombia").
+const PAISES_NOMBRE: Record<string, string> = {
+  CO: "Colombia", EC: "Ecuador", GT: "Guatemala", CR: "Costa Rica", HN: "Honduras", SV: "El Salvador", MX: "México",
+  PA: "Panamá", PE: "Perú", US: "Estados Unidos", NI: "Nicaragua", VE: "Venezuela", CL: "Chile",
+};
+export const nombrePais = (codigo: string) => PAISES_NOMBRE[codigo] ?? codigo;

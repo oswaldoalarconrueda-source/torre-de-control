@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { dinero, entero } from "@/lib/formato";
 import { AsignarProducto, AceptarSugeridas, type ProductoHistorico } from "./asignar-producto";
+import { MarcaOtroPais } from "./marca-otro-pais";
 
 // Lista de campañas con gasto y su producto: a mano (manda), por regla de palabra, o "Sin identificar". El dueño o un
 // socio asigna o corrige; al guardar, la pantalla de Productos ya reparte ese gasto en todos los periodos.
@@ -12,6 +13,7 @@ export type CampanaHomologar = {
   manual: string | null; asignado_por: string | null; regla: string | null; patron: string | null;
   primer_gasto?: string | null; ultimo_gasto?: string | null; // toda la historia, no solo el periodo
   creada?: string | null; inicio?: string | null; fin?: string | null; estado?: string | null; // de la API de Meta
+  otros_paises?: string | null; // pauta entregada en otro país que se carga a esta tienda (* rojo)
 };
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -74,6 +76,9 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
         </div>
       </header>
       {!puedeEditar && <p className="mt-2 text-xs text-muted">Solo el dueño o un socio pueden asignar productos.</p>}
+      {campanas.some((c) => c.otros_paises) && (
+        <p className="mt-2 text-xs text-muted"><span className="font-bold text-red">*</span> Pauta entregada en otro país donde la sociedad no tiene tienda; se carga a esta (pasa el mouse para ver el país).</p>
+      )}
       {puedeEditar && sinId.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
           <span>Las verdes son sugerencias por el nombre de la campaña (clic para aceptarlas); las amarillas, parecidos parciales para revisar.</span>
@@ -91,7 +96,7 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
               const actual = c.manual ?? c.regla;
               return (
                 <tr key={c.campana}>
-                  <td data-l="Campaña" className="text-left max-w-[26rem] whitespace-normal break-words font-medium max-md:col-span-6">{c.campana}</td>
+                  <td data-l="Campaña" className="text-left max-w-[26rem] whitespace-normal break-words font-medium max-md:col-span-6">{c.campana}<MarcaOtroPais paises={c.otros_paises} /></td>
                   <td data-l="Cuenta" className="text-left text-muted max-w-[10rem] truncate max-md:col-span-6" title={c.cuentas}>{c.cuentas}</td>
                   <td data-l="Gasto (COP)" className="num text-right max-md:col-span-4 max-md:text-left">{dinero(c.cop, "TIENDA_CO")}</td>
                   <td data-l="Días" className="num text-right max-md:col-span-2 max-md:text-left">{c.dias}</td>

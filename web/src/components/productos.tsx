@@ -5,6 +5,7 @@ import Link from "next/link";
 import { dinero, entero } from "@/lib/formato";
 import { infoCuenta, semaforoDevolucion, COLOR_SEMAFORO } from "@/lib/paises";
 import { AsignarProducto, AceptarSugeridas, type ProductoHistorico } from "./asignar-producto";
+import { MarcaOtroPais } from "./marca-otro-pais";
 
 // 📦 Desempeño por producto (réplica del menú Productos del Dashboard Joalix, skill "menu-productos-joalix"). Recibe
 // los datos de productos_datos por país y arma en pantalla la cascada, el ranking, las campañas sin identificar, la
@@ -20,6 +21,7 @@ export type DatosPais = {
   estados: Estado[];
   ads: [string, string, number][];
   sin: [string, string, string, number][];
+  otros?: [string, string | null, string][]; // [campaña, producto, países] con pauta entregada en otro país
   ads_dia: [string, number][];
   meses: Record<string, { factor: number | null; gastos: number; entregas: number }>;
   wallet: number | null; // utilidad del PyG de la wallet antes de gastos fijos (Data Experience)
@@ -163,6 +165,18 @@ export function Productos({ paises, desde, hasta, puedeEditar = false, productos
   const COLS: [string, string][] = [["p", "Producto"], ["venta", "Venta liq."], ["costo", "− Costo"], ["flete", "− Flete entrega"], ["ful", `− ${fulLbl}`], ["fdv", "− Flete dev."], ["ads", "− Publicidad"], ["u", "Utilidad"], ["pend", "Pend."], ["proy", "− Proy. dev."], ["up", "Util. proyectada"], ["otr", "− Otros gastos"], ["uf", "Util. final"], ["roi", "ROI ads"], ["mg", "% s/venta"], ["peso", "Peso"]];
   const ordenar = (k: string) => setSort((s) => (s.k === k ? { k, dir: -s.dir } : { k, dir: k === "p" ? 1 : -1 }));
 
+  // Pauta entregada en otro país (se marca con * rojo): por campaña y por producto.
+  const otrosCampana = new Map<string, string>();
+  const otrosProducto = new Map<string, Set<string>>();
+  paises.forEach((P) => (P.otros ?? []).forEach(([c, prod, ps]) => {
+    otrosCampana.set(c, ps);
+    const k = prod ?? SINID;
+    const set = otrosProducto.get(k) ?? new Set<string>();
+    ps.split(",").forEach((x) => set.add(x));
+    otrosProducto.set(k, set);
+  }));
+  const marcaProducto = (p: string) => (otrosProducto.has(p) ? <MarcaOtroPais paises={[...otrosProducto.get(p)!].join(",")} /> : null);
+
   // campañas sin identificar
   const sinRows = useMemo(() => {
     if (sel.length) return [];
@@ -284,7 +298,7 @@ export function Productos({ paises, desde, hasta, puedeEditar = false, productos
             <tbody>
               {filas.map((r, i) => (
                 <tr key={r.p}>
-                  <td className="text-left">{!esSin(r.p) && <span className="mr-1.5 text-xs text-muted">{i + 1}</span>}{esSin(r.p) ? <i>{r.p}</i> : r.p}</td>
+                  <td className="text-left">{!esSin(r.p) && <span className="mr-1.5 text-xs text-muted">{i + 1}</span>}{esSin(r.p) ? <i>{r.p}</i> : r.p}{marcaProducto(r.p)}</td>
                   <td className="num text-right">{fm(r.venta)}</td><td className="num text-right">{neg(r.costo)}</td><td className="num text-right">{neg(r.flete)}</td>
                   <td className="num text-right">{neg(r.ful)}</td><td className="num text-right">{neg(r.fdv)}</td><td className="num text-right">{neg(r.ads)}</td>
                   <td className={`num text-right ${cls(r.u)}`}>
@@ -339,7 +353,7 @@ export function Productos({ paises, desde, hasta, puedeEditar = false, productos
             <tbody>
               {sinRows.map((r) => (
                 <tr key={`${r.pais}${r.b}${r.c}`}>
-                  <td className="text-left">{r.c}</td>{all && <td className="text-left">{infoCuenta(r.pais).bandera}</td>}<td className="text-left">{r.b}</td>
+                  <td className="text-left">{r.c}<MarcaOtroPais paises={otrosCampana.get(r.c)} /></td>{all && <td className="text-left">{infoCuenta(r.pais).bandera}</td>}<td className="text-left">{r.b}</td>
                   <td className="num text-right">{r.ds.size}</td><td className="num text-right">{fmz(r.v)}</td><td className="num text-right">{gt.ads > 0.005 ? `${nf((r.v / gt.ads) * 100, 1)} %` : "–"}</td>
                   {editar && <td className="text-left"><AsignarProducto cuenta={r.pais} campana={r.c} productos={productosHist} /></td>}
                 </tr>
@@ -359,7 +373,7 @@ export function Productos({ paises, desde, hasta, puedeEditar = false, productos
             <thead><tr><th className="text-left">Producto</th>{thDias}<th className="text-right">Total</th></tr></thead>
             <tbody>
               {adsProds.map((p) => (
-                <tr key={p}><td className="text-left">{esSin(p) ? <i>{p}</i> : p}</td>{days.map((d) => <td key={d} className="num text-right">{fm(M[p][d]?.ads ?? 0)}</td>)}<td className="num text-right font-semibold">{fm(A[p].ads)}</td></tr>
+                <tr key={p}><td className="text-left">{esSin(p) ? <i>{p}</i> : p}{marcaProducto(p)}</td>{days.map((d) => <td key={d} className="num text-right">{fm(M[p][d]?.ads ?? 0)}</td>)}<td className="num text-right font-semibold">{fm(A[p].ads)}</td></tr>
               ))}
               <tr className="font-semibold"><td className="text-left">Total publicidad</td>{days.map((d) => <td key={d} className="num text-right">{fm(tot[d]?.ads ?? 0)}</td>)}<td className="num text-right">{fm(gt.ads)}</td></tr>
               <tr className="text-muted"><td className="text-left">Control: gasto real de las cuentas</td>{control.map((v, i) => <td key={days[i]} className="num text-right">{fm(v)}</td>)}<td className="num text-right">{fm(control.reduce((a, b) => a + b, 0))}</td></tr>
@@ -407,6 +421,7 @@ export function Productos({ paises, desde, hasta, puedeEditar = false, productos
         </div>
         <p className="mt-3 text-xs text-muted">
           {A[SINID]?.ads > 0.005 && <><b>Sin identificar:</b> campañas cuyo nombre no permite saber el producto; se mantienen aparte (no se reparten) hasta que se homologuen. </>}
+          {otrosProducto.size > 0 && <><span className="font-bold text-red">*</span> Parte de la pauta se entregó en otro país donde la sociedad no tiene tienda y se carga a esta (pasa el mouse para ver el país). </>}
           {A[SIN]?.ads > 0.005 && <><b>Publicidad sin asignar a producto:</b> gasto de las cuentas sin detalle por campaña; está descontado del total para que la utilidad sea real. </>}
           Las guías en tránsito, novedad o pendientes todavía no suman utilidad y se reflejan cuando se liquidan; por eso los últimos días se ven más bajos. Las guías de varios productos se reparten por unidades.
         </p>
