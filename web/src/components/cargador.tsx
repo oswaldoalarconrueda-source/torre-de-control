@@ -7,7 +7,7 @@ import Papa from "papaparse";
 import { FileUp, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { leerTabla, NOMBRE_TIPO, type Celda, type Lectura } from "@/lib/cargas";
-import { infoCuenta } from "@/lib/paises";
+import { infoCuenta, nombreConSociedad } from "@/lib/paises";
 
 type Item = {
   key: string;
@@ -22,7 +22,7 @@ type Item = {
   resultado?: string;
 };
 
-const nombreTienda = (c: string) => `${infoCuenta(c).bandera} ${infoCuenta(c).nombre}`;
+const nombreTienda = nombreConSociedad;
 
 // Verificador: con lo ya cargado, de qué tienda del Centro de Control es el archivo. Órdenes: por el número de tienda
 // de Dropi; productos y cartera: por los números de orden. null = no hay cómo saberlo (tienda o órdenes nuevas).

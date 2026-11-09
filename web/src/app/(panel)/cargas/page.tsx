@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient, getUsuario } from "@/lib/supabase/server";
 import { NOMBRE_TIPO, type TipoCarga } from "@/lib/cargas";
 import { entero, fechaHora } from "@/lib/formato";
-import { infoCuenta, ordenCuenta } from "@/lib/paises";
+import { infoCuenta, nombreConSociedad, ordenCuenta } from "@/lib/paises";
 import { Panel, TablaScroll, Vacio } from "@/components/ui";
 import { Cargador } from "@/components/cargador";
 import { DocumentosCarga, type Documento } from "@/components/documentos-carga";
@@ -43,7 +43,7 @@ export default async function CargasPage() {
             <tbody>
               {filasEstado.map((e) => (
                 <tr key={`${e.cuenta}-${e.fuente}`}>
-                  <td>{infoCuenta(e.cuenta).bandera} {infoCuenta(e.cuenta).nombre}</td>
+                  <td>{nombreConSociedad(e.cuenta)}</td>
                   <td>{/^(Órdenes|Historial de cartera)/.test(e.fuente) ? `Otra P · ${e.fuente}` : e.fuente}</td>
                   <td className="text-right num">{entero(e.filas)}</td>
                   <td className="text-muted font-mono text-xs">{e.desde ?? "—"}</td>
@@ -66,7 +66,7 @@ export default async function CargasPage() {
                   <tr key={c.id}>
                     <td className="text-muted whitespace-nowrap">{fechaHora(c.creado_en)}</td>
                     <td className="whitespace-nowrap">{NOMBRE_TIPO[c.tipo as TipoCarga] ?? c.tipo}</td>
-                    <td>{c.cuenta ? `${infoCuenta(c.cuenta).bandera} ${infoCuenta(c.cuenta).nombre}` : "Varias"}</td>
+                    <td>{c.cuenta ? nombreConSociedad(c.cuenta) : "Varias"}</td>
                     <td className="max-w-[18rem] truncate" title={c.archivo}>{c.archivo}</td>
                     <td className="text-right num">{entero(c.filas)}</td>
                     <td className="font-mono text-xs text-muted whitespace-nowrap">{r?.desde ? `${r.desde} → ${r.hasta}` : "—"}</td>
