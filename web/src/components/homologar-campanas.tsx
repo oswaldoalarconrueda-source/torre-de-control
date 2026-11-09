@@ -48,6 +48,13 @@ function Fechas({ c }: { c: CampanaHomologar }) {
 }
 
 const SIN_PRODUCTO = "Sin identificar";
+
+function Filtro({ valor, cambiar, texto }: { valor: string; cambiar: (v: string) => void; texto: string }) {
+  return (
+    <input value={valor} onChange={(e) => cambiar(e.target.value)} placeholder={texto} aria-label={texto.replace("…", "")}
+      className="w-full min-w-[9rem] rounded-lg border border-line bg-panel px-2 py-1 text-sm font-normal normal-case tracking-normal" />
+  );
+}
 const normal = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: {
@@ -63,15 +70,12 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
   const sinId = campanas.filter((c) => !c.manual && !c.regla);
   const total = campanas.reduce((s, c) => s + c.cop, 0);
   const totalSin = sinId.reduce((s, c) => s + c.cop, 0);
-  const cuentasAds = [...new Set(campanas.flatMap((c) => c.cuentas.split(", ")))].sort((a, b) => a.localeCompare(b, "es"));
-  const productosAsignados = [...new Set(campanas.map(productoDe))].sort((a, b) =>
-    a === SIN_PRODUCTO ? -1 : b === SIN_PRODUCTO ? 1 : a.localeCompare(b, "es"));
-  const palabras = normal(fCampana).split(/\s+/).filter(Boolean);
-  const filtrando = !!(palabras.length || fCuenta || fProducto);
-  const lista = (vista === "sin" ? sinId : campanas).filter((c) =>
-    palabras.every((w) => normal(c.campana).includes(w))
-    && (!fCuenta || c.cuentas.split(", ").includes(fCuenta))
-    && (!fProducto || productoDe(c) === fProducto));
+  // Cada filtro: todas las palabras escritas tienen que estar en el texto de esa columna.
+  const coincide = (texto: string, filtro: string) => normal(filtro).split(/\s+/).filter(Boolean).every((w) => normal(texto).includes(w));
+  const filtrando = !!(fCampana.trim() || fCuenta.trim() || fProducto.trim());
+  // Al filtrar por producto se busca entre todas las campañas (si no, solo saldrían las sin identificar).
+  const base = vista === "sin" && !fProducto.trim() ? sinId : campanas;
+  const lista = base.filter((c) => coincide(c.campana, fCampana) && coincide(c.cuentas, fCuenta) && coincide(productoDe(c), fProducto));
   const totalLista = lista.reduce((s, c) => s + c.cop, 0);
 
   return (
@@ -92,27 +96,18 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
           ))}
         </div>
       </header>
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        <input value={fCampana} onChange={(e) => setFCampana(e.target.value)} placeholder="Buscar campaña…" aria-label="Filtrar por campaña"
-          className="w-full rounded-lg border border-line bg-panel px-2 py-1 sm:w-56" />
-        <select value={fCuenta} onChange={(e) => setFCuenta(e.target.value)} aria-label="Filtrar por cuenta"
-          className="w-full rounded-lg border border-line bg-panel px-2 py-1 sm:w-auto sm:max-w-[14rem]">
-          <option value="">Todas las cuentas</option>
-          {cuentasAds.map((x) => <option key={x} value={x}>{x}</option>)}
-        </select>
-        <select value={fProducto} aria-label="Filtrar por producto"
-          onChange={(e) => { setFProducto(e.target.value); if (e.target.value && e.target.value !== SIN_PRODUCTO) setVista("todas"); }}
-          className="w-full rounded-lg border border-line bg-panel px-2 py-1 sm:w-auto sm:max-w-[16rem]">
-          <option value="">Todos los productos</option>
-          {productosAsignados.map((x) => <option key={x} value={x}>{x}</option>)}
-        </select>
-        {filtrando && (
-          <>
-            <span className="text-xs text-muted">{entero(lista.length)} campaña{lista.length === 1 ? "" : "s"} · {dinero(totalLista, "TIENDA_CO")}</span>
-            <button type="button" onClick={() => { setFCampana(""); setFCuenta(""); setFProducto(""); }} className="text-xs text-blue-2 hover:underline">Limpiar filtros</button>
-          </>
-        )}
+      {/* En celular la tabla va en fichas (sin encabezado): los filtros van aquí arriba. */}
+      <div className="mt-3 grid gap-2 text-sm md:hidden">
+        <Filtro valor={fCampana} cambiar={setFCampana} texto="Buscar campaña…" />
+        <Filtro valor={fCuenta} cambiar={setFCuenta} texto="Buscar cuenta…" />
+        <Filtro valor={fProducto} cambiar={setFProducto} texto="Buscar producto…" />
       </div>
+      {filtrando && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
+          <span>{entero(lista.length)} campaña{lista.length === 1 ? "" : "s"} · {dinero(totalLista, "TIENDA_CO")}</span>
+          <button type="button" onClick={() => { setFCampana(""); setFCuenta(""); setFProducto(""); }} className="text-blue-2 hover:underline">Limpiar filtros</button>
+        </div>
+      )}
       {!puedeEditar && <p className="mt-2 text-xs text-muted">Solo el dueño o un socio pueden asignar productos.</p>}
       {campanas.some((c) => c.otros_paises) && (
         <p className="mt-2 text-xs text-muted"><span className="font-bold text-red">*</span> Pauta entregada en otro país donde la sociedad no tiene tienda; se carga a esta (pasa el mouse para ver el país).</p>
@@ -128,6 +123,13 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar }: 
         <table className="tabla fichas w-full min-w-max text-sm">
           <thead>
             <tr><th className="text-left">Campaña</th><th className="text-left">Cuenta</th><th className="text-right">Gasto (COP)</th><th className="text-right">Días</th><th className="text-left">Inicio</th><th className="text-left">Último gasto</th><th className="text-left">Estado en Meta</th><th className="text-left">Producto</th>{puedeEditar && <th className="text-left">Asignar</th>}</tr>
+            <tr>
+              <th className="text-left font-normal"><Filtro valor={fCampana} cambiar={setFCampana} texto="Buscar campaña…" /></th>
+              <th className="text-left font-normal"><Filtro valor={fCuenta} cambiar={setFCuenta} texto="Buscar cuenta…" /></th>
+              <th colSpan={5} />
+              <th className="text-left font-normal"><Filtro valor={fProducto} cambiar={setFProducto} texto="Buscar producto…" /></th>
+              {puedeEditar && <th />}
+            </tr>
           </thead>
           <tbody>
             {lista.map((c) => {
