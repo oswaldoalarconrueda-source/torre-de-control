@@ -8,7 +8,7 @@ import { dinero, entero, nombrePropio } from "@/lib/formato";
 import { Panel, TablaScroll, Vacio } from "./ui";
 
 export type Pago = {
-  id: number; desde: string; hasta: string; remisiones: number; utilidad: number; comision: number; monto_pagado: number; fecha_pago: string;
+  id: number; desde: string; hasta: string; remisiones: number; utilidad: number; comision: number; comision_mayor?: number; monto_pagado: number; fecha_pago: string;
   nota: string | null; soporte: string; soporte_nombre: string | null; registro: string | null; creado_en: string; anulado_en: string | null;
 };
 
@@ -46,7 +46,7 @@ export function HistoricoLiquidaciones({ cuenta, pagos, enlaces, puedeAnular }: 
                   <td className="font-semibold">{etiquetaRango(p.desde, p.hasta)}{p.anulado_en && <span className="ml-2 rounded-full bg-red/15 px-2 py-0.5 text-[11px] font-medium text-red">Anulado</span>}</td>
                   <td className="num">{p.fecha_pago.split("-").reverse().join("/")}</td>
                   <td className="num text-right font-semibold text-green">{dinero(p.monto_pagado, cuenta)}</td>
-                  <td className="num text-right">{dinero(p.comision, cuenta)}</td>
+                  <td className="num text-right" title={Number(p.comision_mayor) > 0 ? `Dropshipping ${dinero(p.comision, cuenta)} + por mayor ${dinero(Number(p.comision_mayor), cuenta)}` : undefined}>{dinero(Number(p.comision) + Number(p.comision_mayor ?? 0), cuenta)}</td>
                   <td className="num text-right">{entero(p.remisiones)}</td>
                   <td>
                     {url ? (

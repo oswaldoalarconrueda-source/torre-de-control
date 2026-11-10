@@ -25,7 +25,7 @@ export const Linea = ({ n, children, color }: { n: string; children: ReactNode; 
   <div><span className="num font-semibold" style={{ color: color ?? "var(--text)" }}>{n}</span> {children}</div>
 );
 
-export function ComisionesProveeduria({ cuenta, datos, verSinCosto }: { cuenta: string; datos: DatosComisiones; verSinCosto: string }) {
+export function ComisionesProveeduria({ cuenta, datos, mayor = 0, verSinCosto }: { cuenta: string; datos: DatosComisiones; mayor?: number; verSinCosto: string }) {
   const { filas, totales: t, estados: e, sin_costo: sinCosto, reversadas } = datos;
   const $ = (v: number) => dinero(v, cuenta);
   return (
@@ -60,8 +60,13 @@ export function ComisionesProveeduria({ cuenta, datos, verSinCosto }: { cuenta: 
         <Dato titulo="Utilidad" valor={$(t.utilidad)}>
           <Linea n={entero(t.remisiones)}>pedidos entregados y pagos</Linea>
         </Dato>
-        <Dato titulo="Comisión administrador" valor={$(t.comision)} destacado className="col-span-2 md:col-span-1">
-          <div>10% de la utilidad</div>
+        <Dato titulo="Comisión administrador" valor={$(t.comision + mayor)} destacado className="col-span-2 md:col-span-1">
+          {mayor > 0 ? (
+            <>
+              <Linea n={$(t.comision)}>dropshipping (10% de la utilidad)</Linea>
+              <Linea n={$(mayor)}>ventas por mayor</Linea>
+            </>
+          ) : <div>10% de la utilidad</div>}
         </Dato>
       </div>
       <Panel titulo="Por cliente" detalle={`Remisiones creadas en el periodo con convenio de dropshipping, la venta en la wallet y costo manual.${reversadas ? ` Sin contar ${entero(reversadas)} con liquidación reversada.` : ""}${e.rechazadas ? ` Las ${entero(e.rechazadas)} rechazadas no cuentan en ningún total.` : ""}`}>
