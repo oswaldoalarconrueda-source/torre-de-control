@@ -10,6 +10,7 @@ import { FleteAlto } from "./flete-alto";
 import { FlujoAgente, type Periodo } from "./flujo-agente";
 import { RemisionesDirectas } from "./remisiones-directas";
 import type { DatosFabrica } from "./fabrica-agente";
+import { AnularOrden, CeldaCliente, CeldaHistorial, CeldaTotales, CeldaTransportadoras, ProductosOrden, centroDe, type AccionReciente, type ExtraOrden } from "./orden-effi";
 
 // Agente de órdenes de venta: la Torre vigila cada orden de venta (remisión con su convenio, guía, centro de costos
 // Recuperado si el cliente empieza con *). En "Simular" arma, cada X minutos y antes de cada corte de despacho, la
@@ -30,6 +31,10 @@ export type OrdenAuto = {
   decision: "ejecutar" | "descartar" | null; decision_por: string | null; decision_en: string | null;
   plan: Plan | null; plan_estado: "lista" | "revision" | "creada" | "error" | null; plan_motivo: string | null; plan_en: string | null;
   restriccion?: Restriccion | null;
+  // Lista "estilo Effi" (11-nov): lo que trae Effi de la orden.
+  centro_orden?: string | null; documento?: string | null; telefono?: string | null; direccion?: string | null;
+  subtotal?: number | null; impuestos?: number | null; est_orden?: string | null; recaudo?: boolean | null;
+  articulos?: { id: number; nombre: string }[] | null; direccion_marcada?: string | null;
 };
 // Condición de envío de la ciudad que dieron las asesoras logísticas (auto_restricciones; Colombia desde el 28-oct).
 type Restriccion = { tipo: keyof typeof CONDICIONES; motivo: string; lugar: string };
@@ -129,8 +134,9 @@ const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1
 // rango: días del calendario (hora local del país); sin rango es hoy, en vivo. Con rango la pantalla es el historial
 // de esos días: el resumen del agente, sus errores y todas las órdenes del periodo, sin los controles de operación.
 // huella: la lista "Huella del cliente" de las guías de hoy (Guatemala), debajo del Agente en vivo.
-export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null, huella = null }: {
+export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null, huella = null, extra = {}, acciones = {} }: {
   cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null; rango?: Periodo | null; huella?: ReactNode;
+  extra?: Record<string, ExtraOrden>; acciones?: Record<string, AccionReciente>;
 }) {
   const router = useRouter();
   const [confirmarModo, setConfirmarModo] = useState(false);
@@ -396,6 +402,88 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   }
   const resueltas = ordenes.filter((o) => o.estado === "resuelta");
 
+  // Lista "estilo Effi" (11-nov): pestañas, buscador, huella y duplicados por teléfono.
+  const tel8 = (t?: string | null) => (t ?? "").replace(/\D/g, "").slice(-8);
+  const esAbierta = (o: OrdenAuto) => o.estado === "sin_remision" || o.estado === "sin_guia" || o.estado === "revision";
+  const abiertas = ordenes.filter(esAbierta);
+  const porTelefono = new Map<string, number>();
+  for (const o of abiertas) { const t = tel8(o.telefono); if (t.length === 8) porTelefono.set(t, (porTelefono.get(t) ?? 0) + 1); }
+  const otrasAbiertas = (o: OrdenAuto) => { const t = tel8(o.telefono); return t.length === 8 ? (porTelefono.get(t) ?? 1) - 1 : 0; };
+  const huellaDe = (o: OrdenAuto) => extra[`${o.sucursal}-${o.id}`]?.huella ?? null;
+  // Filtros principales (pedido del dueño, 11-nov): Órdenes pendientes (vigentes, sin remisión), Remisiones pendientes por
+  // guía, Órdenes con errores y Modificar dirección. Lo que ya tiene remisión y guía no sale aquí.
+  const esAbono = (o: OrdenAuto) => centroDe(o).toLowerCase().includes("abono") || !!o.cliente?.trim().startsWith("**");
+  const tieneError = (o: OrdenAuto) => o.estado !== "completa" && o.estado !== "anulada" && o.estado !== "resuelta" && !pendienteResuelto(o) &&
+    (o.plan_estado === "error" || o.estado === "revision" || remisionAnulada(o) || (o.plan_estado === "revision" && !esAbono(o)));
+  const errorDe = (o: OrdenAuto) => remisionAnulada(o)
+    ? o.motivos.find((m) => m.startsWith("La remisión está anulada")) ?? "La remisión está anulada"
+    : o.plan_motivo ?? (o.motivos.length ? o.motivos.join(" · ") : "Requiere revisión");
+  const pendientes = ordenes.filter((o) => o.estado === "sin_remision" && !tieneError(o));
+  const porGuia = ordenes.filter((o) => o.estado === "sin_guia" && !tieneError(o));
+  const conError = ordenes.filter(tieneError);
+  // "Modificar dirección": las enviadas desde la lista (siguen sin remisión) y las que se cambiaron en Effi en las últimas 24 h.
+  const conCambioDireccion = ordenes.filter((o) => (!!o.direccion_marcada && o.id_remision == null && o.estado !== "anulada") || acciones[`${o.sucursal}-${o.id}`]?.tipo === "direccion");
+  // Sub-filtros de Órdenes pendientes.
+  const subfiltros: { clave: string; titulo: string; cumple: (o: OrdenAuto) => boolean }[] = [
+    { clave: "todas", titulo: "Todas", cumple: () => true },
+    { clave: "pagos", titulo: "Verificar pagos", cumple: esAbono },
+    { clave: "recompra", titulo: "Recompra", cumple: (o) => { const h = huellaDe(o); return !!h && Number(h.entregadas) + Number(h.devoluciones) > 0; } },
+    { clave: "duplicados", titulo: "Duplicados", cumple: (o) => otrasAbiertas(o) > 0 || Number(huellaDe(o)?.en_curso ?? 0) > 0 },
+    { clave: "sin_convenio", titulo: "Sin convenio", cumple: (o) => !o.convenio },
+    { clave: "sin_confirmar", titulo: "Sin confirmar", cumple: (o) => centroDe(o).toLowerCase().includes("sin confirmar") || !!o.cliente?.trim().startsWith("+") },
+  ];
+  const [subfiltro, setSubfiltro] = useState("todas");
+  const secciones: { clave: string; titulo: string; filas: OrdenAuto[]; vacio: string; conRemision: boolean; conGuia: boolean; texto: string }[] = rango ? [
+    { clave: "periodo", titulo: "Órdenes del periodo", filas: ordenes.slice(0, 300), vacio: "No hubo órdenes en esos días.", conRemision: true, conGuia: true,
+      texto: `${ordenes.length > 300 ? `Las 300 más recientes de ${entero(ordenes.length)} órdenes` : "Todas las órdenes"} de ${rango.etiqueta}, con su remisión, su guía y quién la hizo (🤖 agente o 👤 persona). Para ver menos, elige un solo día.` },
+  ] : [
+    { clave: "sin_remision", titulo: "Órdenes pendientes", filas: pendientes, vacio: "Ninguna orden pendiente.", conRemision: false, conGuia: false,
+      texto: "Órdenes de venta vigentes que todavía no tienen remisión. Salen de aquí apenas se remisionan (las haga el agente o una persona)." },
+    { clave: "guia", titulo: "Remisiones pendientes por guía", filas: porGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
+      texto: "Remisiones ya hechas que solo esperan la guía." },
+    { clave: "errores", titulo: "Órdenes con errores", filas: conError, vacio: "Sin errores: todas las órdenes van bien.", conRemision: false, conGuia: false,
+      texto: "Lo que Effi no dejó crear o lo que necesita a una persona, con el error. Sale de aquí cuando la orden tenga remisión y guía o la anulen." },
+    { clave: "direccion", titulo: "Modificar dirección", filas: conCambioDireccion, vacio: "Ninguna orden para modificar dirección.", conRemision: false, conGuia: false,
+      texto: "Órdenes enviadas a corregir la dirección: «Modificar dirección» la cambia en la orden de Effi y el agente rehace la remisión con la nueva. Salen de aquí al cambiarla." },
+  ];
+  const [pestana, setPestana] = useState<string>("sin_remision");
+  const [busqueda, setBusqueda] = useState("");
+  const seccionActiva = secciones.find((x) => x.clave === pestana) ?? secciones[0];
+  const normal = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const coincideBusqueda = (o: OrdenAuto) => {
+    const q = normal(busqueda.trim());
+    if (!q) return true;
+    return [o.id, o.cliente, o.documento, o.telefono, o.ciudad, o.provincia, o.direccion, o.pedido].some((v) => normal(v).includes(q));
+  };
+  const soloHora = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+  const fechaCorta = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, day: "numeric", month: "short" }).format(new Date(iso)).replace(".", "").replace(" de ", " ");
+  // Transportadoras a la vista: todas las que usa el país. Colombia: % de la matriz de entrega del plan; los demás países
+  // (y Colombia sin matriz): % de nuestras guías a esa ciudad en los últimos 120 días.
+  const transportesDe = (o: OrdenAuto) => {
+    const propias = extra[`${o.sucursal}-${o.id}`]?.transportadoras ?? [];
+    const matriz = (recomendacion(o)?.numeros.opciones ?? []) as { id: number; entrega?: number; flete?: number | null; nombre?: string }[];
+    const ids = new Set<number>([...opcionesTransporte.map((t) => t.id), ...propias.map((t) => Number(t.id)), ...matriz.map((t) => Number(t.id))]);
+    const lista = [...ids].filter((id) => cuenta !== "TIENDA_CO" || CO_HABILITADAS.includes(id)).map((id) => {
+      const p = propias.find((x) => Number(x.id) === id);
+      const m = matriz.find((x) => Number(x.id) === id);
+      const guias = p ? Number(p.entregadas) + Number(p.devoluciones) : null;
+      const deMatriz = m?.entrega != null;
+      const nombre = (m?.nombre ?? p?.nombre ?? opcionesTransporte.find((t) => t.id === id)?.nombre.split(" · ")[0] ?? String(id)).replace(/ EFFI/i, "").trim();
+      return {
+        id, nombre,
+        entrega: deMatriz ? Number(m!.entrega) : guias ? (Number(p!.entregadas) / guias) * 100 : null,
+        guias: deMatriz ? null : guias,
+        detalle: deMatriz
+          ? `Matriz de entrega${m!.flete != null ? ` · flete ${dinero(Number(m!.flete), cuenta)}` : ""}${guias ? ` · nuestras guías: ${entero(p!.entregadas)} de ${entero(guias)} entregadas` : ""}`
+          : guias ? `Nuestras guías a esta ciudad (120 días): ${entero(p!.entregadas)} entregadas, ${entero(p!.devoluciones)} devoluciones` : "Sin envíos a esta ciudad",
+      };
+    });
+    return lista.sort((a, b) => Number(b.entrega ?? -1) - Number(a.entrega ?? -1));
+  };
+  // Check de la izquierda: despliega los productos de la orden (varias a la vez).
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
+  const alternarMarcada = (k: string) => setMarcadas((x) => { const n = new Set(x); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+
   return (
     <div className="space-y-4">
       {/* Modo: Automático (la Torre crea sola remisión y guía, solo Guatemala) o Manual (crea cuando el dueño pulsa
@@ -544,82 +632,44 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o) || remisionAnulada(o)).map((o) => o.id)}
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
 
-      {huella}
-
-      {/* Remisiones que llegan sin orden de venta (Lucid) y solo esperan la guía: no salen en las listas de órdenes. */}
-      <RemisionesDirectas cuenta={cuenta} zona={zona} rango={rango} />
-
-      {!rango && cuenta === "TIENDA_CO" && <FleteAlto cuenta={cuenta} onCambio={() => router.refresh()} />}
-
-      {!rango && conAbono.length > 0 && (
-        <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
-          <div className="font-semibold text-amber">💰 {entero(conAbono.length)} {conAbono.length === 1 ? "pedido con abono" : "pedidos con abono"}: hacer el proceso</div>
-          <div className="text-xs text-muted mt-0.5">El cliente empieza con ** y el agente no los toca: se quedan en orden de venta para hacerlos a mano en Effi.</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {conAbono.map((o) => (
-              <span key={`${o.sucursal}-${o.id}`} className="rounded-full border border-amber/40 px-2.5 py-0.5 text-[11px]">
-                OV {o.id} · {o.cliente?.replace(/^\s*\*+\s*/, "")} · {o.ciudad ?? "—"}{o.total ? ` · ${entero(o.total)}` : ""} · hace {duracion(o.minutos)}
-              </span>
-            ))}
+      {/* Filtros principales, cada uno con su conteo; Órdenes pendientes trae sus sub-filtros. Buscador por orden, cliente,
+          identificación, teléfono o ciudad. */}
+      {secciones.length > 1 && (
+        <div className="card p-3 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {secciones.map((x) => {
+              const n = x.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length;
+              const on = x.clave === seccionActiva.clave;
+              const rojo = x.clave === "errores" && n > 0;
+              return (
+                <button key={x.clave} type="button" onClick={() => { setPestana(x.clave); setSubfiltro("todas"); }} aria-pressed={on}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${on ? "border-text bg-text text-bg" : rojo ? "border-red/50 text-red hover:bg-red/10" : "border-line text-muted hover:text-text"}`}>
+                  {x.titulo} · {entero(n)}
+                </button>
+              );
+            })}
           </div>
+          {seccionActiva.clave === "sin_remision" && (
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
+              <span className="text-[11px] uppercase tracking-wider text-muted">Filtrar:</span>
+              {subfiltros.map((f) => {
+                const n = seccionActiva.filas.filter(f.cumple).length;
+                const on = f.clave === subfiltro;
+                return (
+                  <button key={f.clave} type="button" onClick={() => setSubfiltro(f.clave)} aria-pressed={on}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${on ? "border-blue-2 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
+                    {f.titulo} · {entero(n)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar orden, cliente, identificación, teléfono o ciudad"
+            aria-label="Buscar en la lista" className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-blue/60" />
         </div>
       )}
-
-      {!rango && conCondicion.length > 0 && (
-        <div className="card border border-red/40 p-4" style={{ background: "linear-gradient(90deg, rgb(255 92 92 / 0.10), transparent)" }}>
-          <div className="font-semibold text-red">📍 {entero(conCondicion.length)} {conCondicion.length === 1 ? "pedido va" : "pedidos van"} a una ciudad con condición de envío</div>
-          <div className="text-xs text-muted mt-0.5">Recordatorio de las asesoras logísticas: revisar con el cliente antes de despachar. Estas no se crean solas.</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {conCondicion.map((o) => (
-              <span key={`${o.sucursal}-${o.id}`} className="rounded-full border border-red/40 px-2.5 py-0.5 text-[11px]" title={o.restriccion?.motivo}>
-                OV {o.id} · {o.ciudad ?? "—"} · <b>{o.restriccion ? CONDICIONES[o.restriccion.tipo] : ""}</b> · hace {duracion(o.minutos)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!rango && (
-      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
-        {/* Mes como el listado de Effi; hoy: órdenes, cuántas ya tienen remisión y cuántas ya tienen guía. */}
-        <Indicador titulo="Órdenes del mes" valor={entero(r.mes_total ?? 0)} color="var(--blue-2)"
-          sub={r.mes_anuladas ? `${entero(r.mes_anuladas)} anuladas sin remisión` : undefined} />
-        <Indicador titulo="Remisionadas del mes" valor={entero(r.mes_remisionadas ?? 0)} color="var(--green)"
-          sub={r.mes_rem_anuladas ? `${entero(r.mes_rem_anuladas)} remisiones anuladas` : undefined} />
-        <Indicador titulo="Órdenes de hoy" valor={entero(r.hoy_total ?? 0)} color="var(--blue-2)" />
-        <Indicador titulo="Remisiones hoy" valor={entero(r.hoy_remisiones ?? 0)} color="var(--green)"
-          sub={(r.hoy_total ?? 0) > (r.hoy_remisiones ?? 0) ? `${entero((r.hoy_total ?? 0) - (r.hoy_remisiones ?? 0))} sin remisionar` : undefined} />
-        <Indicador titulo="Guías hoy" valor={entero(r.hoy_guias ?? 0)} color="var(--green)"
-          sub={(r.hoy_remisiones ?? 0) > (r.hoy_guias ?? 0) ? `${entero((r.hoy_remisiones ?? 0) - (r.hoy_guias ?? 0))} sin guía` : undefined} />
-        <Indicador titulo="Requieren revisión" valor={entero(lista.length + sinRemisionRevisar)} color="var(--amber)" />
-        <Indicador titulo="Listas para crear" valor={entero(listas.length)} color="var(--green)"
-          sub={`${entero(listasRemision.length)} a remisión · ${entero(listasGuia.length)} a guía`} />
-      </div>
-      )}
-
-      {error && <p className="text-sm text-red">{error}</p>}
-
-      {/* Columnas Remisión y Guía solo donde dicen algo: en "orden → remisión" siempre están vacías y empujaban "Acción"
-          fuera de la pantalla; en "remisión → guía" la guía todavía no existe. */}
-      {(rango ? [
-        { titulo: "Órdenes del periodo", filas: ordenes.slice(0, 300), vacio: "No hubo órdenes en esos días.", conRemision: true, conGuia: true,
-          texto: `${ordenes.length > 300 ? `Las 300 más recientes de ${entero(ordenes.length)} órdenes` : "Todas las órdenes"} de ${rango.etiqueta}, con su remisión, su guía y quién la hizo (🤖 agente o 👤 persona). Para ver menos, elige un solo día.` },
-      ] : [
-        { titulo: "Órdenes sin remisión", filas: sinRemision, vacio: "Ninguna orden sin remisión.", conRemision: false, conGuia: false,
-          texto: (sinRemisionRevisar ? `Primero las ${entero(sinRemisionRevisar)} que necesitan a una persona (con su aviso en Estado). ` : "") + (creaRemision
-              ? "Órdenes que el agente pasa a remisión y luego a guía, con “Ejecutar ahora” o “Ejecutar” en cada una (ahí escoges el paso y la transportadora)." +
-                (cuenta === "TIENDA_CO" && modo !== "automatico" ? ` En Manual van solas la entrega en oficina de Interrapidísimo o Servientrega y las que la asesora y la matriz mandan por la misma transportadora${solas.length ? ` (${entero(solas.length)} en camino)` : ""}.` : "")
-            : "Por ahora la remisión se hace en Effi; apenas exista, el agente hace la guía.") },
-        { titulo: "Listas: remisión → guía", filas: listasGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
-          texto: cuenta === "TIENDA_CO"
-            ? "Remisiones ya hechas que solo esperan la guía: las hace una persona con “Ejecutar” o “Pasar de remisión a guía”. Solo van solas las de entrega en oficina o donde asesora y ⭐ coinciden."
-            : "Remisiones ya hechas que solo esperan la guía, con la transportadora que toca." },
-        { titulo: "Novedad en la orden", filas: lista, vacio: "Sin novedades: todas las órdenes van bien.", conRemision: true, conGuia: true,
-          texto: `Solo lo que necesita una persona. Se concilia sola con Effi cada minuto: sale de aquí apenas la orden tenga remisión y guía (las haga ${quienCrea(cuenta)} o alguien a mano) o si la anulan. Al ejecutar o reintentar, el resultado sale en Estado: ✓ hecha, ↻ Effi falló de paso (el agente reintenta solo) o ⚠ requiere verificación humana.` },
-        { titulo: "Remisión anulada", filas: anuladasRem, vacio: "Ninguna remisión anulada pendiente.", conRemision: true, conGuia: true,
-          texto: "Effi anuló la remisión (el proveedor rechazó el dropshipping o alguien la anuló). No es novedad del agente: queda aquí para decidir si se anula la orden o se hace con otro proveedor, y sale sola cuando eso pase." },
-      ]).map((s) => (
-      <Fragment key={s.titulo}>
+      {[seccionActiva].map((s0) => ({ ...s0, filas: s0.filas.filter((o) => coincideBusqueda(o) && (s0.clave !== "sin_remision" || (subfiltros.find((f) => f.clave === subfiltro) ?? subfiltros[0]).cumple(o))) })).map((s) => (
+      <Fragment key={s.clave}>
       <div className="flex flex-wrap items-baseline gap-2 pt-2">
         <span className="font-display text-lg font-semibold">{s.titulo}</span>
         <span className="text-xs text-muted">{s.texto}</span>
@@ -630,15 +680,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         <table className="w-full min-w-max text-sm">
           <thead>
             <tr className="bg-blue/10 text-left text-[11px] uppercase tracking-wider font-semibold whitespace-nowrap">
-              <th className="px-3 py-3">Orden</th>
+              <th className="px-3 py-3">Fecha</th>
+              <th className="px-3 py-3">Orden de venta</th>
               <th className="px-3 py-3">Cliente</th>
-              <th className="px-3 py-3">Ciudad</th>
-              <th className="px-3 py-3 text-right">Total</th>
-              <th className="px-3 py-3">Convenio</th>
-              {s.conRemision && <th className="px-3 py-3">Remisión</th>}
-              {s.conGuia && <th className="px-3 py-3">Guía</th>}
+              <th className="px-3 py-3 text-right">Valor de la venta</th>
               <th className="px-3 py-3">Estado</th>
-              <th className="px-3 py-3">Lo que haría el agente</th>
+              <th className="px-3 py-3">Historial cliente</th>
+              <th className="px-3 py-3">Transportadora</th>
               <th className="px-3 py-3 sticky right-0 z-10 bg-panel border-l border-line">Acción</th>
             </tr>
           </thead>
@@ -651,103 +699,60 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               return (
                 <Fragment key={clave}>
                 <tr className={`align-middle hover:bg-tinte/[0.02] ${desvaneciendo.has(clave) ? "desvanece" : ""}`}>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    <div className="font-mono font-semibold">OV {o.id}</div>
-                    <div className="text-[11px] text-muted">{hora(o.fecha)}</div>
+                  {/* Fecha y, debajo, el número de la orden (sin "OV": ya se sabe que es orden de venta). El check despliega los productos. */}
+                  <td className="px-3 py-2 align-top whitespace-nowrap">
+                    <button type="button" onClick={() => alternarMarcada(clave)} aria-expanded={marcadas.has(clave)} aria-label={`Ver productos de la orden ${o.id}`}
+                      className="flex items-start gap-1.5 text-left">
+                      <span className={`mt-0.5 rounded-md border p-0.5 ${marcadas.has(clave) ? "border-blue-2 bg-blue/10 text-blue-2" : "border-line text-muted"}`}>
+                        {marcadas.has(clave) ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+                      </span>
+                      <span>
+                        <span className="block text-xs font-semibold">{fechaCorta(o.fecha)}</span>
+                        <span className="block text-[11px] text-muted">{soloHora(o.fecha)}</span>
+                      </span>
+                    </button>
                   </td>
-                  <td className="px-3 py-2 min-w-[8rem] max-w-[11rem]">
-                    <div className="font-semibold leading-snug">{o.cliente ?? "—"}</div>
-                    <span
-                      className="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                      style={o.cliente?.trim().startsWith("+") ? { background: "rgba(245,180,70,.15)", color: "#d9992b" } : o.recuperado ? { background: "rgba(180,140,255,.15)", color: "#b48cff" } : { background: "color-mix(in srgb, var(--tinte) 5%, transparent)", color: "var(--muted)" }}
-                    >
-                      {o.cliente?.trim().startsWith("+") ? "Sin confirmar" : o.recuperado ? "Recuperado" : "Principal"}
-                    </span>
+                  <td className="px-3 py-2 align-top whitespace-nowrap">
+                    <div className="font-mono text-sm font-bold">{o.id}</div>
+                    {o.pedido && <div className="text-[11px] text-muted">pedido {nombreEcommerce(o.ecommerce)} {o.pedido}</div>}
                   </td>
-                  {/* Ciudad - departamento y, debajo, la dirección de entrega (la del plan de remisión o de guía). */}
-                  <td className="px-3 py-2 min-w-[7rem] max-w-[11rem] text-xs">
-                    <div className="font-semibold leading-snug">{o.ciudad || "—"}</div>
-                    {o.provincia && <div className="text-muted leading-snug">{o.provincia}</div>}
-                    {o.restriccion && (
-                      <div className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${cumpleCondicion(o) ? "bg-green/15 text-green" : "bg-red/15 text-red"}`}
-                        title={`${o.restriccion.lugar}: ${o.restriccion.motivo}`}>
-                        {CONDICIONES[o.restriccion.tipo]}{cumpleCondicion(o) ? " ✓" : ""}
-                      </div>
-                    )}
-                    {(() => {
-                      const dir = String(o.plan?.remision?.direccion_cliente ?? (o.plan?.guia?.direccion_destinatario as unknown[] | undefined)?.[0] ?? "").trim();
-                      return dir ? <div className="mt-0.5 text-muted whitespace-normal line-clamp-2" title={dir}>{dir}</div> : null;
-                    })()}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-right num">{dinero(o.total, cuenta)}</td>
-                  {/* Todo es dropshipping: importa que tenga convenio, no cuál. */}
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">
-                    {o.convenio ? <span className="text-green" title="Con convenio">✓ Sí</span> : <span className="font-semibold text-red">Sin convenio</span>}
-                  </td>
-                  {s.conRemision && <td className="px-3 py-2 whitespace-nowrap text-xs">
-                    {o.id_remision ? (
-                      <>
-                        <div className="font-mono font-semibold text-sm">RV {o.id_remision}</div>
-                        <div className="text-muted">
-                          {o.rem_centro ?? "—"}
-                          {o.rem_fecha ? ` · ${duracion((Date.parse(o.rem_fecha) - Date.parse(o.fecha)) / 60_000)}` : ""}
+                  <td className="px-3 py-2 align-top">
+                    <CeldaCliente o={o} cuenta={cuenta} accion={acciones[clave]} onCambio={() => router.refresh()}
+                      modo={rango || o.id_remision != null || o.estado === "anulada" || o.estado === "completa" ? "ninguno" : s.clave === "direccion" ? "editar" : "enviar"} />
+                    <div className="text-xs">
+                      {o.restriccion && (
+                        <div className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${cumpleCondicion(o) ? "bg-green/15 text-green" : "bg-red/15 text-red"}`}
+                          title={`${o.restriccion.lugar}: ${o.restriccion.motivo}`}>
+                          {CONDICIONES[o.restriccion.tipo]}{cumpleCondicion(o) ? " ✓" : ""}
                         </div>
-                      </>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>}
-                  {s.conGuia && <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">
-                    {o.guia ?? "—"}
-                    {o.guia && transportadoraDeGuia(o) && <div className="mt-0.5 font-sans text-[11px] text-muted">{transportadoraDeGuia(o)}</div>}
-                  </td>}
-                  <td className="px-3 py-2 min-w-[10rem] max-w-[18rem]">
-                    <span className="inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ color: est.color, background: "color-mix(in srgb, var(--tinte) 5%, transparent)" }}>
-                      {o.estado === "sin_remision" && !atrasada(o) ? "Esperando remisión" : est.label}
-                    </span>
-                    {o.estado === "sin_remision" && <div className="text-[11px] text-muted mt-0.5">hace {duracion(o.minutos)}</div>}
-                    {rango && o.id_remision != null && (
-                      <div className="text-[11px] text-muted mt-0.5">{o.plan_estado === "creada" ? "🤖 La hizo el agente" : "👤 La hizo una persona"}</div>
-                    )}
-                    {o.motivos.map((m) => (
-                      <div key={m} className="text-[11px] text-amber mt-0.5">{m}</div>
-                    ))}
-                    {/* Resultado de lo que se ejecutó: un tropiezo de Effi lo reintenta el agente solo; lo demás lo
-                        revisa una persona. */}
-                    {o.plan_estado === "error" && o.plan_motivo && (pasajero(o.plan_motivo) ? (
-                      <div className="mt-1 min-w-[14rem] rounded-lg border border-amber/40 bg-amber/10 px-2 py-1 text-[11px] text-amber whitespace-normal">
-                        ↻ Effi falló de paso ({o.plan_motivo.replace(/^Effi no dej[oó] crear la remisi[oó]n: /, "")}). El agente lo reintenta solo; mientras tanto puedes hacerla con Ejecutar.
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 align-top"><CeldaTotales o={o} cuenta={cuenta} /></td>
+                  {/* Estado: solo el de Effi y lo que se vende (producto y unidades). En "Órdenes con errores", además el error. */}
+                  <td className="px-3 py-2 align-top min-w-[12rem] max-w-[20rem] whitespace-normal">
+                    {o.est_orden && <span className="inline-block rounded-full border border-line px-2.5 py-0.5 text-[11px] font-semibold" title="Estado de la orden en Effi">{o.est_orden}</span>}
+                    <div className="mt-1 space-y-0.5 text-xs font-semibold">
+                      {productosPlan(o).map((x, i) => (
+                        <div key={i}>{x.nombre}{x.cantidad != null ? ` · ${entero(x.cantidad)} ${x.cantidad === 1 ? "unidad" : "unidades"}` : ""}</div>
+                      ))}
+                    </div>
+                    {s.clave === "errores" && (
+                      <div className={`mt-1 text-[11px] font-semibold ${o.plan_estado === "error" && pasajero(o.plan_motivo ?? "") ? "text-amber" : "text-red"}`}>
+                        {o.plan_estado === "error" && pasajero(o.plan_motivo ?? "") ? "↻ " : "⚠ "}{errorDe(o)}
                         {datos.es_owner && o.plan?.resultado && (
                           <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
                         )}
                       </div>
-                    ) : (
-                      <div className="mt-1 min-w-[14rem] rounded-lg border border-red/40 bg-red/10 px-2 py-1 text-[11px] text-red whitespace-normal">
-                        ⚠ Requiere verificación humana, hazla con Ejecutar: {o.plan_motivo}
-                        {datos.es_owner && o.plan?.resultado && (
-                          <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
-                        )}
-                      </div>
-                    ))}
-                    {o.estado === "sin_remision" && esperandoAgente(o) && (
-                      <div className="mt-1 text-[11px] text-blue-2">⏳ El agente la prepara en la próxima corrida</div>
                     )}
-                    {vaSola(o) && (
-                      <div className="mt-1 text-[11px] text-green">
-                        {oficinaDeOrden(o) !== null
-                          ? "🏢 Va sola a la oficina en la próxima corrida"
-                          : `🤝 Va sola en la próxima corrida: asesora y matriz dicen ${String(o.plan?.resumen?.transportadora ?? "la misma").split("|")[0].trim()}`}
-                      </div>
-                    )}
-                    {o.decision === "descartar" && <div className="mt-1 text-[11px] text-muted">Descartada por {o.decision_por ?? "una persona"}</div>}
-                    {o.plan_estado === "creada" && !remisionAnulada(o) && (
-                      <div className="mt-1 text-[11px] text-green">✓ Hecha por {quienCrea(cuenta)}</div>
-                    )}
+                    {o.decision === "ejecutar" && creando(o) && <div className="mt-1 text-[11px] text-blue-2">Creando en Effi…</div>}
                   </td>
-                  <td className="px-3 py-2 min-w-[13rem] max-w-[17rem]">
-                    <Simulacion o={o} cuenta={cuenta} abierto={abierto} onAlternar={() => setAbierta(abierto ? null : clave)} />
+                  <td className="px-3 py-2 align-top"><CeldaHistorial h={huellaDe(o)} duplicada={otrasAbiertas(o)} /></td>
+                  <td className="px-3 py-2 align-top">
+                    <CeldaTransportadoras ciudad={o.ciudad} opciones={transportesDe(o)} recaudo={o.recaudo !== false}
+                      delPlan={Number(o.plan?.guia?.transportadora) || null} />
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap sticky right-0 z-10 bg-panel border-l border-line">
+                  <td className="px-3 py-2 align-top whitespace-nowrap sticky right-0 z-10 bg-panel border-l border-line">
                     {o.estado === "completa" || o.estado === "anulada" ? (
                       <span className="text-xs text-muted">—</span>
                     ) : (
@@ -869,23 +874,35 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                             Ya está resuelta
                           </button>
                         ))}
+                        {/* Anular la orden en Effi, con el motivo (queda en la observación de anulación de la orden para medirlo). */}
+                        {!rango && o.id_remision == null && confirmarOrden !== clave && (
+                          <AnularOrden o={o} cuenta={cuenta} accion={acciones[clave]} />
+                        )}
                       </div>
                     )}
                   </td>
                 </tr>
-                {abierto && o.plan && (
+                {(marcadas.has(clave) || (abierto && o.plan)) && (
                   <tr>
-                    <td colSpan={8 + Number(s.conRemision) + Number(s.conGuia)} className="px-3 pb-4 bg-tinte/[0.015]">
-                      {datos.es_owner && o.plan.resultado && (
+                    <td colSpan={8} className="px-3 pb-4 bg-tinte/[0.015]">
+                      {marcadas.has(clave) && (
+                        <div className="pt-2">
+                          <div className="mb-1.5 text-[11px] uppercase tracking-wider text-muted">Lo que se está vendiendo · orden {o.id}{o.pedido ? ` · pedido ${o.pedido}` : ""}</div>
+                          <ProductosOrden o={o} articulos={o.articulos} cuenta={cuenta} />
+                        </div>
+                      )}
+                      {abierto && o.plan && datos.es_owner && o.plan.resultado && (
                         <div className="grid lg:grid-cols-2 gap-3 pt-2">
                           <Envio titulo={`Lo que se envió a Effi (${String(o.plan.resultado.paso ?? "")})`} datos={(o.plan.resultado.enviado as Record<string, unknown>) ?? undefined} />
                           <Envio titulo="Lo que respondió Effi" datos={(o.plan.resultado.respuesta as Record<string, unknown>) ?? (o.plan.resultado as Record<string, unknown>)} />
                         </div>
                       )}
-                      <div className="grid lg:grid-cols-2 gap-3 pt-2">
-                        <Envio titulo="Remisión de venta que se crearía (POST api/remision_v)" datos={o.plan.remision} />
-                        <Envio titulo="Guía que se crearía después (POST api/guia_transporte)" datos={o.plan.guia} />
-                      </div>
+                      {abierto && o.plan && (
+                        <div className="grid lg:grid-cols-2 gap-3 pt-2">
+                          <Envio titulo="Remisión de venta que se crearía (POST api/remision_v)" datos={o.plan.remision} />
+                          <Envio titulo="Guía que se crearía después (POST api/guia_transporte)" datos={o.plan.guia} />
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -894,7 +911,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
             })}
             {!s.filas.length && (
               <tr>
-                <td colSpan={8 + Number(s.conRemision) + Number(s.conGuia)} className="px-3 py-10 text-center text-sm text-muted">
+                <td colSpan={8} className="px-3 py-10 text-center text-sm text-muted">
                   {s.vacio}
                 </td>
               </tr>
@@ -905,6 +922,64 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       </Fragment>
       ))}
 
+
+      {huella}
+
+      {/* Remisiones que llegan sin orden de venta (Lucid) y solo esperan la guía: no salen en las listas de órdenes. */}
+      <RemisionesDirectas cuenta={cuenta} zona={zona} rango={rango} />
+
+      {!rango && cuenta === "TIENDA_CO" && <FleteAlto cuenta={cuenta} onCambio={() => router.refresh()} />}
+
+      {!rango && conAbono.length > 0 && (
+        <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
+          <div className="font-semibold text-amber">💰 {entero(conAbono.length)} {conAbono.length === 1 ? "pedido con abono" : "pedidos con abono"}: hacer el proceso</div>
+          <div className="text-xs text-muted mt-0.5">El cliente empieza con ** y el agente no los toca: se quedan en orden de venta para hacerlos a mano en Effi.</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {conAbono.map((o) => (
+              <span key={`${o.sucursal}-${o.id}`} className="rounded-full border border-amber/40 px-2.5 py-0.5 text-[11px]">
+                OV {o.id} · {o.cliente?.replace(/^\s*\*+\s*/, "")} · {o.ciudad ?? "—"}{o.total ? ` · ${entero(o.total)}` : ""} · hace {duracion(o.minutos)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!rango && conCondicion.length > 0 && (
+        <div className="card border border-red/40 p-4" style={{ background: "linear-gradient(90deg, rgb(255 92 92 / 0.10), transparent)" }}>
+          <div className="font-semibold text-red">📍 {entero(conCondicion.length)} {conCondicion.length === 1 ? "pedido va" : "pedidos van"} a una ciudad con condición de envío</div>
+          <div className="text-xs text-muted mt-0.5">Recordatorio de las asesoras logísticas: revisar con el cliente antes de despachar. Estas no se crean solas.</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {conCondicion.map((o) => (
+              <span key={`${o.sucursal}-${o.id}`} className="rounded-full border border-red/40 px-2.5 py-0.5 text-[11px]" title={o.restriccion?.motivo}>
+                OV {o.id} · {o.ciudad ?? "—"} · <b>{o.restriccion ? CONDICIONES[o.restriccion.tipo] : ""}</b> · hace {duracion(o.minutos)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!rango && (
+      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
+        {/* Mes como el listado de Effi; hoy: órdenes, cuántas ya tienen remisión y cuántas ya tienen guía. */}
+        <Indicador titulo="Órdenes del mes" valor={entero(r.mes_total ?? 0)} color="var(--blue-2)"
+          sub={r.mes_anuladas ? `${entero(r.mes_anuladas)} anuladas sin remisión` : undefined} />
+        <Indicador titulo="Remisionadas del mes" valor={entero(r.mes_remisionadas ?? 0)} color="var(--green)"
+          sub={r.mes_rem_anuladas ? `${entero(r.mes_rem_anuladas)} remisiones anuladas` : undefined} />
+        <Indicador titulo="Órdenes de hoy" valor={entero(r.hoy_total ?? 0)} color="var(--blue-2)" />
+        <Indicador titulo="Remisiones hoy" valor={entero(r.hoy_remisiones ?? 0)} color="var(--green)"
+          sub={(r.hoy_total ?? 0) > (r.hoy_remisiones ?? 0) ? `${entero((r.hoy_total ?? 0) - (r.hoy_remisiones ?? 0))} sin remisionar` : undefined} />
+        <Indicador titulo="Guías hoy" valor={entero(r.hoy_guias ?? 0)} color="var(--green)"
+          sub={(r.hoy_remisiones ?? 0) > (r.hoy_guias ?? 0) ? `${entero((r.hoy_remisiones ?? 0) - (r.hoy_guias ?? 0))} sin guía` : undefined} />
+        <Indicador titulo="Requieren revisión" valor={entero(lista.length + sinRemisionRevisar)} color="var(--amber)" />
+        <Indicador titulo="Listas para crear" valor={entero(listas.length)} color="var(--green)"
+          sub={`${entero(listasRemision.length)} a remisión · ${entero(listasGuia.length)} a guía`} />
+      </div>
+      )}
+
+      {error && <p className="text-sm text-red">{error}</p>}
+
+      {/* Columnas Remisión y Guía solo donde dicen algo: en "orden → remisión" siempre están vacías y empujaban "Acción"
+          fuera de la pantalla; en "remisión → guía" la guía todavía no existe. */}
       {/* Las que una persona marcó como resueltas: fuera de la lista y sin que el agente las cree; se pueden devolver. */}
       {resueltas.length > 0 && (
         <details className="card p-3 text-sm">
@@ -912,7 +987,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
           <div className="mt-2 divide-y divide-line">
             {resueltas.map((o) => (
               <div key={`${o.sucursal}-${o.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-                <span className="font-mono font-semibold">OV {o.id}</span>
+                <span className="font-mono font-semibold">{o.id}</span>
                 <span>{o.cliente ?? "—"}</span>
                 <span className="text-muted">{o.ciudad ?? ""}</span>
                 <span className="text-xs text-muted">por {o.decision_por ?? "una persona"}{o.decision_en ? ` · ${hora(o.decision_en)}` : ""}</span>
@@ -937,6 +1012,23 @@ function Indicador({ titulo, valor, color, sub }: { titulo: string; valor: strin
       {sub && <div className="text-[11px] text-muted mt-0.5">{sub}</div>}
     </div>
   );
+}
+
+// Plataforma de donde viene el pedido, corta: LUCIDBOT → Lucid; las demás como vienen de Effi.
+const nombreEcommerce = (e: string | null) => {
+  const t = (e ?? "").trim();
+  if (!t) return "";
+  if (/lucid/i.test(t)) return "Lucid";
+  return t.charAt(0) + t.slice(1).toLowerCase();
+};
+
+// Productos de la remisión que va a crear el agente (o, si no hay plan, los de la orden).
+function productosPlan(o: OrdenAuto) {
+  const rem = o.plan?.remision as { descripcion?: string[]; cantidad?: number[] } | undefined;
+  if (rem?.descripcion?.length) return rem.descripcion.map((d, i) => ({ nombre: d, cantidad: rem.cantidad?.[i] != null ? Number(rem.cantidad[i]) : null }));
+  const r = o.plan?.resumen ?? {};
+  if (r.producto) return [{ nombre: String(r.producto), cantidad: r.varios ? null : Number(r.cantidad) || null }];
+  return (o.articulos ?? []).map((a) => ({ nombre: a.nombre, cantidad: null }));
 }
 
 // Lo que armó la simulación para una orden pendiente: listo para crear (producto, cantidad, centro, remitente) o el
@@ -1000,16 +1092,12 @@ function Simulacion({ o, cuenta, abierto, onAlternar }: { o: OrdenAuto; cuenta: 
       <button onClick={onAlternar} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-green bg-tinte/5 hover:bg-tinte/10">
         {abierto ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Lista para crear
       </button>
-      <div className="mt-1 whitespace-normal">
-        {r.varios
-          ? <span className="font-semibold">{String(r.producto)}</span>
-          : <><span className="font-semibold">{String(r.cantidad)} × {String(r.producto)}</span> a {precio2(Number(r.precio), cuenta)} c/u</>}
+      {/* Lo que se está vendiendo: el producto y las unidades (el detalle completo sale con la flecha de la fecha). */}
+      <div className="mt-1 whitespace-normal font-semibold">
+        {productosPlan(o).map((x, i) => (
+          <div key={i}>{x.nombre}{x.cantidad != null ? ` · ${entero(x.cantidad)} ${x.cantidad === 1 ? "unidad" : "unidades"}` : ""}</div>
+        ))}
       </div>
-      <div className="text-muted">
-        Centro {r.sin_confirmar ? "Sin confirmar" : r.recuperado ? "Recuperado" : "Principal"} · remitente {String(r.remitente)} · {r.fuente === "orden" ? "cantidad de la orden" : `${Number(r.antecedentes).toLocaleString("es-CO")} antecedentes`}
-      </div>
-      {transporte}
-      {o.plan_en && <div className="text-[10px] text-muted">simulada {haceCuanto(o.plan_en)}</div>}
     </div>
   );
 }

@@ -10,7 +10,9 @@ const TIPOS = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/hei
 const MAX = 10 * 1024 * 1024;
 
 // Registrar el pago de un periodo: buzón para la foto del soporte, valor y fecha. Primero sube el soporte y luego guarda el pago.
-export function BuzonLiquidacion({ cuenta, desde, hasta, hoy, sugerido, periodo }: { cuenta: string; desde: string; hasta: string; hoy: string; sugerido: number; periodo: string }) {
+export function BuzonLiquidacion({ cuenta, desde, hasta, hoy, sugerido, periodo, tipo = "drop" }: {
+  cuenta: string; desde: string; hasta: string; hoy: string; sugerido: number; periodo: string; tipo?: "drop" | "mayor";
+}) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [archivo, setArchivo] = useState<File | null>(null);
@@ -47,11 +49,11 @@ export function BuzonLiquidacion({ cuenta, desde, hasta, hoy, sugerido, periodo 
     setError(null);
     const supabase = createClient();
     const ext = (archivo.name.match(/\.([a-z0-9]{2,5})$/i)?.[1] ?? "jpg").toLowerCase();
-    const ruta = `${cuenta}/${desde}_${hasta}_${crypto.randomUUID()}.${ext}`;
+    const ruta = `${cuenta}/${tipo === "mayor" ? "mayor_" : ""}${desde}_${hasta}_${crypto.randomUUID()}.${ext}`;
     const subida = await supabase.storage.from("comisiones-soportes").upload(ruta, archivo, { contentType: archivo.type });
     if (subida.error) { setGuardando(false); return setError(`No se pudo subir el soporte: ${subida.error.message}`); }
     const { error: e } = await supabase.rpc("prov_liquidacion_registrar", {
-      p_cuenta: cuenta, p_desde: desde, p_hasta: hasta, p_monto: valor, p_fecha_pago: fecha, p_nota: nota, p_soporte: ruta, p_soporte_nombre: archivo.name,
+      p_cuenta: cuenta, p_desde: desde, p_hasta: hasta, p_monto: valor, p_fecha_pago: fecha, p_nota: nota, p_soporte: ruta, p_soporte_nombre: archivo.name, p_tipo: tipo,
     });
     setGuardando(false);
     if (e) return setError(`El soporte subió, pero el pago no se guardó: ${e.message}`);
@@ -61,7 +63,7 @@ export function BuzonLiquidacion({ cuenta, desde, hasta, hoy, sugerido, periodo 
   const campo = "w-full rounded-xl border border-line bg-tinte/[0.03] px-3 py-2 text-sm text-text outline-none focus:border-blue/60";
   return (
     <section className="card min-w-0 p-4 sm:p-5">
-      <h2 className="font-display text-base font-semibold tracking-tight">Registrar pago</h2>
+      <h2 className="font-display text-base font-semibold tracking-tight">{tipo === "mayor" ? "Registrar pago por mayor" : "Registrar pago"}</h2>
       <p className="mt-0.5 text-xs text-muted">{periodo}. Queda en el histórico con los totales de hoy y su soporte.</p>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div>

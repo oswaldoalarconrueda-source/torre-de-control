@@ -1,7 +1,7 @@
 import { dinero, entero } from "@/lib/formato";
 import { Panel, TablaScroll } from "./ui";
 
-// Comisión por las ventas por mayor ya pagadas: las remisiones que vienen en el Excel de liquidación, con su costo y su porcentaje.
+// Comisión por las ventas por mayor ya pagadas: las remisiones del Excel revisado que se sube en «Por mayor», con su costo y su porcentaje.
 // Regla del Excel: utilidad = venta con IVA − costo con IVA (12 %); comisión = utilidad × porcentaje.
 type FilaMayor = {
   id: number; fecha: string; cliente: string | null; venta_iva: number; costo_iva: number; utilidad: number; tasa: number; comision: number; nota: string | null;
@@ -18,7 +18,7 @@ export function ComisionesMayor({ cuenta, datos }: { cuenta: string; datos: Dato
   const $ = (v: number) => dinero(v, cuenta);
   const tasas = [...new Set(filas.map((f) => pct(f.tasa)))];
   return (
-    <Panel titulo="Ventas por mayor" detalle={`Remisiones por mayor pagas del Excel de liquidación. ${tasas.length === 1 ? `Comisión: ${tasas[0]} de la utilidad.` : "Cada una con su porcentaje."}`}>
+    <Panel titulo="Ventas por mayor" detalle={`Remisiones por mayor pagas, tal como vienen en el Excel revisado. ${tasas.length === 1 ? `Comisión: ${tasas[0]} de la utilidad.` : "Cada una con su porcentaje."}`}>
       <TablaScroll>
         <thead>
           <tr>
@@ -58,7 +58,7 @@ export function ComisionesMayor({ cuenta, datos }: { cuenta: string; datos: Dato
           </tr>
         </tbody>
       </TablaScroll>
-      {filas.some((f) => f.nota) && <p className="mt-2 text-xs text-muted"><span className="text-amber">*</span> El costo de Effi está en 0; se usa el costo escrito en el Excel.</p>}
+      {filas.some((f) => f.nota) && <p className="mt-2 text-xs text-muted"><span className="text-amber">*</span> El costo del Excel es distinto al de Effi; se usa el del Excel (pasa el mouse para ver el detalle).</p>}
     </Panel>
   );
 }

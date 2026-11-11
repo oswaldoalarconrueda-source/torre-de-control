@@ -23,7 +23,7 @@ export async function leerComisiones(sp: SP) {
 }
 
 export function EncabezadoComisiones({ actual, ruta, subtitulo, cuentas, cuenta, desde, hasta, sinCosto, sinPeriodo }: {
-  actual: "comisiones" | "sin-costo" | "liquidacion"; ruta: string; subtitulo: ReactNode; cuentas: string[]; cuenta: string; desde: string; hasta: string; sinCosto?: number;
+  actual: "comisiones" | "sin-costo" | "liquidacion" | "mayor"; ruta: string; subtitulo: ReactNode; cuentas: string[]; cuenta: string; desde: string; hasta: string; sinCosto?: number;
   sinPeriodo?: boolean; // todavía no se ha filtrado: el calendario invita a elegir y las fechas no van en los enlaces
 }) {
   const hoy = hoyBogota();

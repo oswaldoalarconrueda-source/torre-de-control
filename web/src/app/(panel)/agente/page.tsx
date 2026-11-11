@@ -5,6 +5,7 @@ import { Encabezado } from "@/components/encabezado";
 import { Agente, type DatosAuto, type Transportes } from "@/components/agente";
 import { FabricaAgente, type DatosFabrica } from "@/components/fabrica-agente";
 import { HuellaGuias } from "@/components/alerta-huella";
+import type { AccionReciente, ExtraOrden } from "@/components/orden-effi";
 
 // Primer día con órdenes en la vigilancia del agente.
 const INICIO_AGENTE = "2026-10-01";
@@ -16,13 +17,18 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
   const sp = await searchParams;
   const f = leerFiltros({ ...sp, c: typeof sp.c === "string" ? sp.c : "TIENDA_GT" });
   const cuenta = f.cuentas?.[0] ?? "TIENDA_GT";
-  // Calendario: sin fechas en la URL es hoy (en vivo). Otro día o varios = historial, hasta 7 días (Colombia tiene
-  // cientos de órdenes por día); un rango más largo muestra sus últimos 7 días.
+  // Calendario (11-nov): sin fechas en la URL es el mes en curso, para que no quede nada pendiente de días anteriores. Un
+  // rango que termina hoy (Este mes, 7 días…) es "en vivo": todo lo que sigue abierto desde ese día (hasta 31 días) más
+  // las órdenes de hoy. Un rango que termina antes de hoy es historial, hasta 7 días (Colombia tiene cientos de órdenes por día).
   const hoy = hoyBogota();
   const hasta = typeof sp.h === "string" ? f.hasta : hoy;
-  const desdePedido = typeof sp.d === "string" ? f.desde : hoy;
-  const desde = desdePedido < sumarDias(hasta, -6) ? sumarDias(hasta, -6) : desdePedido;
-  const esHoy = desde === hoy && hasta === hoy;
+  const desdePedido = typeof sp.d === "string" ? f.desde : `${hoy.slice(0, 8)}01`;
+  const enVivo = hasta >= hoy;
+  const desde = enVivo
+    ? (desdePedido < sumarDias(hoy, -30) ? sumarDias(hoy, -30) : desdePedido)
+    : (desdePedido < sumarDias(hasta, -6) ? sumarDias(hasta, -6) : desdePedido);
+  const dias = Math.round((Date.parse(hoy) - Date.parse(desde)) / 86_400_000) + 1;
+  const esHoy = enVivo;
   const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
   const fecha = (iso: string) => `${Number(iso.slice(8, 10))} ${MESES[Number(iso.slice(5, 7)) - 1]}`;
   const nombre = rangoActivo(rangosRapidos(hoy, INICIO_AGENTE), desde, hasta)?.label;
@@ -31,12 +37,15 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
     etiqueta: `${nombre ? `${nombre} · ` : ""}${desde === hasta ? fecha(desde) : `${fecha(desde)} – ${fecha(hasta)}`}${desde !== desdePedido ? " (últimos 7 días del rango)" : ""}`,
   };
   const supabase = await createClient();
-  const [{ data: config }, { data, error }, { data: fabrica }, { data: conAgente }] = await Promise.all([
+  const [{ data: config }, { data, error }, { data: fabrica }, { data: conAgente }, { data: extra }, { data: acciones }] = await Promise.all([
     supabase.from("auto_config").select("cuenta,modo,transportes:reglas->transportes").eq("cuenta", cuenta).maybeSingle(),
-    supabase.rpc("auto_lista", rango ? { p_cuenta: cuenta, p_dias: 3, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta, p_dias: 3 }),
+    supabase.rpc("auto_lista", rango ? { p_cuenta: cuenta, p_dias: 3, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta, p_dias: dias, p_solo_abiertas: true }),
     supabase.rpc("auto_fabrica", rango ? { p_cuenta: cuenta, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta }),
     // Banderas: solo las tiendas que tienen agente (en A un clic, Guatemala; Honduras y El Salvador van por Drop).
     supabase.from("auto_config").select("cuenta"),
+    // Lista "estilo Effi": historial del cliente y transportadoras de la ciudad de las órdenes abiertas, y los cambios en curso.
+    rango ? Promise.resolve({ data: null }) : supabase.rpc("auto_ordenes_extra", { p_cuenta: cuenta, p_dias: dias }),
+    supabase.rpc("auto_acciones_recientes", { p_cuenta: cuenta }),
   ]);
   const pais = infoCuenta(cuenta);
   // Historial: una semana de Colombia son ~2.200 órdenes (5 MB). A la pantalla solo va lo que muestra la tabla: el
@@ -51,7 +60,11 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
         guia: o.plan.guia ? { direccion_destinatario: o.plan.guia.direccion_destinatario } : undefined,
       } : null,
     })),
-  } : (data as DatosAuto | null);
+  } : data ? {
+    // En vivo la ventana se cuenta en horas: se quita lo de antes del primer día del rango, en hora del país.
+    ...(data as DatosAuto),
+    ordenes: (data as DatosAuto).ordenes.filter((o) => new Intl.DateTimeFormat("en-CA", { timeZone: pais.zona }).format(new Date(o.fecha)) >= desde),
+  } : null;
 
   return (
     <>
@@ -97,6 +110,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
           {error && <p className="text-sm text-red mb-4">{error.message}</p>}
           {datos && <Agente key={`${cuenta}-${desde}-${hasta}`} cuenta={cuenta} datos={datos} transportes={(config?.transportes ?? {}) as Transportes}
             fabrica={fabrica as DatosFabrica | null} rango={rango}
+            extra={(extra ?? {}) as Record<string, ExtraOrden>} acciones={(acciones ?? {}) as Record<string, AccionReciente>}
             huella={pais.pais === "GT" && !rango ? <HuellaGuias cuenta={cuenta} zona={pais.zona} /> : null} />}
         </>
       )}

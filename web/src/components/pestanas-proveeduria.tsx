@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-// Pestañas de Proveeduría: tablero de la empresa, comisiones, remisiones sin costo y liquidación. Se mantienen la empresa y el periodo al
+// Pestañas de Proveeduría: tablero de la empresa, comisiones de drop, remisiones sin costo, su liquidación y, aparte, la comisión por mayor. Se mantienen la empresa y el periodo al
 // cambiar; a Liquidación se llega sin fechas porque solo trae totales cuando se filtra.
 export function PestanasProveeduria({ actual, cuenta, periodo = "", sinCosto }: {
-  actual: "tablero" | "comisiones" | "sin-costo" | "liquidacion"; cuenta?: string; periodo?: string; sinCosto?: number;
+  actual: "tablero" | "comisiones" | "sin-costo" | "liquidacion" | "mayor"; cuenta?: string; periodo?: string; sinCosto?: number;
 }) {
   const c = cuenta ? `c=${cuenta}` : "";
   const q = [c, periodo].filter(Boolean).join("&");
@@ -17,6 +17,7 @@ export function PestanasProveeduria({ actual, cuenta, periodo = "", sinCosto }: 
         {!!sinCosto && <span className="rounded-full bg-amber/20 px-1.5 py-0.5 text-[10px] font-bold text-amber">{sinCosto}</span>}
       </Link>
       <Link href={`/proveeduria/liquidacion${c ? `?${c}` : ""}`} aria-current={actual === "liquidacion" ? "page" : undefined} className={clase(actual === "liquidacion")}>Liquidación</Link>
+      <Link href={`/proveeduria/mayor${q ? `?${q}` : ""}`} aria-current={actual === "mayor" ? "page" : undefined} className={clase(actual === "mayor")}>Por mayor</Link>
     </nav>
   );
 }

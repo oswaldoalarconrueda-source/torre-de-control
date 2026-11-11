@@ -17,7 +17,10 @@ const DAY_MS = 86_400_000;
 // de a LOTE órdenes con sus remisiones, para no gastarle memoria (la base se reinició varias veces a la hora del barrido, 5-nov).
 const LOTE = 200;
 const CAMPOS_ORDEN = ['sucursal', 'id', 'fecha_trans', 'nombre_cliente', 'nombre_ciudad', 'nombre_provincia', 'total', 'nombre_ecommerce',
-  'name_venta_ecommerce', 'observacion', 'estado', 'vigente', 'responsable', 'sucursal_remision_v', 'id_remision_v'];
+  'name_venta_ecommerce', 'observacion', 'estado', 'vigente', 'responsable', 'sucursal_remision_v', 'id_remision_v',
+  // Lista "estilo Effi" del agente (11-nov): centro de costos, documento, teléfono, dirección con sus ids, subtotal e impuestos.
+  'nombre_centro_costos', 'abreviacion', 'id_cliente', 'telefono_cliente', 'direccion_cliente', 'pais_cliente', 'provincia_cliente',
+  'ciudad_cliente', 'subtotal', 'impuestos', 'cliente'];
 const CAMPOS_REMISION = ['sucursal', 'id', 'fecha_trans', 'centro_costos', 'nombre_centro_costos', 'convenio_dropshipping',
   'nombre_convenio_dropshipping', 'vigente', 'responsable', 'id_guia_transporte', 'guia', 'estado_dropshipping'];
 
