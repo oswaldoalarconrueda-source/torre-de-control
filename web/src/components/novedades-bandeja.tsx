@@ -233,8 +233,8 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
         <table className="fichas w-full min-w-max text-xs">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wider text-muted border-b border-line">
-              {/* Dirección y recaudo a la izquierda: al trabajar la línea se ven juntos guía, cliente, teléfono y las llamadas. */}
-              {["Llegó", "Trans.", "Novedad", "Contenido", "Ciudad", "Dirección", "Recaudo", "Guía", "Cliente", "Teléfono", "C1", "C2", "C3", "Solución", "Entrega", "Qué se habló", "", "Asesora"].map((h, i) => (
+              {/* Pedido de las asesoras (11-nov-2026): la novedad al lado de la guía y la dirección al lado de la novedad. */}
+              {["Llegó", "Trans.", "Guía", "Novedad", "Dirección", "Contenido", "Ciudad", "Recaudo", "Cliente", "Teléfono", "C1", "C2", "C3", "Solución", "Entrega", "Qué se habló", "", "Asesora"].map((h, i) => (
                 <th key={i} className="px-1.5 py-2 font-semibold whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -261,6 +261,15 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     <div suppressHydrationWarning>{minutosDesde(f.llego, ahora)}</div>
                   </td>
                   <td data-l="Trans." className="max-md:order-13 px-1.5 py-1.5 whitespace-nowrap" title={f.transportadora ?? ""}>{transCorta(f.transportadora)}</td>
+                  <td data-l="Guía" className="max-md:order-5 px-1.5 py-1.5 whitespace-nowrap">
+                    {f.guia && (
+                      <button onClick={() => copiar(f.guia!)} title="Copiar guía" className="group inline-flex items-center gap-1 font-mono font-semibold hover:text-blue-2">
+                        {f.guia}<Copy size={10} className="opacity-40 group-hover:opacity-100" />
+                        {copiada === f.guia && <span className="text-[10px] text-green font-sans">copiada</span>}
+                      </button>
+                    )}
+                    <div className="max-w-[7.5rem] truncate text-[10px] text-muted" title={f.estado_guia ?? ""}>{f.estado_guia}</div>
+                  </td>
                   <td data-l="Novedad" className="max-md:order-5 max-md:col-span-6 px-1.5 py-1.5 max-w-[10rem]">
                     {f.devolucion && (
                       <div className="mb-1 inline-block rounded-full bg-red/15 px-2 py-0.5 text-[10px] font-bold text-red" title={f.devolucion}>
@@ -270,21 +279,12 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     <div className="font-semibold md:truncate" title={f.novedad ?? ""}>{f.novedad}</div>
                     <div className="text-muted md:truncate" title={f.aclaracion ?? ""}>{f.aclaracion}</div>
                   </td>
+                  <td data-l="Dirección" className="max-md:order-5 max-md:col-span-6 px-1.5 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-32`} /></td>
                   <td data-l="Contenido" className="max-md:order-6 max-md:col-span-6 px-1.5 py-1.5 min-w-[6rem] max-w-[8.5rem] font-semibold text-blue-2" title={f.contenido ?? ""}>
                     <div className="md:line-clamp-2">{f.contenido ?? "—"}</div>
                   </td>
                   <td data-l="Ciudad" className="max-md:order-12 px-1.5 py-1.5 max-w-[4.5rem] truncate" title={[f.ciudad, f.provincia].filter(Boolean).join(", ")}>{f.ciudad}</td>
-                  <td data-l="Dirección" className="max-md:order-11 max-md:col-span-6 px-1.5 py-1.5"><input value={b.dir ?? f.direccion ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { dir: e.target.value })} title={b.dir ?? f.direccion ?? ""} className={`${inp} w-32`} /></td>
                   <td data-l="Recaudo" className="max-md:order-2 px-1.5 py-1.5 whitespace-nowrap num max-md:text-right max-md:font-semibold">{f.recaudo != null ? dinero(f.recaudo, f.cuenta) : "—"}</td>
-                  <td data-l="Guía" className="max-md:order-14 px-1.5 py-1.5 whitespace-nowrap">
-                    {f.guia && (
-                      <button onClick={() => copiar(f.guia!)} title="Copiar guía" className="group inline-flex items-center gap-1 font-mono font-semibold hover:text-blue-2">
-                        {f.guia}<Copy size={10} className="opacity-40 group-hover:opacity-100" />
-                        {copiada === f.guia && <span className="text-[10px] text-green font-sans">copiada</span>}
-                      </button>
-                    )}
-                    <div className="max-w-[7.5rem] truncate text-[10px] text-muted" title={f.estado_guia ?? ""}>{f.estado_guia}</div>
-                  </td>
                   <td data-l="Cliente" className="max-md:order-3 max-md:font-semibold px-1.5 py-1.5 max-w-[7rem] truncate" title={f.cliente ?? ""}>{f.cliente}</td>
                   <td data-l="Teléfono" className="max-md:order-4 px-1.5 py-1.5">
                     <input value={b.tel ?? f.telefono ?? ""} disabled={bloqueada} onChange={(e) => cambiar(f, { tel: e.target.value })} className={`${inp} w-24`} />

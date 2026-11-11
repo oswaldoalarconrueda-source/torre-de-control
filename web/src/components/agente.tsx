@@ -67,10 +67,13 @@ const quienCrea = (cuenta: string) => (nombreAgente(cuenta) === "ValerIA" ? "Val
 const transportadoraDeGuia = (o: { plan: Plan | null }) =>
   String((o.plan?.resultado as { guia?: { nombre_transportadora?: string } } | undefined)?.guia?.nombre_transportadora ?? "").split("|")[0].replace(" EFFI", "").trim();
 // Igual que oficinaCO del agente (auto-convertir): entrega en oficina de Inter (4) o Servientrega (6).
+// Acepta cómo lo escriben las asesoras: "Interrapidicimo", "Interapidisimo", "interrrapidisimp", "Of.", "Ofi", "Reclama en
+// Inter"… (11-nov-2026: dos guías a oficina de Inter salieron por Coordinadora porque la palabra venía mal escrita).
 const oficinaCO = (direccion: unknown) => {
-  const d = String(direccion ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
-  if (!/OFICINA|\bOF\b|RECLAM/.test(d)) return null;
-  return /INTER ?RAPIDISIMO/.test(d) ? 4 : /SERVIENTREGA/.test(d) ? 6 : null;
+  const d = String(direccion ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ");
+  if (!/OFICINA|\bOFI?C?\b|RECLAM|RECKAM|\bRETIR|\bRECOG/.test(d)) return null;
+  if (/\bINTE?R{1,3} ?R?API|\b(OFICINA|OFI?C?|RECLAMA?|RETIRA?|RECOGE?) (DE |EN |PRINCIPAL (DE )?)?INTER\b/.test(d)) return 4;
+  return /\bSERVI ?ENTR?EGA\b|\bSERVIENTEGA\b/.test(d) ? 6 : null;
 };
 const pct = (n: number) => `${Number(n).toLocaleString("es-CO", { maximumFractionDigits: 1 })} %`;
 // Trayecto de cada transportadora desde la ciudad del remitente (matrices de cobertura): de local a nacional es más
@@ -389,12 +392,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     setGuardando(null);
     if (e) setError(e.message); else router.refresh();
   }
-  // "Ya está resuelta": la orden se arregló fuera de la Torre (el cliente canceló, salió con otra orden…). Sale de la
-  // lista y el agente no la crea; "Volver a la lista" lo deshace.
-  const [confirmarResuelta, setConfirmarResuelta] = useState<string | null>(null);
+  // Órdenes marcadas antes como "Ya está resuelta" (se arreglaron fuera de la Torre): "Volver a la lista" lo deshace. El
+  // botón ya no está en Acción (pedido del dueño, 11-nov-2026: ahí solo van Ejecutar y Anular).
   async function marcarResuelta(o: OrdenAuto, resuelta: boolean) {
     const clave = `${o.sucursal}-${o.id}`;
-    setConfirmarResuelta(null);
     setGuardando(clave); setError(null);
     const { error: e } = await createClient().rpc("auto_marcar_resuelta", { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_resuelta: resuelta });
     setGuardando(null);
@@ -880,20 +881,6 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                             <Play size={12} /> Ejecutar
                           </button>
                         )}
-                        {o.estado === "sin_remision" && confirmarOrden !== clave && (confirmarResuelta === clave ? (
-                          <span className="inline-flex items-center gap-1 text-[11px]">
-                            <span className="text-muted">¿Quitar de la lista?</span>
-                            <button onClick={() => marcarResuelta(o, true)} disabled={guardando === clave}
-                              className="rounded-full bg-blue px-2 py-0.5 font-bold text-white">Sí</button>
-                            <button onClick={() => setConfirmarResuelta(null)} className="rounded-full border border-line px-2 py-0.5 font-semibold text-muted hover:text-text">No</button>
-                          </span>
-                        ) : (
-                          <button onClick={() => setConfirmarResuelta(clave)} disabled={guardando === clave}
-                            title="Se arregló fuera de el Centro de Control (el cliente canceló, salió con otra orden…): sale de la lista y el agente no la crea"
-                            className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-muted hover:text-text hover:border-tinte/30">
-                            Ya está resuelta
-                          </button>
-                        ))}
                         {/* Anular la orden en Effi, con el motivo (queda en la observación de anulación de la orden para medirlo). */}
                         {!rango && o.id_remision == null && confirmarOrden !== clave && (
                           <AnularOrden o={o} cuenta={cuenta} accion={acciones[clave]} />

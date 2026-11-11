@@ -80,10 +80,13 @@ const CO_HABILITADAS = [1, 4, 6, 10];
 const VALLE_ABURRA = ['MEDELLIN', 'ENVIGADO', 'ITAGUI', 'SABANETA', 'LA ESTRELLA', 'CALDAS', 'COPACABANA', 'GIRARDOTA', 'BARBOSA'];
 // Entrega en oficina de Inter (4) o de Servientrega (6): en Colombia esas órdenes van solas, sin pasar por la lista
 // (regla del dueño, 27-oct). Las demás siguen siendo manuales.
+// Acepta cómo lo escriben las asesoras: "Interrapidicimo", "Interapidisimo", "interrrapidisimp", "Of.", "Ofi", "Reclama en
+// Inter"… (11-nov-2026: dos guías a oficina de Inter salieron por Coordinadora porque la palabra venía mal escrita).
 const oficinaCO = (direccion: unknown) => {
-  const d = norm(String(direccion ?? ''));
-  if (!/OFICINA|\bOF\b|RECLAM/.test(d)) return null;
-  return /INTER ?RAPIDISIMO/.test(d) ? 4 : /SERVIENTREGA/.test(d) ? 6 : null;
+  const d = norm(String(direccion ?? '')).replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ');
+  if (!/OFICINA|\bOFI?C?\b|RECLAM|RECKAM|\bRETIR|\bRECOG/.test(d)) return null;
+  if (/\bINTE?R{1,3} ?R?API|\b(OFICINA|OFI?C?|RECLAMA?|RETIRA?|RECOGE?) (DE |EN |PRINCIPAL (DE )?)?INTER\b/.test(d)) return 4;
+  return /\bSERVI ?ENTR?EGA\b|\bSERVIENTEGA\b/.test(d) ? 6 : null;
 };
 // deMatriz: la regla no es de las asesoras sino de la matriz (la ciudad solo tiene datos de Inter).
 function asesoraCO(direccion: string, ciudad: string, dpto: string, soloInter: boolean): { id: number; regla: string; deMatriz?: boolean } | null {
