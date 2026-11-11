@@ -413,13 +413,16 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   // Filtros principales (pedido del dueño, 11-nov): Órdenes pendientes (vigentes, sin remisión), Remisiones pendientes por
   // guía, Órdenes con errores y Modificar dirección. Lo que ya tiene remisión y guía no sale aquí.
   const esAbono = (o: OrdenAuto) => centroDe(o).toLowerCase().includes("abono") || !!o.cliente?.trim().startsWith("**");
-  const tieneError = (o: OrdenAuto) => o.estado !== "completa" && o.estado !== "anulada" && o.estado !== "resuelta" && !pendienteResuelto(o) &&
-    (o.plan_estado === "error" || o.estado === "revision" || remisionAnulada(o) || (o.plan_estado === "revision" && !esAbono(o)));
+  // Orden con error = no se dejó hacer la remisión (Effi la rechazó o necesita a una persona). Si la remisión ya existe y
+  // después se anuló, no es error: tiene su motivo de anulación y va a una estadística aparte (pedido del dueño, 11-nov).
+  const tieneError = (o: OrdenAuto) => o.id_remision == null && o.estado !== "completa" && o.estado !== "anulada" && o.estado !== "resuelta" &&
+    !pendienteResuelto(o) && (o.plan_estado === "error" || (o.plan_estado === "revision" && !esAbono(o)));
   const errorDe = (o: OrdenAuto) => remisionAnulada(o)
     ? o.motivos.find((m) => m.startsWith("La remisión está anulada")) ?? "La remisión está anulada"
     : o.plan_motivo ?? (o.motivos.length ? o.motivos.join(" · ") : "Requiere revisión");
   const pendientes = ordenes.filter((o) => o.estado === "sin_remision" && !tieneError(o));
-  const porGuia = ordenes.filter((o) => o.estado === "sin_guia" && !tieneError(o));
+  // Remisiones vigentes sin guía (si la guía falló, el error sale en rojo en Estado).
+  const porGuia = ordenes.filter((o) => o.estado === "sin_guia");
   const conError = ordenes.filter(tieneError);
   // "Modificar dirección": las enviadas desde la lista (siguen sin remisión) y las que se cambiaron en Effi en las últimas 24 h.
   const conCambioDireccion = ordenes.filter((o) => (!!o.direccion_marcada && o.id_remision == null && o.estado !== "anulada") || acciones[`${o.sucursal}-${o.id}`]?.tipo === "direccion");
@@ -442,7 +445,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     { clave: "guia", titulo: "Remisiones pendientes por guía", filas: porGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
       texto: "Remisiones ya hechas que solo esperan la guía." },
     { clave: "errores", titulo: "Órdenes con errores", filas: conError, vacio: "Sin errores: todas las órdenes van bien.", conRemision: false, conGuia: false,
-      texto: "Lo que Effi no dejó crear o lo que necesita a una persona, con el error. Sale de aquí cuando la orden tenga remisión y guía o la anulen." },
+      texto: "Órdenes a las que no se les pudo hacer la remisión (Effi no dejó o necesita a una persona), con el error. Las remisiones anuladas no salen aquí." },
     { clave: "direccion", titulo: "Modificar dirección", filas: conCambioDireccion, vacio: "Ninguna orden para modificar dirección.", conRemision: false, conGuia: false,
       texto: "Órdenes enviadas a corregir la dirección: «Modificar dirección» la cambia en la orden de Effi y el agente rehace la remisión con la nueva. Salen de aquí al cambiarla." },
   ];
@@ -737,7 +740,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                         <div key={i}>{x.nombre}{x.cantidad != null ? ` · ${entero(x.cantidad)} ${x.cantidad === 1 ? "unidad" : "unidades"}` : ""}</div>
                       ))}
                     </div>
-                    {s.clave === "errores" && (
+                    {(s.clave === "errores" || (s.clave === "guia" && o.plan_estado === "error")) && (
                       <div className={`mt-1 text-[11px] font-semibold ${o.plan_estado === "error" && pasajero(o.plan_motivo ?? "") ? "text-amber" : "text-red"}`}>
                         {o.plan_estado === "error" && pasajero(o.plan_motivo ?? "") ? "↻ " : "⚠ "}{errorDe(o)}
                         {datos.es_owner && o.plan?.resultado && (
