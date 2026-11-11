@@ -5,7 +5,7 @@ import { Encabezado } from "@/components/encabezado";
 import { Agente, type DatosAuto, type Transportes } from "@/components/agente";
 import { FabricaAgente, type DatosFabrica } from "@/components/fabrica-agente";
 import { HuellaGuias } from "@/components/alerta-huella";
-import type { AccionReciente, ExtraOrden } from "@/components/orden-effi";
+import type { AccionReciente, ExtraOrden, ParametrosPropuesta } from "@/components/orden-effi";
 
 // Primer día con órdenes en la vigilancia del agente.
 const INICIO_AGENTE = "2026-10-01";
@@ -37,7 +37,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
     etiqueta: `${nombre ? `${nombre} · ` : ""}${desde === hasta ? fecha(desde) : `${fecha(desde)} – ${fecha(hasta)}`}${desde !== desdePedido ? " (últimos 7 días del rango)" : ""}`,
   };
   const supabase = await createClient();
-  const [{ data: config }, { data, error }, { data: fabrica }, { data: conAgente }, { data: extra }, { data: acciones }] = await Promise.all([
+  const [{ data: config }, { data, error }, { data: fabrica }, { data: conAgente }, { data: extra }, { data: acciones }, { data: propuesta }] = await Promise.all([
     supabase.from("auto_config").select("cuenta,modo,transportes:reglas->transportes").eq("cuenta", cuenta).maybeSingle(),
     supabase.rpc("auto_lista", rango ? { p_cuenta: cuenta, p_dias: 3, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta, p_dias: dias, p_solo_abiertas: true }),
     supabase.rpc("auto_fabrica", rango ? { p_cuenta: cuenta, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta }),
@@ -46,6 +46,8 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
     // Lista "estilo Effi": historial del cliente y transportadoras de la ciudad de las órdenes abiertas, y los cambios en curso.
     rango ? Promise.resolve({ data: null }) : supabase.rpc("auto_ordenes_extra", { p_cuenta: cuenta, p_dias: dias }),
     supabase.rpc("auto_acciones_recientes", { p_cuenta: cuenta }),
+    // Tarifas de la propuesta logística del país (flete estimado cuando no hay guías propias).
+    rango ? Promise.resolve({ data: null }) : supabase.rpc("auto_propuesta_flete", { p_cuenta: cuenta }),
   ]);
   const pais = infoCuenta(cuenta);
   // Historial: una semana de Colombia son ~2.200 órdenes (5 MB). A la pantalla solo va lo que muestra la tabla: el
@@ -111,6 +113,7 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
           {datos && <Agente key={`${cuenta}-${desde}-${hasta}`} cuenta={cuenta} datos={datos} transportes={(config?.transportes ?? {}) as Transportes}
             fabrica={fabrica as DatosFabrica | null} rango={rango}
             extra={(extra ?? {}) as Record<string, ExtraOrden>} acciones={(acciones ?? {}) as Record<string, AccionReciente>}
+            propuesta={(propuesta ?? {}) as Record<string, ParametrosPropuesta>}
             huella={pais.pais === "GT" && !rango ? <HuellaGuias cuenta={cuenta} zona={pais.zona} /> : null} />}
         </>
       )}

@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Clock, Pause, Play, Truck } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, Fingerprint, Pause, Play, Truck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
@@ -10,7 +10,7 @@ import { FleteAlto } from "./flete-alto";
 import { FlujoAgente, type Periodo } from "./flujo-agente";
 import { RemisionesDirectas } from "./remisiones-directas";
 import type { DatosFabrica } from "./fabrica-agente";
-import { AnularOrden, CeldaCliente, CeldaHistorial, CeldaTotales, CeldaTransportadoras, ProductosOrden, centroDe, type AccionReciente, type ExtraOrden } from "./orden-effi";
+import { AnularOrden, CeldaCliente, CeldaHistorial, CeldaTotales, CeldaTransportadoras, ProductosOrden, centroDe, fletePropuesta, type AccionReciente, type ExtraOrden, type FleteOpcion, type ParametrosPropuesta } from "./orden-effi";
 
 // Agente de órdenes de venta: la Torre vigila cada orden de venta (remisión con su convenio, guía, centro de costos
 // Recuperado si el cliente empieza con *). En "Simular" arma, cada X minutos y antes de cada corte de despacho, la
@@ -134,9 +134,9 @@ const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1
 // rango: días del calendario (hora local del país); sin rango es hoy, en vivo. Con rango la pantalla es el historial
 // de esos días: el resumen del agente, sus errores y todas las órdenes del periodo, sin los controles de operación.
 // huella: la lista "Huella del cliente" de las guías de hoy (Guatemala), debajo del Agente en vivo.
-export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null, huella = null, extra = {}, acciones = {} }: {
+export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null, huella = null, extra = {}, acciones = {}, propuesta = {} }: {
   cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null; rango?: Periodo | null; huella?: ReactNode;
-  extra?: Record<string, ExtraOrden>; acciones?: Record<string, AccionReciente>;
+  extra?: Record<string, ExtraOrden>; acciones?: Record<string, AccionReciente>; propuesta?: Record<string, ParametrosPropuesta>;
 }) {
   const router = useRouter();
   const [confirmarModo, setConfirmarModo] = useState(false);
@@ -462,8 +462,16 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   const fechaCorta = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, day: "numeric", month: "short" }).format(new Date(iso)).replace(".", "").replace(" de ", " ");
   // Transportadoras a la vista: todas las que usa el país. Colombia: % de la matriz de entrega del plan; los demás países
   // (y Colombia sin matriz): % de nuestras guías a esa ciudad en los últimos 120 días.
+  const nombreCorto = (n: string) => n.split(" · ")[0].split("|")[0].replace(/ EFFI/i, "").trim().toUpperCase();
+  const idPorNombre = new Map<string, number>();
+  for (const t of opcionesTransporte) if (!idPorNombre.has(nombreCorto(t.nombre))) idPorNombre.set(nombreCorto(t.nombre), t.id);
   const transportesDe = (o: OrdenAuto) => {
-    const propias = extra[`${o.sucursal}-${o.id}`]?.transportadoras ?? [];
+    // Effi numera distinto las transportadoras en la guía y en el plan: en Colombia 3 Inter, 4 Servientrega y 6 Coordinadora
+    // pasan a 4, 6 y 10; en los demás países se juntan por nombre. Así cada una sale una sola vez, con su % y su flete.
+    const idGuiaAPlan = (id: number, nombre?: string) => cuenta === "TIENDA_CO"
+      ? ({ 3: 4, 4: 6, 6: 10 } as Record<number, number>)[id] ?? id
+      : idPorNombre.get(nombreCorto(nombre ?? "")) ?? id;
+    const propias = (extra[`${o.sucursal}-${o.id}`]?.transportadoras ?? []).map((t) => ({ ...t, id: idGuiaAPlan(Number(t.id), t.nombre) }));
     const matriz = (recomendacion(o)?.numeros.opciones ?? []) as { id: number; entrega?: number; flete?: number | null; nombre?: string }[];
     const ids = new Set<number>([...opcionesTransporte.map((t) => t.id), ...propias.map((t) => Number(t.id)), ...matriz.map((t) => Number(t.id))]);
     const lista = [...ids].filter((id) => cuenta !== "TIENDA_CO" || CO_HABILITADAS.includes(id)).map((id) => {
@@ -472,8 +480,17 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       const guias = p ? Number(p.entregadas) + Number(p.devoluciones) : null;
       const deMatriz = m?.entrega != null;
       const nombre = (m?.nombre ?? p?.nombre ?? opcionesTransporte.find((t) => t.id === id)?.nombre.split(" · ")[0] ?? String(id)).replace(/ EFFI/i, "").trim();
+      // Flete al lado del %: lo cobrado en la wallet a esa ciudad; si no hay guías propias, el de la matriz de Effi para la
+      // ruta, el promedio de la wallet en el departamento o el de la propuesta logística.
+      const recaudo = o.recaudo !== false;
+      const devDe = () => p?.flete_dev ?? p?.flete_dev_depto ?? null;
+      const flete: FleteOpcion | null = p?.flete != null
+        ? { ida: Number(p.flete), dev: p.flete_dev != null ? Number(p.flete_dev) : devDe(), fuente: `real · ${entero(p.flete_n ?? 0)} ${p.flete_n === 1 ? "guía" : "guías"}` }
+        : m?.flete != null ? { ida: Number(m.flete), dev: devDe(), fuente: "matriz Effi" }
+        : p?.flete_depto != null ? { ida: Number(p.flete_depto), dev: devDe(), fuente: "prom. depto" }
+        : fletePropuesta(propuesta[String(id)], Number(o.total ?? 0), recaudo);
       return {
-        id, nombre,
+        id, nombre, flete,
         entrega: deMatriz ? Number(m!.entrega) : guias ? (Number(p!.entregadas) / guias) * 100 : null,
         guias: deMatriz ? null : guias,
         detalle: deMatriz
@@ -630,7 +647,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         </div>
       )}
 
-      {/* Agente en vivo (orden → remisión → guía de hoy, por agente y por humano) y, debajo, los errores de hoy. */}
+      {/* Agente en vivo (orden → remisión → guía de hoy, por agente y por humano); los errores van en el filtro de abajo. */}
       <FlujoAgente cuenta={cuenta} fabrica={fabrica} conteoOrdenes={conteoOrdenes} proxima={rango ? null : sig} rango={rango} onNuevo={() => router.refresh()} esDueno={!!datos.es_owner}
         completas={ordenes.filter((o) => o.estado === "completa" || o.estado === "anulada" || pendienteResuelto(o) || remisionAnulada(o)).map((o) => o.id)}
         remisionadas={ordenes.filter(conRemision).map((o) => o.id)} />
@@ -646,7 +663,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               const rojo = x.clave === "errores" && n > 0;
               return (
                 <button key={x.clave} type="button" onClick={() => { setPestana(x.clave); setSubfiltro("todas"); }} aria-pressed={on}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${on ? "border-text bg-text text-bg" : rojo ? "border-red/50 text-red hover:bg-red/10" : "border-line text-muted hover:text-text"}`}>
+                  className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${on ? "border-text bg-text text-bg" : rojo ? "border-red/50 text-red hover:bg-red/10" : "border-line text-muted hover:text-text"}`}>
                   {x.titulo} · {entero(n)}
                 </button>
               );
@@ -660,7 +677,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                 const on = f.clave === subfiltro;
                 return (
                   <button key={f.clave} type="button" onClick={() => setSubfiltro(f.clave)} aria-pressed={on}
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${on ? "border-blue-2 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
+                    className={`rounded-md border px-3 py-1 text-xs font-semibold ${on ? "border-blue-2 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
                     {f.titulo} · {entero(n)}
                   </button>
                 );
@@ -688,7 +705,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               <th className="px-3 py-3">Cliente</th>
               <th className="px-3 py-3 text-right">Valor de la venta</th>
               <th className="px-3 py-3">Estado</th>
-              <th className="px-3 py-3">Historial cliente</th>
+              <th className="px-3 py-3"><span className="inline-flex items-center gap-1" title="Huella del cliente: sus pedidos anteriores por teléfono"><Fingerprint size={14} aria-hidden /> Huella</span></th>
               <th className="px-3 py-3">Transportadora</th>
               <th className="px-3 py-3 sticky right-0 z-10 bg-panel border-l border-line">Acción</th>
             </tr>
@@ -752,7 +769,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                   </td>
                   <td className="px-3 py-2 align-top"><CeldaHistorial h={huellaDe(o)} duplicada={otrasAbiertas(o)} /></td>
                   <td className="px-3 py-2 align-top">
-                    <CeldaTransportadoras ciudad={o.ciudad} opciones={transportesDe(o)} recaudo={o.recaudo !== false}
+                    <CeldaTransportadoras ciudad={o.ciudad} opciones={transportesDe(o)} recaudo={o.recaudo !== false} cuenta={cuenta}
                       delPlan={Number(o.plan?.guia?.transportadora) || null} />
                   </td>
                   <td className="px-3 py-2 align-top whitespace-nowrap sticky right-0 z-10 bg-panel border-l border-line">

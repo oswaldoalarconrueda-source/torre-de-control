@@ -28,9 +28,9 @@ export function nivel(g: GuiaHuella): Nivel {
 }
 const COLOR: Record<Nivel, string> = { riesgo: "var(--red)", cuidado: "var(--amber)", bueno: "var(--green)", nuevo: "var(--muted)" };
 
-// "10 pedidos · 0 entregas · 10 devueltos · efectividad 0 %" (o "Cliente nuevo: sin historial").
+// "10 pedidos · 0 entregas · 10 devueltos · efectividad 0 %" (o "Nuevo").
 export function resumenHuella(g: GuiaHuella) {
-  if (!g.pedidos) return "Cliente nuevo: sin historial";
+  if (!g.pedidos) return "Nuevo";
   const partes = [`${entero(g.pedidos)} ${g.pedidos === 1 ? "pedido" : "pedidos"}`, `${entero(g.entregas)} ${g.entregas === 1 ? "entrega" : "entregas"}`,
     `${entero(g.devueltos)} ${g.devueltos === 1 ? "devuelto" : "devueltos"}`];
   if (g.en_camino) partes.push(`${entero(g.en_camino)} en camino`);

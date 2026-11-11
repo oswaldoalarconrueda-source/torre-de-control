@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Pencil } from "lucide-react";
+import { Fingerprint, Loader2, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero } from "@/lib/formato";
 
@@ -14,7 +14,27 @@ export type Huella = {
   entregadas: number; devoluciones: number; en_curso: number; ultima?: string;
   propias?: { entregadas: number; devoluciones: number }; matriz?: { total: number; entregadas: number; devoluciones: number };
 };
-export type TransporteCiudad = { id: number; nombre: string; entregadas: number; devoluciones: number };
+export type TransporteCiudad = {
+  id: number; nombre: string; entregadas: number; devoluciones: number;
+  // Flete cobrado en la wallet (promedio de nuestras guías, 120 días): en la ciudad y en el departamento.
+  flete?: number; flete_n?: number; flete_dev?: number; flete_dev_n?: number; flete_depto?: number; flete_depto_n?: number; flete_dev_depto?: number;
+};
+// Lo que se muestra al lado del % de entrega: el flete de ida (entregada) y el de devolución, y de dónde sale.
+export type FleteOpcion = { ida: number | null; dev: number | null; fuente: string };
+
+// Propuesta logística (tarifas en la tabla auto_propuesta_flete, que no va al repositorio), para cuando no hay guías propias
+// ni de la matriz: flete con el descuento por volumen, más manejo y comisión de recaudo según el valor de la orden.
+export type ParametrosPropuesta = {
+  flete: number; manejo_pct?: number; manejo_decl_min?: number; manejo_min?: number; manejo_extra_recaudo?: number;
+  rec_pct?: number; rec_min?: number; rec_fijo_hasta?: number; rec_fijo?: number; dev_recaudo?: boolean;
+};
+export function fletePropuesta(p: ParametrosPropuesta | undefined, valor: number, recaudo: boolean): FleteOpcion | null {
+  if (!p?.flete) return null;
+  const v = Math.max(0, valor || 0);
+  const manejo = Math.max(p.manejo_min ?? 0, Math.max(v, p.manejo_decl_min ?? 0) * (p.manejo_pct ?? 0)) + (recaudo ? p.manejo_extra_recaudo ?? 0 : 0);
+  const com = !recaudo ? 0 : p.rec_fijo_hasta != null && v <= p.rec_fijo_hasta ? p.rec_fijo ?? 0 : Math.max(p.rec_min ?? 0, v * (p.rec_pct ?? 0));
+  return { ida: Math.round(p.flete + manejo + com), dev: Math.round(p.flete + manejo + (p.dev_recaudo ? com : 0)), fuente: "≈ propuesta" };
+}
 export type ExtraOrden = { huella?: Huella | null; transportadoras: TransporteCiudad[] };
 export type AccionReciente = { tipo: "direccion" | "anular"; estado: "pendiente" | "ok" | "error"; mensaje: string | null; por: string | null; en: string };
 
@@ -219,7 +239,7 @@ export function CeldaHistorial({ h, duplicada }: { h?: Huella | null; duplicada?
   const total = h ? Number(h.entregadas) + Number(h.devoluciones) : 0;
   return (
     <div className="min-w-[8rem] whitespace-normal text-xs leading-snug">
-      {!h || (total === 0 && !h.en_curso) ? <span className="text-muted">Cliente nuevo</span> : (
+      {!h || (total === 0 && !h.en_curso) ? <span className="font-semibold text-blue-2">Nuevo</span> : (
         <>
           <div className="font-semibold">{entero(total)} {total === 1 ? "pedido" : "pedidos"}{total ? ` · ${pctTxt((h.entregadas / total) * 100)} entrega` : ""}</div>
           <div><span className="text-green">{entero(h.entregadas)} entregados</span> · <span className={h.devoluciones ? "text-red" : "text-muted"}>{entero(h.devoluciones)} devol.</span></div>
@@ -233,28 +253,44 @@ export function CeldaHistorial({ h, duplicada }: { h?: Huella | null; duplicada?
 }
 
 // Transportadoras a la vista: % de entrega y guías en esa ciudad. La recomendada es la de mayor % con al menos 10 guías.
-export function CeldaTransportadoras({ ciudad, opciones, delPlan, recaudo }: {
-  ciudad: string | null; opciones: { id: number; nombre: string; entrega: number | null; guias: number | null; detalle?: string }[];
-  delPlan: number | null; recaudo: boolean;
+export function CeldaTransportadoras({ ciudad, opciones, delPlan, recaudo, cuenta }: {
+  ciudad: string | null; opciones: { id: number; nombre: string; entrega: number | null; guias: number | null; detalle?: string; flete?: FleteOpcion | null }[];
+  delPlan: number | null; recaudo: boolean; cuenta: string;
 }) {
   const conDato = opciones.filter((x) => x.entrega != null);
   const fuertes = conDato.filter((x) => (x.guias ?? 0) >= 10);
   const mejor = [...(fuertes.length ? fuertes : conDato)].sort((a, b) => Number(b.entrega) - Number(a.entrega) || Number(b.guias) - Number(a.guias))[0];
   const color = (p: number) => (p >= 80 ? "text-green" : p >= 65 ? "text-amber" : "text-red");
+  // De arriba a abajo por % de entrega; las que no han ido a la ciudad, al final.
+  const orden = [...opciones].sort((a, b) => Number(b.entrega ?? -1) - Number(a.entrega ?? -1));
   return (
     <div className="min-w-[17rem] max-w-[22rem] whitespace-normal text-xs">
-      <div className="mb-1 text-[10px] uppercase tracking-wider text-muted">% entrega en {ciudad ?? "la ciudad"} · {recaudo ? "contraentrega" : "sin recaudo"}</div>
-      {opciones.length ? (
-        <div className="flex flex-wrap gap-1.5">
-          {opciones.map((t) => {
+      <div className="mb-1 flex justify-between gap-2 text-[10px] uppercase tracking-wider text-muted">
+        <span>% entrega en {ciudad ?? "la ciudad"} · {recaudo ? "contraentrega" : "sin recaudo"}</span>
+        <span className="shrink-0">Flete</span>
+      </div>
+      {orden.length ? (
+        <div className="flex flex-col gap-1.5">
+          {orden.map((t) => {
             const top = mejor?.id === t.id;
+            const f = t.flete;
             return (
-              <div key={t.id} title={t.detalle}
-                className={`relative rounded-lg border px-2 py-1 leading-tight ${top ? "border-green bg-green/10" : "border-line bg-bg"}`}>
+              <div key={t.id} title={[t.detalle, f && `Flete: ${f.fuente}`].filter(Boolean).join(" · ")}
+                className={`relative flex items-center justify-between gap-2 rounded-lg border px-2 py-1 leading-tight ${top ? "mt-1.5 border-green bg-green/10" : "border-line bg-bg"}`}>
                 {top && <span className="absolute -top-2 left-1 rounded-full bg-green px-1.5 text-[8px] font-bold uppercase text-black">Recomendada</span>}
-                <div className="text-[11px] font-bold uppercase">{t.nombre}{delPlan === t.id ? " 🤖" : ""}</div>
-                <div className={`text-[10px] ${t.entrega == null ? "text-muted" : color(t.entrega)}`}>
-                  {t.entrega == null ? "sin envíos" : `${pctTxt(t.entrega)}${t.guias != null ? ` · ${entero(t.guias)} guías` : ""}`}
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase">{t.nombre}{delPlan === t.id ? " 🤖" : ""}</div>
+                  <div className={`text-[10px] ${t.entrega == null ? "text-muted" : color(t.entrega)}`}>
+                    {t.entrega == null ? "sin envíos" : `${pctTxt(t.entrega)}${t.guias ? ` · ${entero(t.guias)} guías` : ""}`}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  {f?.ida != null ? (
+                    <>
+                      <div className="text-[11px] font-bold tabular-nums">{dinero(f.ida, cuenta)}</div>
+                      <div className="text-[9px] text-muted">{f.dev != null ? `dev. ${dinero(f.dev, cuenta)} · ` : ""}{f.fuente}</div>
+                    </>
+                  ) : <div className="text-[10px] text-muted">sin flete</div>}
                 </div>
               </div>
             );

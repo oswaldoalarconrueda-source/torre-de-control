@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { FabricaAgente, type ConteoOrdenes, type DatosFabrica } from "./fabrica-agente";
 
-// Agente en vivo y Errores de hoy. Arriba, la franja orden → remisión → guía de hoy, por agente y por humano
+// Agente en vivo y, en el historial, los errores de esos días. Arriba, la franja orden → remisión → guía de hoy, por agente y por humano
 // (auto_fabrica); cuando el agente está creando algo, la etapa activa late y se ve la orden y el paso. Abajo, los errores
 // de hoy: una línea por documento, diciendo si el error es de la remisión (no se pudo hacer la guía) o de la orden (no
 // se pudo hacer la remisión) y por qué, con sus variables (lo enviado y lo respondido por Effi), o el aviso verde de que
@@ -164,8 +164,10 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
         ) : "En espera"} />
       )}
 
+    {/* Errores de esos días, con lo enviado y lo respondido por Effi para corregir. Solo en el historial: en vivo los
+        reemplaza el filtro «Órdenes con errores» de la lista, que trae el mes (pedido del dueño, 11-nov-2026). */}
+    {rango && (
     <div className="card p-4">
-      {/* Errores de hoy, con lo enviado y lo respondido por Effi para corregir. */}
       <div>
         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-widest font-mono text-muted">
           {rango ? `Errores · ${rango.etiqueta}` : "Errores de hoy"}
@@ -220,6 +222,7 @@ export function FlujoAgente({ cuenta, fabrica, conteoOrdenes, proxima, onNuevo, 
         )}
       </div>
     </div>
+    )}
     </>
   );
 }
