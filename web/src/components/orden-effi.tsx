@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Fingerprint, Loader2, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { dinero, entero } from "@/lib/formato";
+import { dinero, entero, haceCuanto } from "@/lib/formato";
 
 // Piezas de la lista de órdenes "estilo Effi" del agente (pedido del dueño, 11-nov-2026): el cliente con su centro de costos,
 // documento, teléfono y dirección en una sola celda; totales; pago; historial del cliente (huella) y las transportadoras a la
@@ -36,6 +36,12 @@ export function fletePropuesta(p: ParametrosPropuesta | undefined, valor: number
   return { ida: Math.round(p.flete + manejo + com), dev: Math.round(p.flete + manejo + (p.dev_recaudo ? com : 0)), fuente: "≈ propuesta" };
 }
 export type ExtraOrden = { huella?: Huella | null; transportadoras: TransporteCiudad[] };
+// Orden rechazada por existencias del proveedor: a qué convenio cambiarla (otro convenio del país que remisionó ese artículo
+// en las últimas 48 h sin rechazos por existencias después) o, si no hay ninguno, agotado en todos (auto_convenio_sugerido).
+export type ConvenioSugerido = {
+  articulo: number; articulo_nombre: string | null; convenio: string | null;
+  sugerencias: { convenio: string; nombre: string | null; proveedor: string | null; remisiones: number; ultima: string }[];
+};
 export type AccionReciente = { tipo: "direccion" | "anular"; estado: "pendiente" | "ok" | "error"; mensaje: string | null; por: string | null; en: string };
 
 // Lo que la celda necesita de la orden (subconjunto de OrdenAuto).
@@ -487,6 +493,29 @@ export function ProductosOrden({ o, articulos, cuenta }: { o: OrdenCelda; articu
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Solución sugerida cuando Effi no dejó hacer la remisión por existencias: cambiar el convenio o avisar que está agotado.
+export function SugerenciaConvenio({ c }: { c: ConvenioSugerido }) {
+  const producto = c.articulo_nombre ?? `artículo ${c.articulo}`;
+  if (!c.sugerencias.length) {
+    return (
+      <div className="mt-1 rounded-md border border-red/40 bg-red/5 px-2 py-1 text-[11px] text-red">
+        <b>Agotado en todos los convenios:</b> ningún otro convenio despachó {producto} en las últimas 48 h. Avisar a pauta.
+      </div>
+    );
+  }
+  return (
+    <div className="mt-1 rounded-md border border-green/40 bg-green/5 px-2 py-1 text-[11px] text-green">
+      <b>💡 Solución: cambiar el convenio</b>
+      {c.sugerencias.slice(0, 2).map((x) => (
+        <div key={x.convenio} className="text-text/90">
+          → <b>{x.nombre ?? x.convenio}</b> ({x.convenio}){x.proveedor ? ` · ${x.proveedor}` : ""}: remisionó {producto} {haceCuanto(x.ultima)}
+          {x.remisiones > 1 ? ` (${entero(x.remisiones)} en 48 h)` : ""}
+        </div>
+      ))}
     </div>
   );
 }

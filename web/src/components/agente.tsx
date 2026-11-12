@@ -10,7 +10,7 @@ import { FleteAlto } from "./flete-alto";
 import { FlujoAgente, type Periodo } from "./flujo-agente";
 import { RemisionesDirectas } from "./remisiones-directas";
 import type { DatosFabrica } from "./fabrica-agente";
-import { AnularOrden, CeldaCliente, CeldaHistorial, CeldaTotales, CeldaTransportadoras, ProductosOrden, centroDe, fletePropuesta, type AccionReciente, type ExtraOrden, type FleteOpcion, type ParametrosPropuesta } from "./orden-effi";
+import { AnularOrden, CeldaCliente, CeldaHistorial, CeldaTotales, CeldaTransportadoras, ProductosOrden, centroDe, fletePropuesta, SugerenciaConvenio, type AccionReciente, type ConvenioSugerido, type ExtraOrden, type FleteOpcion, type ParametrosPropuesta } from "./orden-effi";
 
 // Agente de órdenes de venta: la Torre vigila cada orden de venta (remisión con su convenio, guía, centro de costos
 // Recuperado si el cliente empieza con *). En "Simular" arma, cada X minutos y antes de cada corte de despacho, la
@@ -137,9 +137,9 @@ const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1
 // rango: días del calendario (hora local del país); sin rango es hoy, en vivo. Con rango la pantalla es el historial
 // de esos días: el resumen del agente, sus errores y todas las órdenes del periodo, sin los controles de operación.
 // huella: la lista "Huella del cliente" de las guías de hoy (Guatemala), debajo del Agente en vivo.
-export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null, huella = null, extra = {}, acciones = {}, propuesta = {} }: {
+export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null, huella = null, extra = {}, acciones = {}, propuesta = {}, convenios = {} }: {
   cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null; rango?: Periodo | null; huella?: ReactNode;
-  extra?: Record<string, ExtraOrden>; acciones?: Record<string, AccionReciente>; propuesta?: Record<string, ParametrosPropuesta>;
+  extra?: Record<string, ExtraOrden>; acciones?: Record<string, AccionReciente>; propuesta?: Record<string, ParametrosPropuesta>; convenios?: Record<string, ConvenioSugerido>;
 }) {
   const router = useRouter();
   const [confirmarModo, setConfirmarModo] = useState(false);
@@ -777,6 +777,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                         {datos.es_owner && o.plan?.resultado && (
                           <button onClick={() => setAbierta(abierto ? null : clave)} className="ml-1 underline">ver variables</button>
                         )}
+                    {s.clave === "errores" && convenios[clave] && <SugerenciaConvenio c={convenios[clave]} />}
                       </div>
                     )}
                     {o.decision === "ejecutar" && creando(o) && <div className="mt-1 text-[11px] text-blue-2">Creando en Effi…</div>}
