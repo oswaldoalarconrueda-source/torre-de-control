@@ -4,7 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import {
+  Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, Coins, CreditCard, Factory, Globe, Hourglass, House, Megaphone, Menu,
+  MessageSquareText, Package, PanelLeftClose, PanelLeftOpen, Receipt, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
+  UserCog, Wallet, X, type LucideIcon,
+} from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
 import { esSocio, tieneModulo, type Acceso } from "@/lib/modulos";
 import { Logo } from "./ui";
@@ -12,6 +16,21 @@ import { Salir } from "./salir";
 import { SelectorTema } from "./selector-tema";
 
 const MENU_OCULTO = "centro.menu-oculto";
+
+// Íconos de línea, de un solo color (pedido del dueño, 11-nov-2026: sin emojis de colores a la izquierda del nombre).
+const ICONOS: Record<string, LucideIcon> = {
+  "/inicio": House, "/datos": ChartNoAxesColumn, "#logistica": Truck, "/oficina": Store, "/novedades": TriangleAlert,
+  "/agente": Bot, "/pedidos-lucid": MessageSquareText, "/proveeduria": Factory, "/global": Globe, "/publicidad": Megaphone,
+  "/sin-liquidar": Hourglass, "/agente-admin": Receipt, "/sync": RefreshCw, "/cargas": Upload, "/usuarios": UserCog,
+  "/guias": Truck, "/wallet-en-vivo": Wallet, "/dinero": Coins, "/productos": Package, "/flujo-caja": Banknote,
+  "/pagos-publicidad": CreditCard, "/utilidad": TrendingUp, "/glosario": BookOpen,
+};
+const Icono = ({ href }: { href: string }) => {
+  const I = ICONOS[href];
+  return I ? <I size={18} strokeWidth={1.6} className="shrink-0" aria-hidden /> : <span className="w-[18px] shrink-0" aria-hidden />;
+};
+// Título de sección: mayúsculas pequeñas y espaciadas.
+const titulo = "px-3 pb-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-muted/80";
 
 export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, agente, porAceptar = 0, conProveeduria = false, soloProveeduria = false }: {
   acceso: Acceso; email: string; ultimoSync: string; sociedad: string; sociedades: string[] | null; vista: string | null;
@@ -88,32 +107,31 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         key={it.href}
         href={`${it.href}${qs}`}
         aria-current={activo ? "page" : undefined}
-        className={`group flex items-center gap-2.5 rounded-xl py-2 max-lg:py-2.5 pr-3 text-sm transition-colors ${sub ? "pl-7" : "pl-3"} ${
-          activo ? "bg-blue/15 text-text shadow-[inset_2px_0_0_var(--blue-2)]" : "text-muted hover:text-text hover:bg-tinte/[0.04]"
+        className={`group flex items-center gap-3 rounded-lg py-2 max-lg:py-2.5 pr-3 text-sm transition-colors ${sub ? "pl-7" : "pl-3"} ${
+          activo ? "bg-text text-bg font-medium shadow-sm" : "text-text/80 hover:text-text hover:bg-tinte/[0.05]"
         }`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {it.icono ? <img src={it.icono} alt="" className="size-5 shrink-0" /> : <span className="w-5 text-center text-base leading-none" aria-hidden>{it.emoji}</span>}
+        <Icono href={it.href} />
         <span className="flex-1 truncate">{it.href === "/agente" ? agente : it.label}</span>
-        {it.estado === "pronto" && <span className="text-[10px] rounded-full border border-line px-1.5 py-0.5 text-muted">pronto</span>}
+        {it.estado === "pronto" && <span className={`text-[10px] rounded-md px-1.5 py-0.5 ${activo ? "bg-bg/20" : "bg-tinte/[0.06] text-muted"}`}>pronto</span>}
         {it.href === "/usuarios" && porAceptar > 0 && <span className="text-[10px] font-bold rounded-full bg-amber px-1.5 py-0.5 text-black">{porAceptar}</span>}
       </Link>
     );
   };
 
-  // Grupo plegable (Novedades logística): se abre solo cuando se está en una de sus pantallas.
+  // Grupo plegable (Novedades logística): abierto por defecto, como una sección con sus pantallas debajo.
   const grupo = (it: ItemMenu) => {
     const hijos = (it.hijos ?? []).filter(visible);
     if (!hijos.length) return null;
     const dentro = hijos.some((h) => path === h.href || path.startsWith(`${h.href}/`));
-    const desplegado = grupos[it.href] ?? dentro;
+    const desplegado = grupos[it.href] ?? true; // abierto, como una sección; se puede cerrar
     return (
       <div key={it.href}>
+        {/* Grupo como título de sección (NOVEDADES LOGÍSTICA) que se abre y se cierra. */}
         <button type="button" onClick={() => setGrupos((g) => ({ ...g, [it.href]: !desplegado }))} aria-expanded={desplegado}
-          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 max-lg:py-2.5 text-left text-sm transition-colors hover:bg-tinte/[0.04] hover:text-text ${dentro ? "text-text" : "text-muted"}`}>
-          <span className="w-5 text-center text-base leading-none" aria-hidden>{it.emoji}</span>
+          className={`${titulo} flex w-full items-center gap-1.5 rounded-md pt-2 text-left hover:text-text ${dentro ? "text-text/80" : ""}`}>
           <span className="flex-1 truncate">{it.label}</span>
-          <ChevronDown size={14} className={`shrink-0 transition-transform ${desplegado ? "rotate-180" : ""}`} aria-hidden />
+          <ChevronDown size={12} className={`shrink-0 transition-transform ${desplegado ? "rotate-180" : ""}`} aria-hidden />
         </button>
         {desplegado && <div className="mt-0.5 space-y-0.5">{hijos.map((h) => item(h, true))}</div>}
       </div>
@@ -157,15 +175,15 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         <div className="space-y-0.5">{MENU_JOALIX.filter((it) => !it.soloOwner).map((it) => (it.hijos ? grupo(it) : item(it)))}</div>
         {MENU_EN_VIVO.some((it) => !it.modulo || tieneModulo(acceso, it.modulo)) && (
           <div>
-            <div className="px-3 pb-1.5 text-[11px] uppercase tracking-wider text-muted/70">En vivo</div>
+            <div className={titulo}>En vivo</div>
             <div className="space-y-0.5">{MENU_EN_VIVO.map((it) => item(it))}</div>
           </div>
         )}
         <div className="space-y-0.5">{MENU_PRONTO.map((it) => item(it))}</div>
         {/* Usuario maestro: lo que nadie más puede ver, sin importar la sociedad. */}
         {esOwner && (
-          <div className="rounded-xl border border-amber/25 bg-amber/[0.04] py-1.5">
-            <div className="px-3 pb-1.5 pt-0.5 text-[11px] uppercase tracking-wider text-amber/90">👑 Solo para ti</div>
+          <div className="border-t border-line pt-4">
+            <div className={`${titulo} !text-amber/90`}>Solo para ti</div>
             {/* Alguien se registró y espera que el dueño le diga qué puede ver. */}
             {porAceptar > 0 && (
               <Link href="/usuarios" className="mx-2 mb-1.5 flex items-center gap-2 rounded-lg border border-amber/40 bg-amber/15 px-2.5 py-2 text-xs font-semibold text-amber hover:bg-amber/25">

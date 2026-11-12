@@ -14,11 +14,18 @@ export default async function OficinaPage({ searchParams }: PageProps<"/oficina"
   const f = leerFiltros(await searchParams);
   const cuenta = f.cuentas?.[0] ?? "TIENDA_CO";
   const supabase = await createClient();
+  // Calendario arriba (pedido del dueño, 11-nov-2026): cambia el cuadre, el resultado por día de llegada, quién hizo qué y
+  // la estadística de llamadas. La lista para llamar sigue siendo lo que hoy está en oficina.
+  const rango = { p_desde: f.desde, p_hasta: f.hasta };
+  const dias = Math.round((Date.parse(f.hasta) - Date.parse(f.desde)) / 86_400_000) + 1;
+  const hoyLocal = new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date());
+  const conHoy = f.hasta >= hoyLocal;
+  const periodo = dias === 1 ? (conHoy ? "hoy" : f.desde) : `${f.desde} a ${f.hasta}`;
   const [{ data: lista, error }, { data: est }, { data: cuadre }, { data: porUsuario }, { data: efectividad }] = await Promise.all([
     supabase.rpc("oficina_lista", { p_cuenta: cuenta }),
-    supabase.rpc("oficina_estadisticas", { p_cuenta: cuenta, p_dias: 14 }),
-    supabase.rpc("oficina_cuadre", { p_cuenta: cuenta, p_dias: 14 }),
-    esDueno ? supabase.rpc("oficina_por_usuario", { p_cuenta: cuenta, p_dias: 14 }) : Promise.resolve({ data: null }),
+    supabase.rpc("oficina_estadisticas", { p_cuenta: cuenta, ...rango }),
+    supabase.rpc("oficina_cuadre", { p_cuenta: cuenta, ...rango }),
+    esDueno ? supabase.rpc("oficina_por_usuario", { p_cuenta: cuenta, ...rango }) : Promise.resolve({ data: null }),
     supabase.rpc("oficina_efectividad", { p_cuenta: cuenta }),
   ]);
   const pais = infoCuenta(cuenta);
@@ -29,16 +36,16 @@ export default async function OficinaPage({ searchParams }: PageProps<"/oficina"
         titulo="🏤 Disponible en Oficina"
         subtitulo={`${pais.bandera} ${pais.nombre} · guías que esperan en la oficina de la transportadora. Lo que llegó más reciente va arriba: marca cada llamada (contacto 1, 2 y 3) y la observación.`}
         f={f}
-        conFechas={false}
       />
       {error && <p className="text-sm text-red mb-4">{error.message}</p>}
-      {cuadre && <CuadreHoy c={cuadre as Cuadre} />}
-      {cuadre && <ResumenOficina c={cuadre as Cuadre} dias={14} />}
+      {/* "Hoy en la oficina" solo cuando el rango llega hasta hoy. */}
+      {cuadre && conHoy && <CuadreHoy c={cuadre as Cuadre} />}
+      {cuadre && <ResumenOficina c={cuadre as Cuadre} periodo={periodo} />}
       <CrmOficina key={cuenta} cuenta={cuenta} guias={(lista ?? []) as GuiaOficina[]} esDueno={esDueno}
-        ingresaronHoy={(cuadre as Cuadre | null)?.cuadre[0]?.llegaron} efectividad={efectividad as Efectividad | null} />
-      {esDueno && porUsuario && <div className="mt-6"><QuienHizoQue filas={porUsuario as PorUsuario[]} dias={14} /></div>}
+        ingresaronHoy={conHoy ? (cuadre as Cuadre | null)?.cuadre[0]?.llegaron : undefined} efectividad={efectividad as Efectividad | null} />
+      {esDueno && porUsuario && <div className="mt-6"><QuienHizoQue filas={porUsuario as PorUsuario[]} periodo={periodo} /></div>}
       {cuadre && <CuadreTablas c={cuadre as Cuadre} />}
-      {est && <EstadisticasOficina key={`est-${cuenta}`} e={est as Estadisticas} cuenta={cuenta} />}
+      {est && <EstadisticasOficina key={`est-${cuenta}-${f.desde}-${f.hasta}`} e={est as Estadisticas} cuenta={cuenta} />}
     </>
   );
 }

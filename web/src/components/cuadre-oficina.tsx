@@ -55,13 +55,13 @@ export function CuadreHoy({ c }: { c: Cuadre }) {
 
 // Lo que pasó por la oficina en el periodo: de todas las guías que llegaron, cuántas se entregaron, cuántas se fueron a
 // devolución y cuántas siguen allí. Es lo que sale de la lista de llamadas (la lista solo muestra las que siguen).
-export function ResumenOficina({ c, dias }: { c: Cuadre; dias: number }) {
+export function ResumenOficina({ c, periodo }: { c: Cuadre; periodo: string }) {
   const t = c.llegadas.reduce((a, d) => ({
     llegaron: a.llegaron + d.llegaron, retiradas: a.retiradas + d.retiradas, devueltas: a.devueltas + d.devueltas,
     otro: a.otro + d.otro, en_oficina: a.en_oficina + d.en_oficina,
   }), { llegaron: 0, retiradas: 0, devueltas: 0, otro: 0, en_oficina: 0 });
   const items = [
-    { titulo: "Llegaron a oficina", valor: t.llegaron, color: "var(--blue-2)", sub: `últimos ${dias} días` },
+    { titulo: "Llegaron a oficina", valor: t.llegaron, color: "var(--blue-2)", sub: periodo },
     { titulo: "Entregadas", valor: t.retiradas, color: "var(--green)", sub: pct(t.retiradas, t.llegaron) },
     { titulo: "A devolución", valor: t.devueltas, color: "var(--red)", sub: pct(t.devueltas, t.llegaron) },
     { titulo: "Volvieron a tránsito", valor: t.otro, color: "var(--amber)", sub: pct(t.otro, t.llegaron) },
@@ -91,10 +91,10 @@ export type PorUsuario = {
   guias: number; gestiones: number; gestiones_hoy: number;
 };
 // Solo el dueño: quién marcó los contactos y las observaciones (gestiones), para repartir el trabajo y medirlo.
-export function QuienHizoQue({ filas, dias }: { filas: PorUsuario[]; dias: number }) {
+export function QuienHizoQue({ filas, periodo }: { filas: PorUsuario[]; periodo: string }) {
   const tot = filas.reduce((a, f) => ({ contactos: a.contactos + f.contactos, gestiones: a.gestiones + f.gestiones }), { contactos: 0, gestiones: 0 });
   return (
-    <Panel titulo="👑 Quién hizo qué" detalle={`Solo lo ves tú · últimos ${dias} días: ${entero(tot.contactos)} contactos y ${entero(tot.gestiones)} gestiones`}>
+    <Panel titulo="👑 Quién hizo qué" detalle={`Solo lo ves tú · ${periodo}: ${entero(tot.contactos)} contactos y ${entero(tot.gestiones)} gestiones`}>
       <TablaScroll>
         <thead>
           <tr>

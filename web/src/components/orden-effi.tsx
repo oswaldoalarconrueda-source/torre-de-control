@@ -68,10 +68,12 @@ const colorCentro = (centro: string) => {
 // Celda del cliente (como en Effi): nombre y centro de costos, identificación, teléfono (uno solo si son el mismo número),
 // la dirección completa y, abajo, "Enviar a modificar dirección" (manda la orden a la pestaña donde se corrige). En esa
 // pestaña la celda trae el formulario para cambiarla en Effi.
-export function CeldaCliente({ o, cuenta, modo, accion, onCambio }: {
+export function CeldaCliente({ o, cuenta, modo, accion, onCambio, onEjecutar }: {
   o: OrdenCelda; cuenta: string; modo: "enviar" | "editar" | "ninguno"; accion?: AccionReciente | null; onCambio: () => void;
+  onEjecutar?: (() => void) | null; // cuando la orden ya tiene la remisión lista: «Ejecutar» desde la misma celda
 }) {
   const [editando, setEditando] = useState(false);
+  const [siguiendo, setSiguiendo] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const centro = centroDe(o);
@@ -103,9 +105,20 @@ export function CeldaCliente({ o, cuenta, modo, accion, onCambio }: {
         </>
       )}
       <div><b>Dirección:</b> {[o.provincia, o.ciudad, dir].filter(Boolean).join(" / ") || "—"}</div>
-      {accion?.tipo === "direccion" && accion.estado === "pendiente" && <div className="mt-1 text-blue-2">⏳ Cambiando la dirección en Effi…</div>}
+      {accion?.tipo === "direccion" && accion.estado === "pendiente" && !siguiendo && <div className="mt-1 text-blue-2">⏳ Cambiando la dirección en Effi…</div>}
       {accion?.tipo === "direccion" && accion.estado === "error" && <div className="mt-1 text-red">⚠ {accion.mensaje}</div>}
-      {accion?.tipo === "direccion" && accion.estado === "ok" && <div className="mt-1 text-green">✓ Dirección cambiada en Effi por {accion.por?.split("@")[0] ?? "una persona"}</div>}
+      {accion?.tipo === "direccion" && accion.estado === "ok" && !siguiendo && (
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-green">
+          <span>✓ Dirección cambiada en Effi por {accion.por?.split("@")[0] ?? "una persona"}</span>
+          {modo === "editar" && onEjecutar && (
+            <button type="button" onClick={onEjecutar}
+              className="inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-2.5 py-0.5 text-[11px] font-semibold text-green hover:bg-green/20">
+              ▶ Ejecutar
+            </button>
+          )}
+        </div>
+      )}
+      {siguiendo && <SeguirCambio o={o} cuenta={cuenta} onListo={() => { setSiguiendo(false); onCambio(); }} />}
       {error && <div className="mt-1 text-red">{error}</div>}
       {modo === "enviar" && (o.direccion_marcada ? (
         <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-blue/10 px-2 py-0.5 text-[11px] text-blue-2">
@@ -118,7 +131,7 @@ export function CeldaCliente({ o, cuenta, modo, accion, onCambio }: {
           <Pencil size={11} aria-hidden /> Enviar a modificar dirección
         </button>
       ))}
-      {modo === "editar" && !editando && (
+      {modo === "editar" && !editando && !siguiendo && (
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setEditando(true)}
             className="inline-flex items-center gap-1 rounded-md bg-blue px-2.5 py-1 text-[11px] font-semibold text-white">
@@ -129,87 +142,173 @@ export function CeldaCliente({ o, cuenta, modo, accion, onCambio }: {
           )}
         </div>
       )}
-      {editando && <EditarDireccion o={o} cuenta={cuenta} onCerrar={() => setEditando(false)} onCambio={onCambio} />}
+      {editando && <EditarDireccion o={o} cuenta={cuenta} onCerrar={() => setEditando(false)} onGuardado={() => { setEditando(false); setSiguiendo(true); }} />}
     </div>
   );
 }
 
 type Ciudad = { pais_id: number; provincia_id: number; provincia: string; ciudad_id: number; ciudad: string };
+type Provincia = { provincia_id: number; provincia: string };
+const sinTildes = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
-function EditarDireccion({ o, cuenta, onCerrar, onCambio }: { o: OrdenCelda; cuenta: string; onCerrar: () => void; onCambio: () => void }) {
-  const [q, setQ] = useState(o.ciudad ?? "");
-  const [opciones, setOpciones] = useState<Ciudad[]>([]);
-  const [ciudad, setCiudad] = useState<Ciudad | null>(null);
+// Modificar dirección paso a paso (pedido del dueño, 11-nov-2026): primero se escoge qué cambia (provincia, ciudad y/o
+// dirección) y solo eso se edita; lo demás queda como está en la orden. Se guarda en la orden de Effi por API y la celda
+// sigue el cambio hasta que Effi lo confirma y el agente tiene la remisión lista para «Ejecutar».
+function EditarDireccion({ o, cuenta, onCerrar, onGuardado }: { o: OrdenCelda; cuenta: string; onCerrar: () => void; onGuardado: () => void }) {
+  const [cambiar, setCambiar] = useState({ provincia: false, ciudad: false, direccion: false });
+  const [provincias, setProvincias] = useState<Provincia[]>([]);
+  const [provId, setProvId] = useState<number | null>(null);
+  const [ciudades, setCiudades] = useState<Ciudad[]>([]);
+  const [actual, setActual] = useState<Ciudad | null>(null); // la ciudad que tiene hoy la orden (en el catálogo)
+  const [elegida, setElegida] = useState<Ciudad | null>(null); // la ciudad nueva, cuando se cambia
+  const [q, setQ] = useState("");
   const [direccion, setDireccion] = useState(direccionDe(o));
   const [referencia, setReferencia] = useState("");
-  const [buscando, setBuscando] = useState(false);
+  const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Provincia actual de la orden (por nombre en el catálogo de Effi).
   useEffect(() => {
-    if (ciudad && q === `${ciudad.ciudad} (${ciudad.provincia})`) return;
-    const t = setTimeout(async () => {
-      if (q.trim().length < 2) return setOpciones([]);
-      setBuscando(true);
-      const { data } = await createClient().rpc("effi_ciudades_buscar", { p_cuenta: cuenta, p_q: q.replace(/\s*\(.*$/, "") });
-      setBuscando(false);
+    createClient().rpc("effi_provincias", { p_cuenta: cuenta }).then(({ data }) => {
+      const lista = (data ?? []) as Provincia[];
+      setProvincias(lista);
+      const actual = lista.find((x) => sinTildes(x.provincia) === sinTildes(o.provincia));
+      setProvId(actual?.provincia_id ?? null);
+      if (!actual) setCargando(false);
+    });
+  }, [cuenta]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ciudades de la provincia escogida (o la actual); si la ciudad de la orden está, queda escogida.
+  useEffect(() => {
+    if (provId == null) return;
+    setCargando(true);
+    createClient().rpc("effi_ciudades_provincia", { p_cuenta: cuenta, p_provincia_id: provId }).then(({ data }) => {
       const lista = (data ?? []) as Ciudad[];
-      setOpciones(lista);
-      // Si la ciudad actual de la orden aparece tal cual, queda escogida.
-      if (!ciudad) {
-        const misma = lista.find((c) => c.ciudad.toLowerCase() === (o.ciudad ?? "").toLowerCase() && c.provincia.toLowerCase() === (o.provincia ?? "").toLowerCase());
-        if (misma) { setCiudad(misma); setQ(`${misma.ciudad} (${misma.provincia})`); setOpciones([]); }
-      }
-    }, 250);
-    return () => clearTimeout(t);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+      setCiudades(lista);
+      const misma = lista.find((c) => sinTildes(c.ciudad) === sinTildes(o.ciudad));
+      if (misma) setActual(misma);
+      setElegida(null);
+      setCargando(false);
+    });
+  }, [provId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const alternar = (k: keyof typeof cambiar) => setCambiar((c) => {
+    const n = { ...c, [k]: !c[k] };
+    if (k === "provincia" && n.provincia) n.ciudad = true; // otra provincia obliga a escoger la ciudad
+    if (k === "ciudad" && !n.ciudad && n.provincia) n.provincia = false;
+    return n;
+  });
+  const algo = cambiar.provincia || cambiar.ciudad || cambiar.direccion;
+  const ciudad = cambiar.ciudad ? elegida : actual;
+  const filtradas = q.trim().length ? ciudades.filter((c) => sinTildes(c.ciudad).includes(sinTildes(q))) : ciudades;
+  // Al escoger otra provincia, la ciudad actual ya no vale.
+  useEffect(() => { if (cambiar.provincia && actual && actual.provincia_id !== provId) setElegida(null); }, [provId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function guardar() {
-    if (!ciudad) return setError("Escoge la ciudad de la lista.");
+    if (!algo) return setError("Escoge qué quieres cambiar.");
+    if (!ciudad) return setError(cambiar.ciudad ? "Escoge la ciudad de la lista." : "La ciudad de la orden no está en el catálogo de Effi: marca «Ciudad» y escógela.");
     if (direccion.trim().length < 5) return setError("Escribe la dirección completa.");
     setGuardando(true); setError(null);
     const { error: e } = await createClient().rpc("auto_orden_accion", {
       p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_tipo: "direccion",
-      p_datos: { ...ciudad, direccion: direccion.trim(), referencia: referencia.trim() || null },
+      p_datos: { ...ciudad, direccion: direccion.trim(), referencia: referencia.trim() || null,
+        cambia: Object.entries(cambiar).filter(([, v]) => v).map(([k]) => k) },
     });
     setGuardando(false);
     if (e) return setError(e.message);
-    onCerrar(); onCambio();
+    onGuardado();
   }
 
   const campo = "w-full rounded-lg border border-line bg-bg px-2 py-1 text-xs text-text outline-none focus:border-blue/60";
+  const chip = (on: boolean) => `rounded-md border px-2.5 py-1 text-[11px] font-semibold ${on ? "border-blue bg-blue text-white" : "border-line text-muted hover:text-text"}`;
   return (
-    <div className="mt-2 space-y-1.5 rounded-xl border border-blue/40 bg-blue/5 p-2">
-      <label className="block text-[10px] text-muted">Ciudad
-        <input value={q} onChange={(e) => { setQ(e.target.value); setCiudad(null); }} className={`${campo} mt-0.5`} placeholder="Escribe la ciudad" />
-      </label>
-      {buscando && <div className="text-[10px] text-muted">Buscando…</div>}
-      {!ciudad && opciones.length > 0 && (
-        <div className="max-h-40 overflow-y-auto rounded-lg border border-line bg-bg">
-          {opciones.map((c) => (
-            <button key={c.ciudad_id} type="button" onClick={() => { setCiudad(c); setQ(`${c.ciudad} (${c.provincia})`); setOpciones([]); }}
-              className="block w-full px-2 py-1 text-left text-xs hover:bg-tinte/5">{c.ciudad} <span className="text-muted">· {c.provincia}</span></button>
-          ))}
+    <div className="mt-2 space-y-2 rounded-xl border border-blue/40 bg-blue/5 p-2">
+      <div className="text-[11px] font-semibold">¿Qué quieres cambiar?</div>
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" aria-pressed={cambiar.provincia} onClick={() => alternar("provincia")} className={chip(cambiar.provincia)}>Provincia</button>
+        <button type="button" aria-pressed={cambiar.ciudad} onClick={() => alternar("ciudad")} className={chip(cambiar.ciudad)}>Ciudad</button>
+        <button type="button" aria-pressed={cambiar.direccion} onClick={() => alternar("direccion")} className={chip(cambiar.direccion)}>Dirección</button>
+      </div>
+      {cambiar.provincia && (
+        <label className="block text-[10px] text-muted">Provincia nueva
+          <select value={provId ?? ""} onChange={(e) => { setProvId(Number(e.target.value) || null); setQ(""); }} className={`${campo} mt-0.5`}>
+            <option value="">Escoge…</option>
+            {provincias.map((x) => <option key={x.provincia_id} value={x.provincia_id}>{x.provincia}</option>)}
+          </select>
+        </label>
+      )}
+      {cambiar.ciudad && (
+        <div className="space-y-1">
+          <label className="block text-[10px] text-muted">Ciudad nueva {provincias.find((x) => x.provincia_id === provId) ? `(${provincias.find((x) => x.provincia_id === provId)!.provincia})` : ""}
+            <input value={elegida && !q ? elegida.ciudad : q} onChange={(e) => { setQ(e.target.value); setElegida(null); }} className={`${campo} mt-0.5`} placeholder="Escribe para buscar" />
+          </label>
+          {cargando && <div className="text-[10px] text-muted">Cargando ciudades…</div>}
+          {!elegida && !cargando && (
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-line bg-bg">
+              {filtradas.slice(0, 80).map((c) => (
+                <button key={c.ciudad_id} type="button" onClick={() => { setElegida(c); setQ(""); }}
+                  className="block w-full px-2 py-1 text-left text-xs hover:bg-tinte/5">{c.ciudad}</button>
+              ))}
+              {!filtradas.length && <div className="px-2 py-1 text-[10px] text-amber">{provId == null ? "Escoge primero la provincia." : "No encuentro esa ciudad en esta provincia."}</div>}
+            </div>
+          )}
         </div>
       )}
-      {!ciudad && !buscando && q.trim().length >= 2 && !opciones.length && (
-        <div className="text-[10px] text-amber">No encuentro esa ciudad en el catálogo de Effi de este país.</div>
+      {cambiar.direccion && (
+        <>
+          <label className="block text-[10px] text-muted">Dirección nueva
+            <textarea value={direccion} onChange={(e) => setDireccion(e.target.value)} rows={2} maxLength={255} className={`${campo} mt-0.5 resize-y`} />
+          </label>
+          <label className="block text-[10px] text-muted">Referencia (opcional)
+            <input value={referencia} onChange={(e) => setReferencia(e.target.value)} maxLength={255} className={`${campo} mt-0.5`} />
+          </label>
+        </>
       )}
-      <label className="block text-[10px] text-muted">Dirección
-        <textarea value={direccion} onChange={(e) => setDireccion(e.target.value)} rows={2} maxLength={255} className={`${campo} mt-0.5 resize-y`} />
-      </label>
-      <label className="block text-[10px] text-muted">Referencia (opcional)
-        <input value={referencia} onChange={(e) => setReferencia(e.target.value)} maxLength={255} className={`${campo} mt-0.5`} />
-      </label>
+      {algo && (
+        <div className="rounded-lg border border-line bg-bg px-2 py-1 text-[11px]">
+          <b>Queda así:</b> {[ciudad?.provincia ?? o.provincia, ciudad?.ciudad ?? (cambiar.ciudad ? "— escoge la ciudad —" : o.ciudad), direccion.trim()].filter(Boolean).join(" / ")}
+        </div>
+      )}
       {error && <div className="text-[11px] text-red" role="alert">{error}</div>}
       <div className="flex gap-2">
-        <button type="button" onClick={guardar} disabled={guardando}
-          className="inline-flex items-center gap-1 rounded-full bg-blue px-3 py-1 text-[11px] font-bold text-white disabled:opacity-60">
-          {guardando && <Loader2 size={11} className="animate-spin" aria-hidden />} Guardar en Effi
+        <button type="button" onClick={guardar} disabled={guardando || !algo}
+          className="inline-flex items-center gap-1 rounded-full bg-blue px-3 py-1 text-[11px] font-bold text-white disabled:opacity-50">
+          {guardando && <Loader2 size={11} className="animate-spin" aria-hidden />} Cambiar en Effi
         </button>
         <button type="button" onClick={onCerrar} className="rounded-full border border-line px-3 py-1 text-[11px] font-semibold text-muted hover:text-text">Cancelar</button>
       </div>
-      <div className="text-[10px] text-muted">Se cambia en la orden de Effi y el agente vuelve a preparar la remisión con la dirección nueva.</div>
+    </div>
+  );
+}
+
+// Sigue el cambio de dirección hasta el final: Effi lo confirma → el agente prepara la remisión con la dirección nueva →
+// se refresca la lista para que «Ejecutar» quede activo. Consulta liviana cada 3 s, máximo 4 minutos.
+function SeguirCambio({ o, cuenta, onListo }: { o: OrdenCelda; cuenta: string; onListo: () => void }) {
+  const [paso, setPaso] = useState<"effi" | "plan" | "listo" | "error" | "tarde">("effi");
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true, n = 0;
+    const t = setInterval(async () => {
+      n++;
+      const { data } = await createClient().rpc("auto_orden_seguimiento", { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id });
+      if (!vivo || !data) return;
+      const d = data as { accion?: { tipo: string; estado: string; mensaje: string | null } | null; plan_estado: string | null; id_remision: number | null };
+      if (d.accion?.tipo === "direccion" && d.accion.estado === "error") { setPaso("error"); setMensaje(d.accion.mensaje); clearInterval(t); return; }
+      if (d.accion?.tipo === "direccion" && d.accion.estado === "ok") {
+        if (d.plan_estado || d.id_remision) { setPaso("listo"); clearInterval(t); onListo(); return; }
+        setPaso("plan");
+      }
+      if (n >= 80) { setPaso("tarde"); clearInterval(t); }
+    }, 3000);
+    return () => { vivo = false; clearInterval(t); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (paso === "listo") return null;
+  return (
+    <div className={`mt-1.5 rounded-lg px-2 py-1 text-[11px] font-semibold ${paso === "error" ? "bg-red/10 text-red" : paso === "plan" ? "bg-green/10 text-green" : "bg-blue/10 text-blue-2"}`}>
+      {paso === "effi" && <><Loader2 size={11} className="mr-1 inline animate-spin" aria-hidden />Cambiando la dirección en Effi…</>}
+      {paso === "plan" && <><Loader2 size={11} className="mr-1 inline animate-spin" aria-hidden />✓ Cambiada en Effi. El agente está preparando la remisión con la dirección nueva…</>}
+      {paso === "error" && <>⚠ Effi no dejó cambiarla: {mensaje}</>}
+      {paso === "tarde" && <>El agente todavía no prepara la remisión; quedará lista en su próxima corrida.</>}
     </div>
   );
 }

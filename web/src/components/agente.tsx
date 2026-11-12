@@ -421,10 +421,16 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   const errorDe = (o: OrdenAuto) => remisionAnulada(o)
     ? o.motivos.find((m) => m.startsWith("La remisión está anulada")) ?? "La remisión está anulada"
     : o.plan_motivo ?? (o.motivos.length ? o.motivos.join(" · ") : "Requiere revisión");
-  const pendientes = ordenes.filter((o) => o.estado === "sin_remision" && !tieneError(o));
+  // Orden con condición = la ciudad tiene una condición de las asesoras (Ecuador: trato especial en La Concordia, Buena Fe
+  // y Taisha; Colombia: anticipado, sin cobertura…) y por eso se hace a mano. Va en su propio filtro para que la persona
+  // encargada sepa que las debe atender (pedido del dueño, 11-nov-2026); no se cuenta en pendientes ni en errores.
+  const tieneCondicion = (o: OrdenAuto) => o.id_remision == null && o.estado !== "completa" && o.estado !== "anulada" && o.estado !== "resuelta" &&
+    !pendienteResuelto(o) && !cumpleCondicion(o);
+  const conCondicionFiltro = ordenes.filter(tieneCondicion);
+  const pendientes = ordenes.filter((o) => o.estado === "sin_remision" && !tieneError(o) && !tieneCondicion(o));
   // Remisiones vigentes sin guía (si la guía falló, el error sale en rojo en Estado).
   const porGuia = ordenes.filter((o) => o.estado === "sin_guia");
-  const conError = ordenes.filter(tieneError);
+  const conError = ordenes.filter((o) => tieneError(o) && !tieneCondicion(o));
   // "Modificar dirección": las enviadas desde la lista (siguen sin remisión) y las que se cambiaron en Effi en las últimas 24 h.
   const conCambioDireccion = ordenes.filter((o) => (!!o.direccion_marcada && o.id_remision == null && o.estado !== "anulada") || acciones[`${o.sucursal}-${o.id}`]?.tipo === "direccion");
   // Sub-filtros de Órdenes pendientes.
@@ -447,6 +453,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       texto: "Remisiones ya hechas que solo esperan la guía." },
     { clave: "errores", titulo: "Órdenes con errores", filas: conError, vacio: "Sin errores: todas las órdenes van bien.", conRemision: false, conGuia: false,
       texto: "Órdenes a las que no se les pudo hacer la remisión (Effi no dejó o necesita a una persona), con el error. Las remisiones anuladas no salen aquí." },
+    { clave: "condicion", titulo: "Órdenes con condición", filas: conCondicionFiltro, vacio: "Ninguna orden con condición de envío.", conRemision: false, conGuia: false,
+      texto: "Órdenes que van a una ciudad con condición de las asesoras logísticas (trato especial, pago anticipado, sin cobertura…). No se hacen solas: las atiende una persona. La condición sale debajo del cliente." },
     { clave: "direccion", titulo: "Modificar dirección", filas: conCambioDireccion, vacio: "Ninguna orden para modificar dirección.", conRemision: false, conGuia: false,
       texto: "Órdenes enviadas a corregir la dirección: «Modificar dirección» la cambia en la orden de Effi y el agente rehace la remisión con la nueva. Salen de aquí al cambiarla." },
   ];
@@ -662,9 +670,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               const n = x.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length;
               const on = x.clave === seccionActiva.clave;
               const rojo = x.clave === "errores" && n > 0;
+              const ambar = x.clave === "condicion" && n > 0;
               return (
                 <button key={x.clave} type="button" onClick={() => { setPestana(x.clave); setSubfiltro("todas"); }} aria-pressed={on}
-                  className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${on ? "border-text bg-text text-bg" : rojo ? "border-red/50 text-red hover:bg-red/10" : "border-line text-muted hover:text-text"}`}>
+                  className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${on ? "border-text bg-text text-bg" : rojo ? "border-red/50 text-red hover:bg-red/10" : ambar ? "border-amber/60 text-amber hover:bg-amber/10" : "border-line text-muted hover:text-text"}`}>
                   {x.titulo} · {entero(n)}
                 </button>
               );
@@ -739,7 +748,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                   </td>
                   <td className="px-3 py-2 align-top">
                     <CeldaCliente o={o} cuenta={cuenta} accion={acciones[clave]} onCambio={() => router.refresh()}
-                      modo={rango || o.id_remision != null || o.estado === "anulada" || o.estado === "completa" ? "ninguno" : s.clave === "direccion" ? "editar" : "enviar"} />
+                      modo={rango || o.id_remision != null || o.estado === "anulada" || o.estado === "completa" ? "ninguno" : s.clave === "direccion" ? "editar" : "enviar"}
+                      onEjecutar={puedeEjecutar(o) && !creando(o) ? () => abrirEjecutar(o) : null} />
                     <div className="text-xs">
                       {o.restriccion && (
                         <div className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${cumpleCondicion(o) ? "bg-green/15 text-green" : "bg-red/15 text-red"}`}
@@ -758,6 +768,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                         <div key={i}>{x.nombre}{x.cantidad != null ? ` · ${entero(x.cantidad)} ${x.cantidad === 1 ? "unidad" : "unidades"}` : ""}</div>
                       ))}
                     </div>
+                    {s.clave === "condicion" && o.restriccion && (
+                      <div className="mt-1 text-[11px] font-semibold text-amber">📍 {o.restriccion.lugar}: {o.restriccion.motivo}</div>
+                    )}
                     {(s.clave === "errores" || (s.clave === "guia" && o.plan_estado === "error")) && (
                       <div className={`mt-1 text-[11px] font-semibold ${o.plan_estado === "error" && pasajero(o.plan_motivo ?? "") ? "text-amber" : "text-red"}`}>
                         {o.plan_estado === "error" && pasajero(o.plan_motivo ?? "") ? "↻ " : "⚠ "}{errorDe(o)}

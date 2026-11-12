@@ -40,7 +40,7 @@ const RESULTADOS: Record<Resultado, { label: string; corto: string; color: strin
 };
 const hoyLocal = (cuenta: string) => new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date());
 const minutos = (m: number | null) => (m == null ? "—" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
-const ESTADOS = [{ id: "pendientes", label: "Por solucionar" }, { id: "seguimiento", label: "📌 Seguimiento hoy" }, { id: "enviadas", label: "Enviadas hoy" }, { id: "todas", label: "Todas" }];
+const ESTADOS = [{ id: "pendientes", label: "Por solucionar" }, { id: "seguimiento", label: "Seguimiento hoy" }, { id: "enviadas", label: "Enviadas hoy" }, { id: "todas", label: "Todas" }];
 const SEGUIR = "seguir"; // valor de "Hacer seguimiento" en la lista de soluciones
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
@@ -97,6 +97,11 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
   // Seguimiento que ya toca (su día es hoy o ya pasó) y la novedad sigue abierta en Effi.
   const toca = (f: FilaNovedad) => (f.seguimiento && f.est_novedad === 1 && f.seguimiento.fecha <= hoy ? f.seguimiento.fecha : null);
   const porSeguir = filas.filter(toca).length;
+  // Cantidad de cada pestaña (pedido del dueño, 11-nov-2026), igual en todos los países.
+  const esPendiente = (f: FilaNovedad) => (f.est_novedad === 1 && (!f.envio || f.envio.estado === "error")) || f.envio?.estado === "enviando";
+  const cuantas: Record<string, number> = {
+    pendientes: filas.filter(esPendiente).length, seguimiento: porSeguir, enviadas: filas.filter((f) => enviadaHoy(f)).length, todas: filas.length,
+  };
   const vista = filas.filter((f) => {
     const pendiente = f.est_novedad === 1 && (!f.envio || f.envio.estado === "error");
     if (filtro.estado === "seguimiento" && !toca(f)) return false;
@@ -199,7 +204,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
         <div className="inline-flex rounded-xl border border-line bg-tinte/[0.02] p-0.5 text-xs">
           {ESTADOS.map((e) => (
             <button key={e.id} onClick={() => setFiltro((x) => ({ ...x, estado: e.id }))}
-              className={`rounded-lg px-3 py-1 font-semibold transition-colors ${filtro.estado === e.id ? "bg-blue/25 text-text" : "text-muted hover:text-text"}`}>{e.label}</button>
+              className={`rounded-lg px-3 py-1 font-semibold transition-colors ${filtro.estado === e.id ? "bg-blue/25 text-text" : e.id === "seguimiento" && cuantas.seguimiento > 0 ? "text-naranja hover:text-text" : "text-muted hover:text-text"}`}>{e.label} · {entero(cuantas[e.id] ?? 0)}</button>
           ))}
         </div>
         <select value={filtro.transp} onChange={(e) => setFiltro((x) => ({ ...x, transp: e.target.value }))} className={`${sel} h-8 max-md:h-10 max-md:w-full`}>
