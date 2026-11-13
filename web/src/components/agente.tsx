@@ -466,6 +466,11 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       texto: "Órdenes enviadas a corregir la dirección: «Modificar dirección» la cambia en la orden de Effi y el agente rehace la remisión con la nueva. Salen de aquí al cambiarla." },
   ];
   const [pestana, setPestana] = useState<string>("sin_remision");
+  // Los avisos de abajo (abono, condición de envío) llevan a su filtro: ahí cada orden sale como llega de Effi.
+  const irAFiltro = (clave: string, sub = "todas") => {
+    setPestana(clave); setSubfiltro(sub);
+    document.getElementById("filtros-agente")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const [busqueda, setBusqueda] = useState("");
   const seccionActiva = secciones.find((x) => x.clave === pestana) ?? secciones[0];
   const normal = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -671,7 +676,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       {/* Filtros principales, cada uno con su conteo; Órdenes pendientes trae sus sub-filtros. Buscador por orden, cliente,
           identificación, teléfono o ciudad. */}
       {secciones.length > 1 && (
-        <div className="card p-3 space-y-2.5">
+        <div id="filtros-agente" className="card p-3 space-y-2.5 scroll-mt-4">
           <div className="flex flex-wrap items-center gap-2">
             {secciones.map((x) => {
               const n = x.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length;
@@ -969,13 +974,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
           <div className="font-semibold text-amber">💰 {entero(conAbono.length)} {conAbono.length === 1 ? "pedido con abono" : "pedidos con abono"}: hacer el proceso</div>
           <div className="text-xs text-muted mt-0.5">El cliente empieza con ** y el agente no los toca: se quedan en orden de venta para hacerlos a mano en Effi.</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {conAbono.map((o) => (
-              <span key={`${o.sucursal}-${o.id}`} className="rounded-full border border-amber/40 px-2.5 py-0.5 text-[11px]">
-                OV {o.id} · {o.cliente?.replace(/^\s*\*+\s*/, "")} · {o.ciudad ?? "—"}{o.total ? ` · ${entero(o.total)}` : ""} · hace {duracion(o.minutos)}
-              </span>
-            ))}
-          </div>
+          <button type="button" onClick={() => irAFiltro("sin_remision", "pagos")}
+            className="mt-2 rounded-lg border border-amber/60 px-3 py-1.5 text-xs font-semibold text-amber hover:bg-amber/10">
+            Ver las órdenes como llegan de Effi →
+          </button>
         </div>
       )}
 
@@ -984,11 +986,18 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
           <div className="font-semibold text-red">📍 {entero(conCondicion.length)} {conCondicion.length === 1 ? "pedido va" : "pedidos van"} a una ciudad con condición de envío</div>
           <div className="text-xs text-muted mt-0.5">Recordatorio de las asesoras logísticas: revisar con el cliente antes de despachar. Estas no se crean solas.</div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {conCondicion.map((o) => (
-              <span key={`${o.sucursal}-${o.id}`} className="rounded-full border border-red/40 px-2.5 py-0.5 text-[11px]" title={o.restriccion?.motivo}>
-                OV {o.id} · {o.ciudad ?? "—"} · <b>{o.restriccion ? CONDICIONES[o.restriccion.tipo] : ""}</b> · hace {duracion(o.minutos)}
-              </span>
-            ))}
+            {conCondicionFiltro.length > 0 && (
+              <button type="button" onClick={() => irAFiltro("condicion")}
+                className="rounded-lg border border-red/50 px-3 py-1.5 text-xs font-semibold text-red hover:bg-red/10">
+                Órdenes con condición · {entero(conCondicionFiltro.length)} →
+              </button>
+            )}
+            {conDeficiencia.length > 0 && (
+              <button type="button" onClick={() => irAFiltro("deficiencia")}
+                className="rounded-lg border border-red/50 px-3 py-1.5 text-xs font-semibold text-red hover:bg-red/10">
+                Deficiencia en entregas · {entero(conDeficiencia.length)} →
+              </button>
+            )}
           </div>
         </div>
       )}
