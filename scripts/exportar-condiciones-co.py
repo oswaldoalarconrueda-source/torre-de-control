@@ -25,6 +25,8 @@ TIPOS = {
     "validar": ("📞 Validar con el cliente", "No sale sola. Aviso rojo; llamar al cliente antes de despachar."),
     "trato_especial": ("⭐ Trato especial: no se remisiona", "Nunca se pasa a remisión (ni sola ni con Ejecutar); la maneja una persona."),
     "transportadora_fija": ("🚚 Transportadora fija: se hace manual", "ValerIA propone esa transportadora en Ejecutar, pero no la hace sola (salvo entrega en oficina)."),
+    "revision": ("👤 La revisa una persona: no va sola", "No sale sola; la revisa una persona."),
+    "deficiencia_entregas": ("📉 Deficiencia en entregas", "No sale sola. Filtro «Deficiencia en entregas» en ValerIA: solo con pago anticipado o si el cliente ya nos compró."),
 }
 
 COMO_DECIDE = [

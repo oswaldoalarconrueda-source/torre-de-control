@@ -49,6 +49,7 @@ const CONDICIONES = {
   trato_especial: "⭐ Trato especial: no se remisiona",
   transportadora_fija: "🚚 Transportadora fija: se hace manual",
   revision: "👤 La revisa una persona: no va sola",
+  deficiencia_entregas: "📉 Deficiencia en entregas: anticipado o cliente que ya compró",
 } as const;
 // Transportadoras que usa el país (aprendidas de sus guías): id → nombre y cuántas guías tuvo en los últimos 10 días.
 export type Transportes = Record<string, { nombre?: string; guias?: number }>;
@@ -426,7 +427,11 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   // encargada sepa que las debe atender (pedido del dueño, 11-nov-2026); no se cuenta en pendientes ni en errores.
   const tieneCondicion = (o: OrdenAuto) => o.id_remision == null && o.estado !== "completa" && o.estado !== "anulada" && o.estado !== "resuelta" &&
     !pendienteResuelto(o) && !cumpleCondicion(o);
-  const conCondicionFiltro = ordenes.filter(tieneCondicion);
+  // Deficiencia en entregas (pedido del dueño, 12-nov-2026): ciudades con muy mala efectividad donde solo se envía con pago
+  // anticipado o si el cliente ya nos compró. Tienen su propio filtro y las atiende una persona.
+  const esDeficiencia = (o: OrdenAuto) => tieneCondicion(o) && o.restriccion?.tipo === "deficiencia_entregas";
+  const conDeficiencia = ordenes.filter(esDeficiencia);
+  const conCondicionFiltro = ordenes.filter((o) => tieneCondicion(o) && !esDeficiencia(o));
   const pendientes = ordenes.filter((o) => o.estado === "sin_remision" && !tieneError(o) && !tieneCondicion(o));
   // Remisiones vigentes sin guía (si la guía falló, el error sale en rojo en Estado).
   const porGuia = ordenes.filter((o) => o.estado === "sin_guia");
@@ -455,6 +460,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       texto: "Órdenes a las que no se les pudo hacer la remisión (Effi no dejó o necesita a una persona), con el error. Las remisiones anuladas no salen aquí." },
     { clave: "condicion", titulo: "Órdenes con condición", filas: conCondicionFiltro, vacio: "Ninguna orden con condición de envío.", conRemision: false, conGuia: false,
       texto: "Órdenes que van a una ciudad con condición de las asesoras logísticas (trato especial, pago anticipado, sin cobertura…). No se hacen solas: las atiende una persona. La condición sale debajo del cliente." },
+    { clave: "deficiencia", titulo: "Deficiencia en entregas", filas: conDeficiencia, vacio: "Ninguna orden a ciudades con deficiencia en entregas.", conRemision: false, conGuia: false,
+      texto: "Órdenes a ciudades donde casi no se entrega (ver Transportadoras y ciudades). Solo se envían con pago anticipado o si el cliente ya nos compró: la Huella dice si ya compró. No se hacen solas: las atiende una persona." },
     { clave: "direccion", titulo: "Modificar dirección", filas: conCambioDireccion, vacio: "Ninguna orden para modificar dirección.", conRemision: false, conGuia: false,
       texto: "Órdenes enviadas a corregir la dirección: «Modificar dirección» la cambia en la orden de Effi y el agente rehace la remisión con la nueva. Salen de aquí al cambiarla." },
   ];
@@ -670,7 +677,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
               const n = x.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length;
               const on = x.clave === seccionActiva.clave;
               const rojo = x.clave === "errores" && n > 0;
-              const ambar = x.clave === "condicion" && n > 0;
+              const ambar = (x.clave === "condicion" || x.clave === "deficiencia") && n > 0;
               return (
                 <button key={x.clave} type="button" onClick={() => { setPestana(x.clave); setSubfiltro("todas"); }} aria-pressed={on}
                   className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${on ? "border-text bg-text text-bg" : rojo ? "border-red/50 text-red hover:bg-red/10" : ambar ? "border-amber/60 text-amber hover:bg-amber/10" : "border-line text-muted hover:text-text"}`}>
@@ -768,9 +775,16 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                         <div key={i}>{x.nombre}{x.cantidad != null ? ` · ${entero(x.cantidad)} ${x.cantidad === 1 ? "unidad" : "unidades"}` : ""}</div>
                       ))}
                     </div>
-                    {s.clave === "condicion" && o.restriccion && (
+                    {(s.clave === "condicion" || s.clave === "deficiencia") && o.restriccion && (
                       <div className="mt-1 text-[11px] font-semibold text-amber">📍 {o.restriccion.lugar}: {o.restriccion.motivo}</div>
                     )}
+                    {s.clave === "deficiencia" && (() => {
+                      const h = huellaDe(o);
+                      const compro = Number(h?.entregadas ?? 0);
+                      return compro > 0
+                        ? <div className="mt-0.5 text-[11px] font-semibold text-green">✓ Ya nos compró ({entero(compro)} {compro === 1 ? "entrega" : "entregas"}): puede ir contra entrega</div>
+                        : <div className="mt-0.5 text-[11px] font-semibold text-red">Cliente nuevo: solo con pago anticipado</div>;
+                    })()}
                     {(s.clave === "errores" || (s.clave === "guia" && o.plan_estado === "error")) && (
                       <div className={`mt-1 text-[11px] font-semibold ${o.plan_estado === "error" && pasajero(o.plan_motivo ?? "") ? "text-amber" : "text-red"}`}>
                         {o.plan_estado === "error" && pasajero(o.plan_motivo ?? "") ? "↻ " : "⚠ "}{errorDe(o)}
