@@ -140,3 +140,24 @@ export function GastoPorDia({ filas, paises }: {
     </div>
   );
 }
+
+// 💵 Flujo de Caja: por día, lo que entró neto a la wallet (verde) frente a lo gastado en publicidad (rojo), en la moneda del país.
+export function AdsVsIngreso({ filas, divisa }: { filas: { fecha: string; neto: number; ads: number }[]; divisa: string }) {
+  const data = [...filas].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  return (
+    <div className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ left: 0, right: 4, top: 4 }} barGap={1}>
+          <CartesianGrid vertical={false} stroke="var(--line)" />
+          <XAxis dataKey="fecha" tickFormatter={ejeX} tick={{ fill: "var(--muted)", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={12} />
+          <YAxis tickFormatter={(v) => compacta(divisa)(Number(v))} tick={{ fill: "var(--muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
+          <Tooltip {...tooltipStyle} labelFormatter={(l) => ejeX(String(l))}
+            formatter={(v, n) => [exacta(divisa)(Number(v)), n === "neto" ? "Ingreso neto wallet" : "Gasto en ads"]} />
+          <Legend formatter={(v) => <span style={{ color: "var(--muted)", fontSize: 12 }}>{v === "neto" ? "Ingreso neto wallet" : "Gasto en ads"}</span>} iconType="circle" iconSize={8} />
+          <Bar dataKey="neto" fill="#2fd28f" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="ads" fill="#ff5a6a" radius={[3, 3, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}

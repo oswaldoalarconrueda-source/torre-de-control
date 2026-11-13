@@ -18,10 +18,9 @@ export type ItemMenu = {
   hijos?: ItemMenu[]; // grupo que se abre y se cierra (el grupo sale solo si la persona ve algún hijo)
 };
 
-// Orden del menú: lo del día a día arriba (Inicio, Data Experience, Novedades logística, ValerIA/Agente), luego lo en vivo y al final lo
+// Orden del menú: lo del día a día arriba (Data Experience, Novedades logística, ValerIA/Agente), luego lo en vivo y al final lo
 // que todavía no está ("pronto"). Las de solo dueño van en "Solo para ti".
 export const MENU_JOALIX: ItemMenu[] = [
-  { href: "/inicio", label: "Inicio", emoji: "🏠", estado: "vivo" },
   { href: "/datos", label: "Data Experience", emoji: "🛒", estado: "vivo", modulo: "resumen" },
   { href: "#logistica", label: "Novedades logística", emoji: "🚚", estado: "vivo", hijos: [
     { href: "/oficina", label: "Disponible en oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
@@ -34,6 +33,7 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
   { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true, soloSocios: true },
   { href: "/sin-liquidar", label: "Guías sin liquidar", emoji: "⏳", estado: "vivo", modulo: "dinero" },
+  { href: "/tiempo-empleados", label: "Gestión tiempo empleados", emoji: "⏱️", estado: "vivo", soloOwner: true },
   { href: "/agente-admin", label: "Agente admin", emoji: "🧾", estado: "vivo", soloOwner: true },
   { href: "/sync", label: "Estado de los datos", emoji: "🔄", estado: "vivo", soloOwner: true },
   { href: "/cargas", label: "Cargar archivos", emoji: "📤", estado: "vivo", soloOwner: true },
@@ -48,7 +48,7 @@ export const MENU_EN_VIVO: ItemMenu[] = [
 
 export const MENU_PRONTO: ItemMenu[] = [
   { href: "/productos", label: "Productos", emoji: "📦", estado: "vivo", modulo: "resumen" },
-  { href: "/flujo-caja", label: "Flujo de Caja", emoji: "💵", estado: "pronto", modulo: "dinero" },
+  { href: "/flujo-caja", label: "Flujo de Caja", emoji: "💵", estado: "vivo", modulo: "dinero", soloSocios: true },
   { href: "/pagos-publicidad", label: "Pagos de publicidad", emoji: "💳", estado: "pronto", modulo: "dinero" },
   { href: "/utilidad", label: "Utilidad", emoji: "📈", estado: "pronto", modulo: "resumen" },
   { href: "/glosario", label: "Glosario", emoji: "📖", estado: "vivo" },

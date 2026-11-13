@@ -5,8 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, Coins, CreditCard, Factory, Globe, Hourglass, House, Megaphone, Menu,
-  MessageSquareText, Package, PanelLeftClose, PanelLeftOpen, Receipt, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
+  Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, Coins, CreditCard, Factory, Globe, Hourglass, Megaphone, Menu,
+  MessageSquareText, Package, PanelLeftClose, PanelLeftOpen, Receipt, Timer, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
   UserCog, Wallet, X, type LucideIcon,
 } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
@@ -19,7 +19,7 @@ const MENU_OCULTO = "centro.menu-oculto";
 
 // Íconos de línea, de un solo color (pedido del dueño, 11-nov-2026: sin emojis de colores a la izquierda del nombre).
 const ICONOS: Record<string, LucideIcon> = {
-  "/inicio": House, "/datos": ChartNoAxesColumn, "#logistica": Truck, "/oficina": Store, "/novedades": TriangleAlert,
+  "/tiempo-empleados": Timer, "/datos": ChartNoAxesColumn, "#logistica": Truck, "/oficina": Store, "/novedades": TriangleAlert,
   "/agente": Bot, "/pedidos-lucid": MessageSquareText, "/proveeduria": Factory, "/global": Globe, "/publicidad": Megaphone,
   "/sin-liquidar": Hourglass, "/agente-admin": Receipt, "/sync": RefreshCw, "/cargas": Upload, "/usuarios": UserCog,
   "/guias": Truck, "/wallet-en-vivo": Wallet, "/dinero": Coins, "/productos": Package, "/flujo-caja": Banknote,
@@ -141,7 +141,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   const contenido = (
     <>
       <div className="flex items-center gap-2.5 px-3 pt-5 pb-4">
-        <Link href="/inicio" aria-label="Ir a Inicio" className="shrink-0"><Logo /></Link>
+        <Link href="/inicio" aria-label="Ir a la primera pantalla" className="shrink-0"><Logo /></Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
             <Link href="/inicio" className="min-w-0 truncate font-display font-semibold tracking-tight leading-tight">Centro de Control</Link>
