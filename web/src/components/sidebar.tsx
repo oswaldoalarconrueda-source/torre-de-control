@@ -5,9 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, Coins, CreditCard, Factory, Globe, Hourglass, Megaphone, Menu,
-  MessageSquareText, Package, PanelLeftClose, PanelLeftOpen, Receipt, Timer, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
-  UserCog, Wallet, X, type LucideIcon,
+  Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, ChevronLeft, ChevronRight, Coins, CreditCard, Factory, Globe, Hourglass, Megaphone,
+  MessageSquareText, Package, Receipt, Timer, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
+  UserCog, Wallet, type LucideIcon,
 } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
 import { esSocio, tieneModulo, type Acceso } from "@/lib/modulos";
@@ -145,10 +145,6 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
             <Link href="/inicio" className="min-w-0 truncate font-display font-semibold tracking-tight leading-tight">Centro de Control</Link>
-            <button type="button" onClick={() => ocultar(true)} title="Ocultar el menú" aria-label="Ocultar el menú"
-              className="hidden shrink-0 rounded-md p-1 text-muted hover:bg-tinte/[0.06] hover:text-text lg:inline-flex">
-              <PanelLeftClose size={15} aria-hidden />
-            </button>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
             {sociedades ? (
@@ -207,37 +203,40 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
 
   return (
     <>
-      {/* Celular: barra superior con botón de menú */}
-      <div className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-line bg-bg/85 backdrop-blur">
+      {/* Celular: barra superior con el nombre y el tema; el menú se saca con el botón flotante del medio. */}
+      <div className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-line bg-bg/85 backdrop-blur">
         <div className="flex items-center gap-2">
           <Logo />
           <span className="font-display font-semibold tracking-tight">Centro de Control</span>
         </div>
-        <div className="flex items-center gap-2">
-          <SelectorTema compacto />
-          <button onClick={() => setAbierto(!abierto)} className="rounded-xl border border-line p-2 text-muted hover:text-text" aria-label={abierto ? "Cerrar menú" : "Abrir menú"} aria-expanded={abierto}>
-            {abierto ? <X size={18} /> : <Menu size={18} />}
-          </button>
-        </div>
+        <SelectorTema compacto />
       </div>
       {abierto && (
-        <div className="lg:hidden fixed inset-0 z-40 flex">
+        <div className="md:hidden fixed inset-0 z-40 flex">
           <div className="w-72 max-w-[85vw] h-full flex flex-col bg-panel border-r border-line">{contenido}</div>
           <button className="flex-1 bg-black/50" onClick={() => setAbierto(false)} aria-label="Cerrar menú" />
         </div>
       )}
 
-      {/* Escritorio: menú lateral fijo */}
-      {oculto ? (
-        <button type="button" onClick={() => ocultar(false)} title="Mostrar el menú" aria-label="Mostrar el menú"
-          className="fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rounded-r-xl border border-l-0 border-line bg-panel py-3 pl-1 pr-1.5 text-muted shadow-lg hover:text-text lg:inline-flex">
-          <PanelLeftOpen size={17} aria-hidden />
-        </button>
-      ) : (
-        <aside className="hidden lg:flex sticky top-0 h-dvh w-60 shrink-0 flex-col border-r border-line bg-panel/60 backdrop-blur">
+      {/* Computador y tableta: el menú queda siempre a la vista (pedido del dueño, 12-nov-2026); se oculta o se saca con el
+          botón flotante pegado a su borde, a media altura, y se recuerda en este navegador. */}
+      {!oculto && (
+        <aside className="hidden md:flex sticky top-0 h-dvh w-60 shrink-0 flex-col border-r border-line bg-panel/60 backdrop-blur">
           {contenido}
         </aside>
       )}
+      <button type="button" onClick={() => ocultar(!oculto)} title={oculto ? "Mostrar el menú" : "Ocultar el menú"}
+        aria-label={oculto ? "Mostrar el menú" : "Ocultar el menú"} aria-expanded={!oculto}
+        className={`fixed top-1/2 z-40 hidden -translate-y-1/2 items-center justify-center rounded-r-xl border border-l-0 border-line bg-panel py-3 pl-0.5 pr-1 text-muted shadow-lg hover:text-text md:inline-flex ${oculto ? "left-0" : "left-60"}`}>
+        {oculto ? <ChevronRight size={16} aria-hidden /> : <ChevronLeft size={16} aria-hidden />}
+      </button>
+      {/* Celular: el mismo botón a media altura saca el menú encima de la pantalla y lo vuelve a guardar. */}
+      <button type="button" onClick={() => setAbierto(!abierto)} title={abierto ? "Cerrar el menú" : "Abrir el menú"}
+        aria-label={abierto ? "Cerrar el menú" : "Abrir el menú"} aria-expanded={abierto}
+        style={abierto ? { left: "min(18rem, 85vw)" } : undefined}
+        className="fixed left-0 top-1/2 z-50 inline-flex -translate-y-1/2 items-center justify-center rounded-r-xl border border-l-0 border-line bg-panel py-3 pl-0.5 pr-1 text-muted shadow-lg hover:text-text md:hidden">
+        {abierto ? <ChevronLeft size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
+      </button>
     </>
   );
 }

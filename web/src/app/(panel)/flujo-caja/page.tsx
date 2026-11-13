@@ -46,7 +46,7 @@ export default async function FlujoCajaPage({ searchParams }: PageProps<"/flujo-
       />
       {error && <p className="text-sm text-red mb-4">{error.message}</p>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-1 min-[440px]:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <Kpi etiqueta="Ingreso neto wallet" valor={plata(t.neto)} nota={`${entero(t.guias)} guías liquidadas · recaudo ${plata(t.recaudo)}`} acento />
         <Kpi etiqueta="Gasto en ads" valor={plata(t.ads)} nota="Meta, con la tasa de cada día" />
         <Kpi etiqueta="Queda después de ads" valor={<span className={color(queda)}>{plata(queda, true)}</span>}

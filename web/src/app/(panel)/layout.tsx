@@ -43,7 +43,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const opciones = esOwner ? (lista ?? []).map((x) => x.nombre as string) : null;
 
   return (
-    <div className="lg:flex">
+    <div className="md:flex">
       <Latido />
       <Suspense>
         <Sidebar acceso={usuario} email={usuario.email} sociedad={sociedad} ultimoSync={haceCuanto(ultimo as string | null)}
@@ -55,7 +55,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
       {/* Huella del cliente: aviso al hacerse cada guía de Guatemala (solo trae las tiendas que el usuario ve). */}
       {tieneModulo(usuario, "automatizacion") && <AlertaHuella />}
       <main className="relative flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-24 lg:pb-16 max-w-[1400px]">
-        <div className="absolute right-8 top-6 z-30 hidden lg:block"><SelectorTema /></div>
+        <div className="absolute right-8 top-6 z-30 hidden md:block"><SelectorTema /></div>
         {caida && (
           <div className="mt-4 lg:mt-16 rounded-xl border border-red/50 bg-red/10 px-4 py-3 text-sm">
             <b className="text-red">🚨 Los webhooks de Effi dejaron de llegar</b>
