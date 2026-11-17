@@ -55,7 +55,7 @@ export default async function NovedadesPage({ searchParams }: PageProps<"/noveda
         ? supabase.rpc("novedades_bandeja_demo", { p_cuentas: [cuenta], p_desde: f.desde, p_hasta: f.hasta })
         : supabase.rpc("novedades_bandeja", { p_cuentas: [cuenta] }),
       supabase.from("novedad_soluciones").select("cuenta,transportadora_efficommerce,id_solucion,nombre_solucion,pide_entrega,veces").eq("cuenta", cuenta),
-      supabase.rpc("novedades_medidores", { p_cuentas: [cuenta], p_desde: f.desde, p_hasta: f.hasta }),
+      supabase.rpc("novedades_medidores", { p_cuentas: [cuenta], p_desde: f.desde, p_hasta: f.hasta, ...(demo ? { p_todas: true } : {}) }),
     ]);
     return (
       <>
@@ -69,7 +69,8 @@ export default async function NovedadesPage({ searchParams }: PageProps<"/noveda
     );
   }
 
-  const { data, error } = await supabase.rpc("kpi_novedades", rpcArgs(f));
+  // Inter Rapidísimo no cuenta en novedades; la demostración sigue como estaba (p_todas).
+  const { data, error } = await supabase.rpc("kpi_novedades", { ...rpcArgs(f), ...(demo ? { p_todas: true } : {}) });
   const filas = (data ?? []) as Fila[];
   const total = filas.reduce((a, r) => a + Number(r.guias), 0);
   const rec = filas.reduce((a, r) => a + Number(r.recuperadas), 0);
