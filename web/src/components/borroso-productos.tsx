@@ -24,6 +24,8 @@ function borrar(raiz: Node) {
     const el = n.parentElement;
     // Nunca dentro de scripts ni estilos: ahí viajan los datos de la página y cambiarlos la rompe.
     if (!el || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(el.tagName)) continue;
+    // Etiqueta de plataforma "Ambas" (estado de resultados): también se esconde.
+    if (/^\s*ambas\s*$/i.test(n.textContent ?? "") && el.tagName === "SPAN") { el.style.display = "none"; continue; }
     if (el && PLATAFORMA.test(n.textContent ?? "")) {
       // Etiqueta suelta ("Otra P"): se esconde; frase: se reescribe sin nombrarla.
       if (/^\s*(otra p|dropi)\s*$/i.test(n.textContent ?? "")) el.style.display = "none";
