@@ -71,5 +71,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)"],
+  // sw.js, el manifiesto y los íconos de la app se piden sin sesión (instalar la app en el celular).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.webmanifest|apple-icon|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)"],
 };

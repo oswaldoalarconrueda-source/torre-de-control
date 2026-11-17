@@ -22,6 +22,7 @@ export type ItemMenu = {
 // que todavía no está ("pronto"). Las de solo dueño van en "Solo para ti".
 export const MENU_JOALIX: ItemMenu[] = [
   { href: "/datos", label: "Data Experience", emoji: "🛒", estado: "vivo", modulo: "resumen" },
+  { href: "/tasa-despacho", label: "Tasa de despacho", emoji: "📦", estado: "vivo", modulo: "resumen", noProveeduria: true },
   { href: "#logistica", label: "Novedades logística", emoji: "🚚", estado: "vivo", hijos: [
     { href: "/oficina", label: "Disponible en oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
     { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades", noProveeduria: true },
@@ -33,6 +34,7 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
   { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true, soloSocios: true },
   { href: "/sin-liquidar", label: "Guías sin liquidar", emoji: "⏳", estado: "vivo", modulo: "dinero" },
+  { href: "/alertas", label: "Mis alertas", emoji: "🔔", estado: "vivo", soloOwner: true },
   { href: "/tiempo-empleados", label: "Gestión tiempo empleados", emoji: "⏱️", estado: "vivo", soloOwner: true },
   { href: "/agente-admin", label: "Agente admin", emoji: "🧾", estado: "vivo", soloOwner: true },
   { href: "/sync", label: "Estado de los datos", emoji: "🔄", estado: "vivo", soloOwner: true },

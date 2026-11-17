@@ -4,9 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
-import {
+import { Bell,
   Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, ChevronLeft, ChevronRight, Coins, CreditCard, Factory, Globe, Hourglass, Mail, Megaphone,
-  MessageSquareText, Package, Radio, Receipt, Timer, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
+  MessageSquareText, Package, PackageCheck, Radio, Receipt, Timer, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
   UserCog, Wallet, type LucideIcon,
 } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
@@ -20,7 +20,7 @@ const MENU_OCULTO = "centro.menu-oculto";
 
 // Íconos de línea, de un solo color (pedido del dueño, 11-nov-2026: sin emojis de colores a la izquierda del nombre).
 const ICONOS: Record<string, LucideIcon> = {
-  "/tiempo-empleados": Timer, "/datos": ChartNoAxesColumn, "#logistica": Truck, "/oficina": Store, "/novedades": TriangleAlert,
+  "/tiempo-empleados": Timer, "/alertas": Bell, "/datos": ChartNoAxesColumn, "/tasa-despacho": PackageCheck, "#logistica": Truck, "/oficina": Store, "/novedades": TriangleAlert,
   "/agente": Bot, "/pedidos-lucid": MessageSquareText, "/proveeduria": Factory, "/global": Globe, "/publicidad": Megaphone,
   "/sin-liquidar": Hourglass, "/agente-admin": Receipt, "/sync": RefreshCw, "/cargas": Upload, "/usuarios": UserCog,
   "/guias": Truck, "/wallet-en-vivo": Wallet, "/dinero": Coins, "/productos": Package, "/flujo-caja": Banknote,
