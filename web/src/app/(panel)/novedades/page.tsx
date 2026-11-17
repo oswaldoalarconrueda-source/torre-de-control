@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros, rpcArgs } from "@/lib/filtros";
+import { enDemo } from "@/lib/demo-server";
 import { entero, pct } from "@/lib/formato";
 import { infoCuenta, type Semaforo } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
@@ -43,12 +44,16 @@ export default async function NovedadesPage({ searchParams }: PageProps<"/noveda
   const vista = sp.vista === "analisis" ? "analisis" : "bandeja";
   const hoy = hoyBogota();
   const f = leerFiltros(vista === "bandeja" && typeof sp.d !== "string" ? { ...sp, d: hoy, h: hoy } : sp);
+  // 🎬 Demostración: la bandeja con las novedades que llegaron en el rango (septiembre), no las abiertas de hoy.
+  const demo = await enDemo();
   const cuenta = f.cuentas?.[0] ?? "TIENDA_CO";
   const supabase = await createClient();
 
   if (vista === "bandeja") {
     const [b, s, m] = await Promise.all([
-      supabase.rpc("novedades_bandeja", { p_cuentas: [cuenta] }),
+      demo
+        ? supabase.rpc("novedades_bandeja_demo", { p_cuentas: [cuenta], p_desde: f.desde, p_hasta: f.hasta })
+        : supabase.rpc("novedades_bandeja", { p_cuentas: [cuenta] }),
       supabase.from("novedad_soluciones").select("cuenta,transportadora_efficommerce,id_solucion,nombre_solucion,pide_entrega,veces").eq("cuenta", cuenta),
       supabase.rpc("novedades_medidores", { p_cuentas: [cuenta], p_desde: f.desde, p_hasta: f.hasta }),
     ]);
@@ -59,7 +64,7 @@ export default async function NovedadesPage({ searchParams }: PageProps<"/noveda
         {(b.error || m.error) && <p className="text-sm text-red mb-4">{b.error?.message ?? m.error?.message}</p>}
         <NovedadesBandeja key={`${cuenta}|${f.desde}|${f.hasta}`} cuenta={cuenta} desde={f.desde} hasta={f.hasta}
           filas={(b.data ?? []) as FilaNovedad[]} soluciones={(s.data ?? []) as Solucion[]} medidores={(m.data ?? null) as Medidores | null}
-          verEquipo={u.rol === "owner" || u.rol === "socio"} email={u.email} />
+          verEquipo={u.rol === "owner" || u.rol === "socio"} email={u.email} demo={demo} />
       </>
     );
   }

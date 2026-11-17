@@ -44,16 +44,17 @@ const ESTADOS = [{ id: "pendientes", label: "Por solucionar" }, { id: "seguimien
 const SEGUIR = "seguir"; // valor de "Hacer seguimiento" en la lista de soluciones
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
-export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, soluciones, medidores: medInicial, verEquipo, email }: {
+export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, soluciones, medidores: medInicial, verEquipo, email, demo = false }: {
   cuenta: string; desde: string; hasta: string; filas: FilaNovedad[]; soluciones: Solucion[]; medidores: Medidores | null;
   verEquipo: boolean; email: string;
+  demo?: boolean; // 🎬 modo demostración: las novedades del rango (bandeja_demo), abre en «Todas» y no se recarga sola
 }) {
   const [filas, setFilas] = useState(inicial);
   const [med, setMed] = useState(medInicial);
   const [borr, setBorr] = useState<Record<number, Borrador>>({});
   const [aviso, setAviso] = useState<Record<number, string>>({});
   const [ocupada, setOcupada] = useState<Record<number, boolean>>({});
-  const [filtro, setFiltro] = useState({ estado: "pendientes", transp: "", novedad: "", buscar: "", mias: false });
+  const [filtro, setFiltro] = useState({ estado: demo ? "todas" : "pendientes", transp: "", novedad: "", buscar: "", mias: false });
   const [ahora, setAhora] = useState(() => Date.now());
   const [copiada, setCopiada] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
@@ -62,13 +63,15 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
   // Bandeja y medidores se refrescan solos: las novedades nuevas aparecen arriba sin recargar la página.
   const recargar = useCallback(async () => {
     const [b, m] = await Promise.all([
-      supabase.rpc("novedades_bandeja", { p_cuentas: [cuenta] }),
+      demo
+        ? supabase.rpc("novedades_bandeja_demo", { p_cuentas: [cuenta], p_desde: desde, p_hasta: hasta })
+        : supabase.rpc("novedades_bandeja", { p_cuentas: [cuenta] }),
       supabase.rpc("novedades_medidores", { p_cuentas: [cuenta], p_desde: desde, p_hasta: hasta }),
     ]);
     if (!vivo.current) return;
     if (b.data) setFilas(b.data as FilaNovedad[]);
     if (m.data) setMed(m.data as Medidores);
-  }, [supabase, cuenta, desde, hasta]);
+  }, [supabase, cuenta, desde, hasta, demo]);
   useEffect(() => {
     vivo.current = true;
     const t = setInterval(recargar, 30_000), r = setInterval(() => setAhora(Date.now()), 30_000);

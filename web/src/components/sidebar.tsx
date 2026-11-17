@@ -5,12 +5,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, ChevronLeft, ChevronRight, Coins, CreditCard, Factory, Globe, Hourglass, Megaphone,
-  MessageSquareText, Package, Receipt, Timer, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
+  Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, ChevronLeft, ChevronRight, Coins, CreditCard, Factory, Globe, Hourglass, Mail, Megaphone,
+  MessageSquareText, Package, Radio, Receipt, Timer, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
   UserCog, Wallet, type LucideIcon,
 } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
 import { esSocio, tieneModulo, type Acceso } from "@/lib/modulos";
+import { DEMO_RUTAS, DEMO_TITULOS } from "@/lib/demo";
 import { Logo } from "./ui";
 import { Salir } from "./salir";
 import { SelectorTema } from "./selector-tema";
@@ -23,7 +24,7 @@ const ICONOS: Record<string, LucideIcon> = {
   "/agente": Bot, "/pedidos-lucid": MessageSquareText, "/proveeduria": Factory, "/global": Globe, "/publicidad": Megaphone,
   "/sin-liquidar": Hourglass, "/agente-admin": Receipt, "/sync": RefreshCw, "/cargas": Upload, "/usuarios": UserCog,
   "/guias": Truck, "/wallet-en-vivo": Wallet, "/dinero": Coins, "/productos": Package, "/flujo-caja": Banknote,
-  "/pagos-publicidad": CreditCard, "/utilidad": TrendingUp, "/glosario": BookOpen,
+  "/pagos-publicidad": CreditCard, "/correos": Mail, "/en-vivo": Radio, "/utilidad": TrendingUp, "/glosario": BookOpen,
 };
 const Icono = ({ href }: { href: string }) => {
   const I = ICONOS[href];
@@ -32,12 +33,13 @@ const Icono = ({ href }: { href: string }) => {
 // Título de sección: mayúsculas pequeñas y espaciadas.
 const titulo = "px-3 pb-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-muted/80";
 
-export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, agente, porAceptar = 0, conProveeduria = false, soloProveeduria = false }: {
+export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista, agente, porAceptar = 0, conProveeduria = false, soloProveeduria = false, demo = false }: {
   acceso: Acceso; email: string; ultimoSync: string; sociedad: string; sociedades: string[] | null; vista: string | null;
   agente: string; // cómo se llama el ítem del agente: ValerIA en Joalix, Agente en las demás sociedades
   porAceptar?: number; // registros nuevos esperando que el dueño los acepte
   conProveeduria?: boolean; // ve alguna empresa de proveeduría (Distrilatam)
   soloProveeduria?: boolean; // solo ve empresas de proveeduría: no le salen los módulos de tiendas que no necesita
+  demo?: boolean; // 🎬 modo demostración: solo las pantallas de la demostración
 }) {
   const esOwner = acceso.rol === "owner";
   const path = usePathname();
@@ -56,6 +58,9 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   // Dueño: qué sociedad mira. Se guarda en su usuario y la base filtra todo por esa sociedad; el país elegido se suelta
   // porque puede ser de otra sociedad.
   async function verSociedad(s: string) {
+    // 🎬 "Demo" entra al modo demostración; desde la demostración, escoger una sociedad sale de ella y la deja puesta.
+    if (s === "__demo") { window.location.href = "/demo"; return; }
+    if (demo) { window.location.href = `/demo/salir?ver=${encodeURIComponent(s)}`; return; }
     const { error } = await createClient().rpc("app_ver_sociedad", { p_sociedad: s || null });
     if (error) return;
     start(() => { router.push(path); router.refresh(); });
@@ -148,11 +153,12 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
             {sociedades ? (
-              <select value={vista ?? ""} onChange={(e) => verSociedad(e.target.value)} disabled={cambiando}
+              <select value={demo ? "__demo" : vista ?? ""} onChange={(e) => verSociedad(e.target.value)} disabled={cambiando}
                 aria-label="Qué sociedad ver"
                 className="-ml-1 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-muted hover:border-line hover:text-text focus:border-line">
                 <option value="" className="bg-bg text-text">Todas las sociedades</option>
                 {sociedades.map((s) => <option key={s} value={s} className="bg-bg text-text">{s}</option>)}
+                <option value="__demo" className="bg-bg text-text">🎬 Demo</option>
               </select>
             ) : (
               <div className="min-w-0 flex-1 text-[11px] text-muted truncate">{sociedad}</div>
@@ -168,6 +174,17 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto px-2 space-y-5">
+        {/* 🎬 Modo demostración: las pantallas que se muestran, en orden, y los correos que se envían. */}
+        {demo ? (
+          <div className="space-y-0.5">
+            <div className={`${titulo} !text-amber/90`}>Demostración · septiembre</div>
+            {DEMO_RUTAS.map((href) => {
+              const todos = [...MENU_JOALIX.flatMap((it) => [it, ...(it.hijos ?? [])]), ...MENU_EN_VIVO, ...MENU_PRONTO];
+              const it = todos.find((x) => x.href === href) ?? { href, label: DEMO_TITULOS[href] ?? href, emoji: "", estado: "vivo" as const };
+              return item({ ...it, soloOwner: false, soloSocios: false });
+            })}
+          </div>
+        ) : (<>
         <div className="space-y-0.5">{MENU_JOALIX.filter((it) => !it.soloOwner).map((it) => (it.hijos ? grupo(it) : item(it)))}</div>
         {MENU_EN_VIVO.some((it) => !it.modulo || tieneModulo(acceso, it.modulo)) && (
           <div>
@@ -190,6 +207,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
             <div className="space-y-0.5">{MENU_JOALIX.filter((it) => it.soloOwner).map((it) => item(it))}</div>
           </div>
         )}
+        </>)}
       </nav>
       <div className="border-t border-line p-3 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xs text-muted" title="Última sincronización con Effi">

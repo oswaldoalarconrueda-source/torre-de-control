@@ -10,6 +10,9 @@ import { tieneModulo } from "@/lib/modulos";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { SelectorTema } from "@/components/selector-tema";
 import { Latido } from "@/components/latido";
+import { SoloLectura } from "@/components/solo-lectura";
+import { cookies } from "next/headers";
+import { DEMO_COOKIE } from "@/lib/demo";
 
 export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
@@ -29,6 +32,8 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const sociedad = sociedades.join(" · ") || "Sin tiendas asignadas";
   // El dueño escoge qué sociedad mira (todas o una); los demás ven solo la suya.
   const esOwner = usuario.rol === "owner";
+  // 🎬 Modo demostración (solo el dueño): septiembre de 2026 y solo lectura.
+  const demo = esOwner && (await cookies()).get(DEMO_COOKIE)?.value === "1";
   const [{ data: yo }, { count: porAceptar }, { data: caida }] = esOwner
     ? await Promise.all([
       supabase.from("app_usuarios").select("sociedad_vista").eq("user_id", usuario.id).maybeSingle(),
@@ -44,19 +49,20 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
 
   return (
     <div className="md:flex">
-      <Latido />
+      {!demo && <Latido />}
       <Suspense>
         <Sidebar acceso={usuario} email={usuario.email} sociedad={sociedad} ultimoSync={haceCuanto(ultimo as string | null)}
           agente={agente} sociedades={opciones} vista={(yo?.sociedad_vista as string | null) ?? null} porAceptar={porAceptar ?? 0}
           conProveeduria={(cuentas ?? []).some((c) => c.tipo === "proveeduria")}
-          soloProveeduria={!!cuentas?.length && cuentas.every((c) => c.tipo === "proveeduria")} />
+          soloProveeduria={!!cuentas?.length && cuentas.every((c) => c.tipo === "proveeduria")} demo={demo} />
       </Suspense>
-      {tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} nombre={agente} />}
+      {!demo && tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} nombre={agente} />}
       {/* Huella del cliente: aviso al hacerse cada guía de Guatemala (solo trae las tiendas que el usuario ve). */}
-      {tieneModulo(usuario, "automatizacion") && <AlertaHuella />}
+      {!demo && tieneModulo(usuario, "automatizacion") && <AlertaHuella />}
       <main className="relative flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-24 lg:pb-16 max-w-[1400px]">
         <div className="absolute right-8 top-6 z-30 hidden md:block"><SelectorTema /></div>
-        {caida && (
+        {demo && <div className="-mx-4 sm:-mx-6 lg:-mx-8"><SoloLectura /></div>}
+        {!demo && caida && (
           <div className="mt-4 lg:mt-16 rounded-xl border border-red/50 bg-red/10 px-4 py-3 text-sm">
             <b className="text-red">🚨 Los webhooks de Effi dejaron de llegar</b>
             {" "}({(caida.cuentas as string[]).map((c) => infoCuenta(c).nombre).join(", ")}) desde {haceCuanto(caida.desde as string)}.
