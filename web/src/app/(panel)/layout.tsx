@@ -11,6 +11,7 @@ import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { SelectorTema } from "@/components/selector-tema";
 import { Latido } from "@/components/latido";
 import { SoloLectura } from "@/components/solo-lectura";
+import { BorrosoProductos } from "@/components/borroso-productos";
 import { cookies } from "next/headers";
 import { DEMO_COOKIE } from "@/lib/demo";
 
@@ -61,7 +62,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
       {!demo && tieneModulo(usuario, "automatizacion") && <AlertaHuella />}
       <main className="relative flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-24 lg:pb-16 max-w-[1400px]">
         <div className="absolute right-8 top-6 z-30 hidden md:block"><SelectorTema /></div>
-        {demo && <div className="-mx-4 sm:-mx-6 lg:-mx-8"><SoloLectura /></div>}
+        {demo && <div className="-mx-4 sm:-mx-6 lg:-mx-8"><SoloLectura /><BorrosoProductos /></div>}
         {!demo && caida && (
           <div className="mt-4 lg:mt-16 rounded-xl border border-red/50 bg-red/10 px-4 py-3 text-sm">
             <b className="text-red">🚨 Los webhooks de Effi dejaron de llegar</b>

@@ -3,6 +3,7 @@ import { hoyBogota, leerFiltros, mismoDiaMesAnterior, type Filtros } from "@/lib
 import { ordenCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { SelectorPlataforma, leerPlataforma } from "@/components/selector-plataforma";
+import { enDemo } from "@/lib/demo-server";
 import { conDropi } from "@/lib/dropi";
 import { GlobalVista, type DatosGlobal, type FilaMes } from "@/components/global-vista";
 
@@ -23,7 +24,10 @@ export default async function GlobalPage({ searchParams }: PageProps<"/global">)
   const { data: tiendasActivas } = await supabase.from("effi_accounts").select("slug").eq("activa", true).eq("tipo", "tienda");
   const elegidas = (tiendasActivas ?? []).map((t) => t.slug as string).filter((c) => !f.cuentas || f.cuentas.includes(c));
   const hayDropi = (await conDropi(supabase, elegidas)).length > 0;
-  const plataforma = hayDropi ? leerPlataforma(sp) : "effi";
+  // 🎬 Demostración: las dos plataformas sumadas (como «Ambas»), sin selector y sin nombrar la otra plataforma
+  // (components/borroso-productos.tsx quita esas menciones de la pantalla).
+  const demo = await enDemo();
+  const plataforma = hayDropi ? (demo ? "ambas" : leerPlataforma(sp)) : "effi";
   const [{ data: act, error }, { data: ant }, { data: meses }, { data: tiendas }] = await Promise.all([
     supabase.rpc("kpi_global", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta, p_plataforma: plataforma }),
     supabase.rpc("kpi_global", { p_cuentas: f.cuentas, p_desde: antDesde, p_hasta: antHasta, p_plataforma: plataforma }),
@@ -41,7 +45,7 @@ export default async function GlobalPage({ searchParams }: PageProps<"/global">)
         f={f}
         varios
       />
-      {hayDropi && <div className="mb-3 flex justify-end"><SelectorPlataforma sp={sp} actual={plataforma} /></div>}
+      {hayDropi && !demo && <div className="mb-3 flex justify-end"><SelectorPlataforma sp={sp} actual={plataforma} /></div>}
       {error && <p className="text-sm text-red mb-4">{error.message}</p>}
       {act && (
         <GlobalVista
