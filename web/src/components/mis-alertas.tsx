@@ -10,6 +10,8 @@ type Datos = {
   avisos: { id: number; tipo: string; titulo: string; cuerpo: string | null; creado_en: string; enviado_en: string | null; enviados: number | null; error: string | null }[];
 };
 
+type Alerta = { clave: string; nombre: string; detalle: string | null; activa: boolean; params: Record<string, unknown> };
+
 // La llave pública VAPID viene en base64 url; el navegador la pide en bytes.
 const bytes = (b64: string) => {
   const s = atob((b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
@@ -31,10 +33,20 @@ export function MisAlertas() {
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [esIphone, setEsIphone] = useState(false);
 
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
   const recargar = useCallback(async () => {
-    const { data } = await supabase.rpc("push_mis_datos");
-    setDatos((data ?? null) as Datos | null);
+    const [d, a] = await Promise.all([supabase.rpc("push_mis_datos"), supabase.rpc("alerta_config_lista")]);
+    setDatos((d.data ?? null) as Datos | null);
+    setAlertas((a.data ?? []) as Alerta[]);
   }, [supabase]);
+
+  async function guardarAlerta(clave: string, activa: boolean, params?: Record<string, unknown>) {
+    setOcupado(true);
+    const { error } = await supabase.rpc("alerta_config_guardar", { p_clave: clave, p_activa: activa, p_params: params ?? null });
+    setOcupado(false);
+    if (error) setMsg({ ok: false, t: error.message });
+    recargar();
+  }
 
   useEffect(() => {
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -142,8 +154,33 @@ export function MisAlertas() {
         ) : <p className="text-sm text-muted">Ninguno todavía.</p>}
       </Panel>
 
-      <Panel titulo="Alertas" detalle="Se van agregando a medida que las pidas: al instante (p. ej. una venta) o una vez al día.">
-        <p className="text-sm text-muted">Por ahora solo está la prueba. Dime qué alertas quieres y con qué límite.</p>
+      <Panel titulo="Alertas" detalle="Se van agregando a medida que las pidas. Apágalas o cambia el límite aquí; aplica a todos tus celulares.">
+        {alertas.length ? (
+          <ul className="divide-y divide-line">
+            {alertas.map((a) => (
+              <li key={a.clave} className="py-3 flex items-start justify-between gap-4">
+                <div className="text-sm">
+                  <div className="font-medium">{a.nombre}</div>
+                  <div className="text-xs text-muted mt-0.5">{a.detalle}</div>
+                  {a.clave === "despacho" && (
+                    <label className="mt-2 inline-flex items-center gap-2 text-xs text-muted">
+                      Avisar si queda por debajo de
+                      <input type="number" min={1} max={200} step={1} defaultValue={Number(a.params.umbral ?? 80)} disabled={ocupado}
+                        onBlur={(e) => { const v = Number(e.currentTarget.value); if (v && v !== Number(a.params.umbral)) guardarAlerta(a.clave, a.activa, { ...a.params, umbral: v }); }}
+                        className="w-16 rounded-lg border border-line bg-panel-2 px-2 py-1 text-sm text-text num" />
+                      %
+                    </label>
+                  )}
+                </div>
+                <button type="button" role="switch" aria-checked={a.activa} aria-label={`${a.activa ? "Apagar" : "Prender"} ${a.nombre}`} disabled={ocupado}
+                  onClick={() => guardarAlerta(a.clave, !a.activa)}
+                  className={`relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition-colors ${a.activa ? "bg-green" : "bg-panel-2 border border-line"}`}>
+                  <span className={`absolute top-0.5 size-6 rounded-full bg-white shadow transition-all ${a.activa ? "left-[1.4rem]" : "left-0.5"}`} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-sm text-muted">Cargando…</p>}
       </Panel>
 
       <Panel titulo="Últimos avisos">
