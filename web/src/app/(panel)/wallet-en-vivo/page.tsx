@@ -1,9 +1,12 @@
 import { exigirModulo } from "@/lib/supabase/server";
+import { enDemo } from "@/lib/demo-server";
 import { WalletEnVivo } from "@/components/wallet-en-vivo";
 
-// 🪙 Wallet en vivo: el saldo de la wallet Effi de cada país, en su moneda, subiendo con cada entrega pagada.
+// 🪙 Wallet en vivo: el saldo de la wallet Effi de cada país, en su moneda, subiendo con cada entrega pagada; y la billetera de
+// Dropi de los países que también venden por Dropi (no en la demostración, que quedó congelada el 17-nov).
 export default async function WalletEnVivoPage() {
   await exigirModulo("dinero");
+  const demo = await enDemo();
   return (
     <div className="pt-8">
       <div className="mb-5">
@@ -12,7 +15,7 @@ export default async function WalletEnVivoPage() {
           Saldo de cada wallet Effi en su moneda, en tiempo real: cada entrega pagada lo sube y cada flete, costo o retiro lo baja.
         </p>
       </div>
-      <WalletEnVivo />
+      <WalletEnVivo dropi={!demo} />
     </div>
   );
 }

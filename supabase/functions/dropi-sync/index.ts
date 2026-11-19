@@ -6,6 +6,9 @@
 //   ?cuenta=AUNCLIC_GT   solo esa tienda (sin cuenta: las que tengan permiso guardado)
 //   ?desde=2026-11-01&hasta=2026-11-18   rango de creación (por defecto, desde el 1-ago-2026 hasta hoy, por tramos de 80 días)
 //   ?explorar=1          no guarda: devuelve la forma (claves y tipos, sin valores) de una orden y su detalle
+//   ?prueba=1            no guarda: compara lo que trae Dropi con la base (dropi_comparar_mcp) y devuelve solo conteos
+// Dropi no dice de qué tienda es cada orden: si lo que trae el permiso no coincide con esa tienda, no se guarda nada. Una tienda
+// recién autorizada solo compara hasta que se active (dropi_conexion.sincroniza).
 // El permiso (client_id + refresh_token) lo da el dueño una vez con scripts/autorizar-dropi.mjs; aquí se renueva solo.
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -155,7 +158,7 @@ function local(iso: string | null, zona: string) {
 }
 const lista = (r: O): O[] => (Array.isArray(r) ? r : r.items ?? r.orders ?? r.data ?? r.objects ?? []) as O[];
 
-async function sincronizar(cuenta: string, desde: string, hasta: string, explorar: boolean) {
+async function sincronizar(cuenta: string, desde: string, hasta: string, explorar: boolean, prueba: boolean) {
   const tok = await acceso(cuenta);
   if (!tok) return { cuenta, omitida: 'sin permiso de Dropi' };
   const m = new Mcp(tok);
@@ -198,6 +201,14 @@ async function sincronizar(cuenta: string, desde: string, hasta: string, explora
       id_orden_tienda: o.shop_order_id != null ? String(o.shop_order_id) : null,
     };
   }).filter((f) => f.id && f.fecha);
+
+  // Seguro: las órdenes deben ser de esta tienda. Si no, se detiene sin guardar.
+  const comparacion = (await rpc('dropi_comparar_mcp', { p_cuenta: cuenta,
+    p_filas: filas.map((f) => ({ id: f.id, fecha: f.fecha, estatus: f.estatus, venta: f.venta })) })) as O;
+  if (!comparacion.pasa) throw new Error(`El permiso de ${cuenta} no coincide con esa tienda: ${comparacion.propias} de ${comparacion.en_base} órdenes propias, ajenas ${JSON.stringify(comparacion.ajenas)}`);
+  if (prueba) return { cuenta, desde, hasta, omitida: 'prueba: no se guardó nada', comparacion };
+  if (!comparacion.activa) return { cuenta, desde, hasta, omitida: 'pendiente de activar', comparacion };
+
   let total = 0, nuevas = 0;
   for (let i = 0; i < filas.length; i += 500) {
     const r = await rpc('dropi_guardar_ordenes_mcp', { p_cuenta: cuenta, p_filas: filas.slice(i, i + 500) });
@@ -238,12 +249,13 @@ Deno.serve(async (req) => {
   const desde = fecha('desde') ?? '2026-08-01';
   const hasta = fecha('hasta') ?? hoy;
   const explorar = url.searchParams.get('explorar') === '1';
+  const prueba = url.searchParams.get('prueba') === '1';
   const pedida = url.searchParams.get('cuenta');
   const cuentas = pedida ? CUENTAS.filter((c) => c === pedida) : CUENTAS;
   const resultados = [];
   for (const c of cuentas) {
     try {
-      const r = await sincronizar(c, desde, hasta, explorar);
+      const r = await sincronizar(c, desde, hasta, explorar, prueba);
       resultados.push(r);
       if (!explorar && !('omitida' in r)) await rpc('dropi_sync_resultado', { p_cuenta: c, p_error: null, p_resumen: r });
     } catch (e) {
