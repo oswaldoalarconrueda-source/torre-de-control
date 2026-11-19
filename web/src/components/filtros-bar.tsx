@@ -15,8 +15,12 @@ export function FiltrosBar({ cuentas, rangos, hoy, desde, hasta, seleccion, conF
   const sp = useSearchParams();
   const [pendiente, start] = useTransition();
 
+  // Filtros que dependen del país (transportadora, centro de costos y proveedor del Resumen diario por estados):
+  // cada país tiene los suyos, así que al cambiar de país se quitan para no dejar la pantalla en cero.
+  const FILTROS_DEL_PAIS = ["t", "cc", "pv"];
   const ir = (cambios: Record<string, string | null>) => {
     const p = new URLSearchParams(sp.toString());
+    if ("c" in cambios && (cambios.c ?? null) !== (sp.get("c") ?? null)) FILTROS_DEL_PAIS.forEach((k) => p.delete(k));
     for (const [k, v] of Object.entries(cambios)) (v ? p.set(k, v) : p.delete(k));
     start(() => router.push(`${path}?${p.toString()}`, { scroll: false }));
   };
