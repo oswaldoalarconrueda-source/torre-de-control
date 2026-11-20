@@ -1,11 +1,13 @@
 import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { ordenCuenta } from "@/lib/paises";
 import { EnVivo } from "@/components/en-vivo";
+import { enDemo } from "@/lib/demo-server";
 
 // ⚡ En vivo: la operación de todas las tiendas (o de una) latiendo con cada cambio de estado. La proveeduría
 // (Distrilatam) también: sus ventas a las tiendas, las guías y los cambios de estado de esas guías.
 export default async function EnVivoPage() {
   await exigirModulo("guias");
+  const demo = await enDemo();
   const supabase = await createClient();
   const [{ data }, { data: soc }] = await Promise.all([
     supabase.from("effi_accounts").select("slug,sociedad,tipo").eq("activa", true).in("tipo", ["tienda", "proveeduria"]),
@@ -35,7 +37,7 @@ export default async function EnVivoPage() {
         </p>
       </div>
       {/* key: al cambiar de sociedad, En vivo arranca de nuevo con las cuentas de esa sociedad. */}
-      <EnVivo key={cuentas.join(",")} cuentas={cuentas} logo={logo} />
+      <EnVivo key={cuentas.join(",")} cuentas={cuentas} logo={logo} demo={demo} />
     </div>
   );
 }

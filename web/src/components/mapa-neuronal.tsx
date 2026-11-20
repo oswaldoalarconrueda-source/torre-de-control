@@ -6,20 +6,32 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 // neuronas dentro de su borde. Cada movimiento se enciende en su departamento con el color de su etapa: las órdenes,
 // remisiones y guías generadas, y los estados de la guía. Las entregas estallan en verde y las devoluciones laten en
 // rojo. El número de cada departamento son sus movimientos en la ventana de tiempo de En vivo.
+// Con «misiles» (20-nov-2026, pedido del dueño; apagado en la demostración congelada): cada movimiento vuela como un misil
+// con estela entre la base del país (su capital) y el departamento: las órdenes llegan del cliente a la base, los envíos
+// salen de la base al cliente. Las entregas revientan en fuegos artificiales y las devoluciones explotan en rojo y regresan.
 
 export type MapaApi = { disparar: (provincia: string | null, cat: string) => void };
 type Provincia = { nombre: string; anillos: [number, number][][] };
 type Datos = Record<string, Record<string, number>>;
-type Props = { pais: string; datos: Datos; colores: Record<string, string>; ancho: number; alto: number };
+type Props = { pais: string; datos: Datos; colores: Record<string, string>; ancho: number; alto: number; misiles?: boolean };
 
 type Dep = { nombre: string; clave: string; path: Path2D; anillos: [number, number][][]; cx: number; cy: number; puntos: Punto[]; enlaces: [number, number][] };
 type Punto = { x: number; y: number; fase: number; brillo: number; color: string | null };
 type Onda = { x: number; y: number; r: number; max: number; color: string; grosor: number };
 type Chispa = { x: number; y: number; vx: number; vy: number; vida: number; max: number; color: string };
 type Texto = { x: number; y: number; vida: number; txt: string; color: string };
+type Misil = { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number; t0: number; dur: number; color: string; cat: string; dep: Dep; estela: { x: number; y: number }[]; regreso?: boolean };
+type Cohete = { x: number; y: number; vx: number; vy: number; vida: number; max: number; colores: string[] };
+type Brasa = { x: number; y: number; vx: number; vy: number; vida: number; max: number; color: string; titila: boolean };
 
 const AZUL = "120,160,255";
 const PUNTOS_PAIS = 900;
+const MAX_BRASAS = 1600;
+// Base de cada país (de donde salen los envíos): el departamento de la capital, o el primero que exista.
+const BASES: Record<string, string[]> = {
+  CO: ["bogota", "cundinamarca"], EC: ["guayas", "pichincha"], GT: ["guatemala"], CR: ["san jose"], HN: ["francisco morazan", "cortes"], SV: ["san salvador"],
+};
+const FUEGOS = ["47,210,143", "255,214,120", "255,255,255", "90,200,255", "255,106,213", "180,140,255"];
 
 // Nombres de Effi y del mapa a una misma clave: sin tildes, minúsculas, sin "D.C." ni "departamento de".
 export const claveProvincia = (s: string) =>
@@ -28,18 +40,22 @@ export const claveProvincia = (s: string) =>
     .replace(/^quezaltenango$/, "quetzaltenango").replace(/^bogota distrito capital$/, "bogota");
 const rgb = (hex: string) => `${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)}`;
 
-export const MapaNeuronal = forwardRef<MapaApi, Props>(function MapaNeuronal({ pais, datos, colores, ancho: W, alto: H }, ref) {
+export const MapaNeuronal = forwardRef<MapaApi, Props>(function MapaNeuronal({ pais, datos, colores, ancho: W, alto: H, misiles = false }, ref) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const deps = useRef<Dep[]>([]);
-  const vivo = useRef({ ondas: [] as Onda[], chispas: [] as Chispa[], textos: [] as Texto[], latido: new Map<string, { t: number; color: string }>() });
+  const base = useRef<{ x: number; y: number } | null>(null);
+  const vivo = useRef({
+    ondas: [] as Onda[], chispas: [] as Chispa[], textos: [] as Texto[], latido: new Map<string, { t: number; color: string }>(),
+    misiles: [] as Misil[], cohetes: [] as Cohete[], brasas: [] as Brasa[], baseLatido: 0,
+  });
   // Los nombres de Effi ("Atlantico", "Bogotá D.C.") y los del mapa ("Atlántico", "Bogotá") se cruzan por clave.
   const porClave: Datos = {};
   for (const [k, cats] of Object.entries(datos)) {
     const c = claveProvincia(k), acc = (porClave[c] ??= {});
     for (const [cat, n] of Object.entries(cats)) acc[cat] = (acc[cat] ?? 0) + n;
   }
-  const props = useRef({ porClave, colores });
-  props.current = { porClave, colores };
+  const props = useRef({ porClave, colores, misiles });
+  props.current = { porClave, colores, misiles };
   const [hover, setHover] = useState<{ x: number; y: number; dep: Dep } | null>(null);
   const [cargado, setCargado] = useState(false);
 
@@ -88,18 +104,16 @@ export const MapaNeuronal = forwardRef<MapaApi, Props>(function MapaNeuronal({ p
         });
         return { nombre: p.nombre, clave: claveProvincia(p.nombre), path, anillos: p.anillos, cx, cy, puntos, enlaces };
       });
+      const b = (BASES[pais] ?? []).map((c) => deps.current.find((d) => d.clave === c)).find(Boolean);
+      base.current = b ? { x: b.cx, y: b.cy } : { x: W / 2, y: H / 2 };
       setCargado(true);
     });
     return () => { vigente = false; };
   }, [pais, W, H]);
 
-  useImperativeHandle(ref, () => ({
-    disparar(provincia, cat) {
-      if (!provincia) return;
-      const d = deps.current.find((x) => x.clave === claveProvincia(provincia));
-      const hex = props.current.colores[cat];
-      if (!d || !hex) return;
-      const color = rgb(hex), st = vivo.current, ahora = performance.now();
+  // Lo que pasa en el departamento cuando llega el movimiento (al instante, o cuando el misil impacta).
+  const impacto = (d: Dep, cat: string, color: string) => {
+      const st = vivo.current, ahora = performance.now();
       st.latido.set(d.clave, { t: ahora, color });
       for (const q of d.puntos) if (Math.random() < 0.6) { q.brillo = 1; q.color = color; }
       const fuerte = cat === "ENTREGADO";
@@ -111,6 +125,49 @@ export const MapaNeuronal = forwardRef<MapaApi, Props>(function MapaNeuronal({ p
       } else if (cat === "DEVOLUCION") {
         st.textos.push({ x: d.cx, y: d.cy - 20, vida: 0, txt: "Devolución", color });
       }
+      if (!props.current.misiles) return;
+      if (fuerte) {
+        // Fuegos artificiales: cohetes que suben desde el departamento y revientan en colores.
+        for (let i = 0; i < 3; i++) st.cohetes.push({ x: d.cx + (Math.random() - 0.5) * 30, y: d.cy, vx: (Math.random() - 0.5) * 0.08,
+          vy: -(0.38 + Math.random() * 0.16), vida: -i * 180, max: 650 + Math.random() * 250, colores: [FUEGOS[(i * 2) % FUEGOS.length], FUEGOS[(i * 2 + 1) % FUEGOS.length], color] });
+      } else if (cat === "DEVOLUCION") {
+        // Explosión roja con humo y el paquete que regresa a la base.
+        brasas(d.cx, d.cy, [color, "255,160,120", "120,120,130"], 50, 0.22, false);
+        st.ondas.push({ x: d.cx, y: d.cy, r: 4, max: 120, color, grosor: 4 });
+        if (base.current) lanzar(d, cat, color, true);
+      } else if (cat !== "ORDEN") {
+        brasas(d.cx, d.cy, [color, "255,255,255"], 14, 0.12, true);
+      }
+  };
+  const brasas = (x: number, y: number, cols: string[], n: number, vel: number, titila: boolean) => {
+    const st = vivo.current;
+    for (let i = 0; i < n && st.brasas.length < MAX_BRASAS; i++) {
+      const a = Math.random() * Math.PI * 2, v = vel * (0.4 + Math.random());
+      st.brasas.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vida: 0, max: 900 + Math.random() * 900, color: cols[i % cols.length], titila });
+    }
+  };
+  // Misil entre la base y el departamento, con una curva que sube como una trayectoria balística.
+  const lanzar = (d: Dep, cat: string, color: string, regreso = false) => {
+    const b = base.current!;
+    const hacia = cat === "ORDEN" || regreso; // la orden viene del cliente; la devolución regresa a la base
+    const [x0, y0, x1, y1] = hacia ? [d.cx, d.cy, b.x, b.y] : [b.x, b.y, d.cx, d.cy];
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const cx = (x0 + x1) / 2, cy = Math.min(y0, y1) - 40 - dist * 0.35;
+    vivo.current.misiles.push({ x0, y0, x1, y1, cx, cy, t0: performance.now() + (regreso ? 350 : 0), dur: 900 + Math.min(900, dist * 2.2),
+      color, cat, dep: d, estela: [], regreso });
+  };
+
+  useImperativeHandle(ref, () => ({
+    disparar(provincia, cat) {
+      if (!provincia) return;
+      const d = deps.current.find((x) => x.clave === claveProvincia(provincia));
+      const hex = props.current.colores[cat];
+      if (!d || !hex) return;
+      const color = rgb(hex);
+      // Con misiles, el efecto llega cuando el misil impacta; si el departamento es la base misma, al instante.
+      const b = base.current;
+      if (props.current.misiles && b && Math.hypot(d.cx - b.x, d.cy - b.y) > 12) { lanzar(d, cat, color); return; }
+      impacto(d, cat, color);
     },
   }));
 
@@ -162,6 +219,76 @@ export const MapaNeuronal = forwardRef<MapaApi, Props>(function MapaNeuronal({ p
         ctx.font = `600 ${n ? 11 : 9}px ui-sans-serif, system-ui`;
         ctx.fillText(d.nombre, d.cx, d.cy - (n ? 6 : 0));
         if (n) { ctx.font = "700 13px ui-sans-serif, system-ui"; ctx.fillStyle = "#ffffff"; ctx.fillText(n.toLocaleString("es-CO"), d.cx, d.cy + 9); }
+      }
+      if (props.current.misiles) {
+        const b = base.current;
+        // La base: un faro que late con cada despacho.
+        if (b) {
+          const lb = Math.max(0, 1 - (ahora - st.baseLatido) / 600), pul = 0.5 + 0.5 * Math.sin(ahora / 500);
+          const gb = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, 26 + 14 * lb);
+          gb.addColorStop(0, `rgba(255,214,120,${0.55 + 0.35 * lb})`); gb.addColorStop(1, "rgba(255,214,120,0)");
+          ctx.fillStyle = gb; ctx.beginPath(); ctx.arc(b.x, b.y, 26 + 14 * lb, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = `rgba(255,214,120,${0.4 + 0.3 * pul})`; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.arc(b.x, b.y, 10 + 6 * pul, 0, Math.PI * 2); ctx.stroke();
+        }
+        // Misiles: cabeza brillante con estela de humo de su color.
+        ctx.save(); ctx.globalCompositeOperation = "lighter";
+        st.misiles = st.misiles.filter((m) => {
+          const u = (ahora - m.t0) / m.dur;
+          if (u < 0) return true;
+          if (u >= 1) {
+            if (!m.regreso) impacto(m.dep, m.cat, m.color);
+            else { st.baseLatido = ahora; st.ondas.push({ x: m.x1, y: m.y1, r: 4, max: 70, color: m.color, grosor: 2 }); }
+            return false;
+          }
+          const e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2; // acelera al salir y frena al llegar
+          const x = (1 - e) * (1 - e) * m.x0 + 2 * (1 - e) * e * m.cx + e * e * m.x1;
+          const y = (1 - e) * (1 - e) * m.y0 + 2 * (1 - e) * e * m.cy + e * e * m.y1;
+          if (!m.estela.length && !m.regreso && m.cat !== "ORDEN") st.baseLatido = ahora;
+          m.estela.push({ x, y }); if (m.estela.length > 30) m.estela.shift();
+          for (let i = 1; i < m.estela.length; i++) {
+            const a = m.estela[i - 1], c = m.estela[i], k = i / m.estela.length;
+            ctx.strokeStyle = `rgba(${m.color},${0.75 * k})`; ctx.lineWidth = (m.regreso ? 1.6 : 3.6) * k + 0.4;
+            if (m.regreso) ctx.setLineDash([3, 4]);
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(c.x, c.y); ctx.stroke(); ctx.setLineDash([]);
+          }
+          const gm = ctx.createRadialGradient(x, y, 0, x, y, m.regreso ? 9 : 15);
+          gm.addColorStop(0, "rgba(255,255,255,1)"); gm.addColorStop(0.35, `rgba(${m.color},0.95)`); gm.addColorStop(1, `rgba(${m.color},0)`);
+          ctx.fillStyle = gm; ctx.beginPath(); ctx.arc(x, y, m.regreso ? 9 : 15, 0, Math.PI * 2); ctx.fill();
+          return true;
+        });
+        // Cohetes de los fuegos artificiales: suben, se frenan y revientan.
+        st.cohetes = st.cohetes.filter((c) => {
+          c.vida += dt;
+          if (c.vida < 0) return true;
+          c.vy += 0.00045 * dt; c.x += c.vx * dt; c.y += c.vy * dt;
+          if (c.vida >= c.max || c.vy >= -0.02) {
+            for (const [j, col] of c.colores.entries()) {
+              const n = 42, v = 0.22 + 0.06 * j;
+              for (let i = 0; i < n && st.brasas.length < MAX_BRASAS; i++) {
+                const a = (i / n) * Math.PI * 2 + j * 0.3, vv = v * (0.75 + Math.random() * 0.5);
+                st.brasas.push({ x: c.x, y: c.y, vx: Math.cos(a) * vv, vy: Math.sin(a) * vv, vida: 0, max: 1100 + Math.random() * 900, color: col, titila: j === 1 });
+              }
+            }
+            st.ondas.push({ x: c.x, y: c.y, r: 2, max: 60, color: "255,255,255", grosor: 1.5 });
+            return false;
+          }
+          ctx.fillStyle = "rgba(255,240,200,0.95)"; ctx.beginPath(); ctx.arc(c.x, c.y, 2.2, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "rgba(255,200,120,0.5)"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.x - c.vx * 40, c.y - c.vy * 40); ctx.stroke();
+          return true;
+        });
+        // Brasas: caen con gravedad, se apagan y algunas titilan como escarcha.
+        st.brasas = st.brasas.filter((p) => {
+          p.vida += dt; const k = 1 - p.vida / p.max; if (k <= 0) return false;
+          const fr = Math.pow(0.9975, dt); p.vx *= fr; p.vy = p.vy * fr + 0.00012 * dt;
+          p.x += p.vx * dt; p.y += p.vy * dt;
+          const brillo = p.titila ? 0.5 + 0.5 * Math.sin(p.vida / 40 + p.x) : 1;
+          ctx.strokeStyle = `rgba(${p.color},${k * brillo})`; ctx.lineWidth = 2.4 * k + 0.5;
+          ctx.beginPath(); ctx.moveTo(p.x - p.vx * 20, p.y - p.vy * 20); ctx.lineTo(p.x, p.y); ctx.stroke();
+          return true;
+        });
+        ctx.restore();
       }
       st.ondas = st.ondas.filter((o) => {
         o.r += dt * 0.12; const k = 1 - o.r / o.max; if (k <= 0) return false; if (o.r <= 0) return true;

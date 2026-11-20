@@ -24,10 +24,15 @@ export type RedNeuronalApi = { disparar: (cuenta: string, estado: string | null)
 type Props = {
   ancho: number; alto: number; centro: { x: number; y: number } | null; total: number; paises: NodoPais[]; maxNodo: number; logo: string | null;
   onPais?: (cuenta: string, x: number, y: number) => void; // clic en la bandera de un país (x, y en coordenadas del lienzo)
+  // 20-nov-2026 (pedido del dueño): banderas más grandes que flotan con anillo holográfico y satélites, y estados que
+  // flotan con partículas en órbita. La demostración (congelada) lo deja apagado y se ve como antes.
+  mejorado?: boolean;
 };
 
 type Neurona = { x: number; y: number; vx: number; vy: number; vida: number; max: number; brillo: number; color: string | null };
-type Senal = { de: { x: number; y: number }; a: { x: number; y: number }; cx: number; cy: number; t: number; color: string; estado: string; key: string };
+type Senal = { de: { x: number; y: number }; a: { x: number; y: number }; cx: number; cy: number; t: number; color: string; estado: string; key: string;
+  // Con el metaverso los países giran: la señal sigue a su origen y a su destino (k = curva del axón).
+  deKey?: string; aKey?: string; k?: number };
 type Onda = { x: number; y: number; r: number; max: number; color: string; grosor: number };
 type Texto = { x: number; y: number; vida: number; txt: string; color: string; tam?: number; dur?: number };
 type Tiron = { x: number; y: number; t: number; fuerza: number };
@@ -79,6 +84,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
     latido: new Map<string, number>(), // clave → momento del último latido (ms)
     combo: new Map<string, { n: number; t: number }>(), // país → entregas seguidas
     torre: 0, torreEntrega: 0, sacudida: 0, encima: null as string | null,
+    pos: new Map<string, { x: number; y: number }>(), // dónde se dibujó cada país y estado en el último cuadro
   });
   const logo = useRef<HTMLImageElement | null>(null);
   const alDia = useRef<() => void>(() => {});
@@ -106,15 +112,17 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       st.torre = ahora;
       // La constelación se va hacia el país del movimiento; entregas, oficina y devoluciones tiran más.
       const fuerte = estadoId === "ENTREGADO" || estadoId === "DEVOLUCION" || estadoId === "EN_OFICINA";
-      st.tirones.push({ x: p.x, y: p.y, t: ahora, fuerza: fuerte ? 1.6 : 1 });
+      const ahi = st.pos.get(cuenta) ?? p; // donde está el país ahora (con el metaverso gira)
+      st.tirones.push({ x: ahi.x, y: ahi.y, t: ahora, fuerza: fuerte ? 1.6 : 1 });
       if (st.tirones.length > 12) st.tirones.shift();
       // Ráfaga de neuronas que salen del país.
       for (let i = 0; i < 6; i++) st.neuronas.push(nueva(p.x, p.y, s?.color ?? null, 1.6));
       if (datos.current.centro) {
         const c = datos.current.centro;
-        st.senales.push({ de: c, a: { x: p.x, y: p.y }, ...xy(control(c, p, 0.12)), t: 0, color: AZUL, estado: "", key: cuenta });
+        st.senales.push({ de: c, a: { x: p.x, y: p.y }, ...xy(control(c, p, 0.12)), t: 0, color: AZUL, estado: "", key: cuenta, aKey: cuenta, k: 0.12 });
       }
-      if (s) st.senales.push({ de: { x: desde.x, y: desde.y }, a: { x: s.x, y: s.y }, ...xy(control(desde, s)), t: -0.25, color: hexRgb(s.color), estado: s.id, key: `${cuenta}|${s.id}` });
+      if (s) st.senales.push({ de: { x: desde.x, y: desde.y }, a: { x: s.x, y: s.y }, ...xy(control(desde, s)), t: -0.25, color: hexRgb(s.color), estado: s.id, key: `${cuenta}|${s.id}`,
+        deKey: s.padre ? `${cuenta}|${s.padre}` : cuenta, aKey: `${cuenta}|${s.id}`, k: 0.18 });
     },
     alDia() { alDia.current(); },
   }));
@@ -179,10 +187,11 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       st.sacudida = ahora; st.torre = ahora; st.torreEntrega = ahora;
       st.textos.push({ x: c.x, y: c.y - 90, vida: 0, txt: "¡AL DÍA!", color: ORO, tam: 36, dur: 2800 });
       for (const p of paises) {
-        st.senales.push({ de: c, a: { x: p.x, y: p.y }, ...xy(control(c, p, 0.12)), t: -0.2, color: AZUL, estado: "", key: p.cuenta });
+        st.senales.push({ de: c, a: { x: p.x, y: p.y }, ...xy(control(c, p, 0.12)), t: -0.2, color: AZUL, estado: "", key: p.cuenta, aKey: p.cuenta, k: 0.12 });
         p.estados.forEach((s, j) => {
           const o = (s.padre && p.estados.find((e) => e.id === s.padre)) || p;
-          st.senales.push({ de: { x: o.x, y: o.y }, a: { x: s.x, y: s.y }, ...xy(control(o, s)), t: -0.45 - j * 0.12, color: hexRgb(s.color), estado: "ALDIA", key: `${p.cuenta}|${s.id}` });
+          st.senales.push({ de: { x: o.x, y: o.y }, a: { x: s.x, y: s.y }, ...xy(control(o, s)), t: -0.45 - j * 0.12, color: hexRgb(s.color), estado: "ALDIA", key: `${p.cuenta}|${s.id}`,
+            deKey: s.padre ? `${p.cuenta}|${s.padre}` : p.cuenta, aKey: `${p.cuenta}|${s.id}`, k: 0.18 });
         });
       }
     };
@@ -192,6 +201,35 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       ultimo = ahora;
       const { ancho: W, alto: H, centro, paises, maxNodo, total } = datos.current;
       const cx = centro?.x ?? W / 2, cy = centro?.y ?? H / 2;
+      // Metaverso: cada país y cada estado flota en su propia órbita suave (apagado en la demostración).
+      const mej = !!datos.current.mejorado && !reducir;
+      // Con varios países, toda la constelación gira alrededor del logo (una vuelta cada minuto y medio) con un vaivén: Colombia
+      // pasa por la derecha, abajo y la izquierda. Cada estado gira con su país y flota en su propia órbita.
+      const pos = new Map<string, { x: number; y: number }>();
+      const giro = mej && centro ? (ahora / 90_000) * Math.PI * 2 + 0.18 * Math.sin(ahora / 7000) : 0;
+      const gc = Math.cos(giro), gs = Math.sin(giro);
+      for (const p of paises) {
+        const a = semilla(p.cuenta);
+        let px = p.x, py = p.y;
+        if (giro) {
+          const ang = Math.atan2((p.y - cy) / 225, (p.x - cx) / 300) + giro, aire = 1 + 0.04 * Math.sin(ahora / 3100 + a);
+          px = cx + Math.cos(ang) * 300 * aire; py = cy + Math.sin(ang) * 225 * aire;
+        }
+        pos.set(p.cuenta, mej ? { x: px + Math.sin(ahora / 1700 + a) * 6, y: py + Math.cos(ahora / 1300 + a) * 8 } : { x: px, y: py });
+        for (const s of p.estados) {
+          const b = semilla(`${p.cuenta}|${s.id}`), ox = s.x - p.x, oy = s.y - p.y;
+          const sx = px + ox * gc - oy * gs, sy = py + ox * gs + oy * gc;
+          pos.set(`${p.cuenta}|${s.id}`, mej ? { x: sx + Math.sin(ahora / 1500 + b) * 7, y: sy + Math.cos(ahora / 1900 + b * 1.3) * 7 } : { x: sx, y: sy });
+        }
+      }
+      st.pos = pos;
+      // Las señales en camino siguen a su país o estado mientras gira.
+      if (mej) for (const s of st.senales) {
+        if (s.deKey) { const q = pos.get(s.deKey); if (q) s.de = q; }
+        if (s.aKey) { const q = pos.get(s.aKey); if (q) s.a = q; }
+        if (s.deKey || s.aKey) { const c = control(s.de, s.a, s.k ?? 0.18); s.cx = c.x; s.cy = c.y; }
+      }
+      const en = (p: NodoPais, s?: NodoEstado) => pos.get(s ? `${p.cuenta}|${s.id}` : p.cuenta)!;
       ctx.clearRect(0, 0, W, H);
       // Sacudida corta con cada entrega (la pantalla "tiembla" como en una batalla espacial).
       const sac = st.sacudida && !reducir ? Math.max(0, 1 - (ahora - st.sacudida) / 450) : 0;
@@ -273,21 +311,23 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       // Axones: Torre → país → estado, con flujo continuo hacia afuera.
       const flujo = -(ahora / 28) % 24;
       for (const p of paises) {
+        const pp = en(p);
         if (centro) {
-          const c = control(centro, p, 0.12);
+          const c = control(centro, pp, 0.12);
           ctx.setLineDash([2, 10]); ctx.lineDashOffset = flujo;
           ctx.strokeStyle = `rgba(${AZUL},${p.total ? 0.55 : 0.15})`; ctx.lineWidth = p.total ? 1.6 : 1;
-          ctx.beginPath(); ctx.moveTo(centro.x, centro.y); ctx.quadraticCurveTo(c.x, c.y, p.x, p.y); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(centro.x, centro.y); ctx.quadraticCurveTo(c.x, c.y, pp.x, pp.y); ctx.stroke();
         }
         for (const s of p.estados) {
-          const o = (s.padre && p.estados.find((e) => e.id === s.padre)) || p;
-          const k = s.n / maxNodo, c = control(o, s, 0.1), rgb = hexRgb(s.color);
+          const padre = s.padre ? p.estados.find((e) => e.id === s.padre) : undefined;
+          const o = padre ? en(p, padre) : pp, sp = en(p, s);
+          const k = s.n / maxNodo, c = control(o, sp, 0.1), rgb = hexRgb(s.color);
           ctx.setLineDash([]); ctx.strokeStyle = `rgba(${rgb},${0.12 + 0.2 * k})`; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.quadraticCurveTo(c.x, c.y, s.x, s.y); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.quadraticCurveTo(c.x, c.y, sp.x, sp.y); ctx.stroke();
           if (s.n > 0) {
             ctx.setLineDash([2, 10]); ctx.lineDashOffset = flujo * (1 + k);
             ctx.strokeStyle = `rgba(${rgb},${0.45 + 0.5 * k})`; ctx.lineWidth = 1 + 2.5 * k;
-            ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.quadraticCurveTo(c.x, c.y, s.x, s.y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.quadraticCurveTo(c.x, c.y, sp.x, sp.y); ctx.stroke();
           }
         }
       }
@@ -392,42 +432,86 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       // Hexágonos: estados (tamaño por volumen), países y la Torre. Laten al recibir una señal.
       const late = (key: string) => { const t = st.latido.get(key); return t ? Math.max(0, 1 - (ahora - t) / 700) : 0; };
       const respira = (frec: number) => 0.5 + 0.5 * Math.sin(ahora / frec);
+      const solo = paises.length === 1;
       for (const p of paises) {
         for (const s of p.estados) {
+          const sp = en(p, s);
           const k = s.n / maxNodo, l = late(`${p.cuenta}|${s.id}`), rgb = hexRgb(s.color);
           const boom = s.id === "ENTREGADO" ? 0.7 : 0.25; // el hexágono de entregadas se infla más al estallar
-          const r = (paises.length === 1 ? 20 + 26 * Math.sqrt(k) : 9 + 15 * Math.sqrt(k)) * (1 + boom * l) * (1 + 0.04 * respira(500 + 900 * (1 - k)));
+          const r = (solo ? 20 + 26 * Math.sqrt(k) : 9 + 15 * Math.sqrt(k)) * (1 + boom * l) * (1 + 0.04 * respira(500 + 900 * (1 - k)));
+          // Metaverso: partículas en órbita alrededor del estado (más con más movimiento) y un anillo que gira.
+          if (mej && s.n > 0) {
+            const nOrb = Math.min(5, 1 + Math.round(4 * Math.sqrt(k))), giro = ahora / (900 + 600 * (1 - k)) + semilla(s.id);
+            ctx.save(); ctx.globalCompositeOperation = "lighter";
+            for (let i = 0; i < nOrb; i++) {
+              const a = giro + (i * Math.PI * 2) / nOrb, rr = r + 7 + 2 * Math.sin(ahora / 400 + i);
+              const ox = sp.x + Math.cos(a) * rr, oy = sp.y + Math.sin(a) * rr * 0.8;
+              const gl = ctx.createRadialGradient(ox, oy, 0, ox, oy, 5);
+              gl.addColorStop(0, `rgba(${rgb},0.95)`); gl.addColorStop(1, `rgba(${rgb},0)`);
+              ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(ox, oy, 5, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+            hexagono(ctx, sp.x, sp.y, r + 4, -(ahora / 2400) * (k + 0.4));
+            ctx.setLineDash([2, 5]); ctx.strokeStyle = `rgba(${rgb},${0.25 + 0.35 * k})`; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+          }
           ctx.save();
           ctx.shadowColor = `rgba(${rgb},0.9)`; ctx.shadowBlur = 8 + 30 * l + 10 * k;
-          hexagono(ctx, s.x, s.y, r, (ahora / 9000) * (k + 0.2));
+          hexagono(ctx, sp.x, sp.y, r, (ahora / (mej ? 4000 : 9000)) * (k + 0.2));
           ctx.fillStyle = `rgba(${rgb},${0.1 + 0.25 * k + 0.4 * l})`; ctx.fill();
           ctx.strokeStyle = `rgba(${rgb},0.95)`; ctx.lineWidth = 1.4; ctx.stroke();
           ctx.restore();
           ctx.fillStyle = "#e8eefc"; ctx.textAlign = "center";
-          ctx.font = `600 ${paises.length === 1 ? 18 : 11}px ui-sans-serif, system-ui`;
-          ctx.fillText(s.n.toLocaleString("es-CO"), s.x, s.y + (paises.length === 1 ? 6 : 4));
-          ctx.fillStyle = `rgba(${rgb},0.9)`; ctx.font = `600 ${paises.length === 1 ? 10 : 8}px ui-monospace, monospace`;
-          ctx.fillText(s.label.toUpperCase(), s.x, s.y + r + (paises.length === 1 ? 15 : 11));
+          ctx.font = `600 ${solo ? 18 : 11}px ui-sans-serif, system-ui`;
+          ctx.fillText(s.n.toLocaleString("es-CO"), sp.x, sp.y + (solo ? 6 : 4));
+          ctx.fillStyle = `rgba(${rgb},0.9)`; ctx.font = `600 ${solo ? 10 : 8}px ui-monospace, monospace`;
+          ctx.fillText(s.label.toUpperCase(), sp.x, sp.y + r + (solo ? 15 : 11));
         }
-        // La bandera de cada país es un poco más grande y se puede pulsar para entrar a su mapa.
+        // La bandera de cada país se puede pulsar para entrar a su mapa. Con el metaverso, es más grande, flota y tiene un
+        // anillo holográfico que barre y satélites que la orbitan.
+        const pp = en(p);
         const encima = st.encima === p.cuenta ? 1 : 0;
-        const l = late(p.cuenta), R = RADIO_PAIS(paises.length) * (1 + 0.12 * l + 0.08 * encima);
+        const l = late(p.cuenta), R = RADIO_PAIS(paises.length, mej) * (1 + 0.12 * l + 0.08 * encima);
+        if (mej) {
+          // Halo que respira con el movimiento del país.
+          const hal = ctx.createRadialGradient(pp.x, pp.y, R * 0.6, pp.x, pp.y, R * 1.9);
+          hal.addColorStop(0, `rgba(${AZUL},${0.18 + 0.25 * l + 0.06 * respira(700)})`); hal.addColorStop(1, `rgba(${AZUL},0)`);
+          ctx.fillStyle = hal; ctx.beginPath(); ctx.arc(pp.x, pp.y, R * 1.9, 0, Math.PI * 2); ctx.fill();
+        }
         ctx.save();
         ctx.shadowColor = `rgba(${AZUL},0.9)`; ctx.shadowBlur = 14 + 30 * l;
-        hexagono(ctx, p.x, p.y, R, 0);
+        hexagono(ctx, pp.x, pp.y, R, 0);
         ctx.fillStyle = "rgba(8,12,22,0.94)"; ctx.fill();
         ctx.strokeStyle = `rgba(${AZUL},${0.6 + 0.4 * l})`; ctx.lineWidth = 1.8; ctx.stroke();
         ctx.restore();
-        hexagono(ctx, p.x, p.y, R + 9, -(ahora / 6000));
+        hexagono(ctx, pp.x, pp.y, R + 9, -(ahora / 6000));
         ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${AZUL},0.3)`; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+        if (mej) {
+          // Radar holográfico: un arco que barre alrededor de la bandera.
+          const a0 = ahora / 700 + semilla(p.cuenta);
+          const arco = ctx.createLinearGradient(pp.x + Math.cos(a0) * (R + 16), pp.y + Math.sin(a0) * (R + 16), pp.x + Math.cos(a0 + 1.4) * (R + 16), pp.y + Math.sin(a0 + 1.4) * (R + 16));
+          arco.addColorStop(0, `rgba(${AZUL},0)`); arco.addColorStop(1, `rgba(${BLANCO},0.85)`);
+          ctx.strokeStyle = arco; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(pp.x, pp.y, R + 16, a0, a0 + 1.4); ctx.stroke();
+          // Satélites: tres puntos de luz en órbitas inclinadas.
+          ctx.save(); ctx.globalCompositeOperation = "lighter";
+          for (let i = 0; i < 3; i++) {
+            const a = ahora / (1400 + i * 500) + i * 2.1, rx = R + 24 + i * 6, ry = (R + 24 + i * 6) * (0.45 + 0.15 * i);
+            const sx = pp.x + Math.cos(a) * rx, sy = pp.y + Math.sin(a) * ry;
+            const col = i === 1 ? ORO : AZUL;
+            const gl = ctx.createRadialGradient(sx, sy, 0, sx, sy, 6);
+            gl.addColorStop(0, `rgba(${col},1)`); gl.addColorStop(1, `rgba(${col},0)`);
+            ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.restore();
+        }
         ctx.textAlign = "center";
-        ctx.font = `${paises.length === 1 ? 40 : 28}px Banderas, system-ui`;
-        ctx.fillText(p.bandera, p.x, p.y + (paises.length === 1 ? -4 : -3));
-        ctx.fillStyle = "#e8eefc"; ctx.font = `700 ${paises.length === 1 ? 16 : 13}px ui-sans-serif, system-ui`;
-        ctx.fillText(p.total.toLocaleString("es-CO"), p.x, p.y + (paises.length === 1 ? 28 : 21));
+        ctx.font = `${mej ? (solo ? 60 : 42) : solo ? 40 : 28}px Banderas, system-ui`;
+        ctx.fillText(p.bandera, pp.x, pp.y + (mej ? (solo ? -8 : -6) : solo ? -4 : -3));
+        ctx.fillStyle = "#e8eefc"; ctx.font = `700 ${mej ? (solo ? 19 : 15) : solo ? 16 : 13}px ui-sans-serif, system-ui`;
+        ctx.fillText(p.total.toLocaleString("es-CO"), pp.x, pp.y + (mej ? (solo ? 36 : 27) : solo ? 28 : 21));
         if (encima) {
           ctx.fillStyle = `rgba(${AZUL},0.95)`; ctx.font = "600 10px ui-sans-serif, system-ui";
-          ctx.fillText("Clic para entrar al mapa", p.x, p.y - R - 14);
+          ctx.fillText("Clic para entrar al mapa", pp.x, pp.y - R - (mej ? 30 : 14));
         }
       }
       if (centro) {
@@ -478,16 +562,17 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
   // Clic y mouse encima de la bandera de un país.
   const paisEn = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const cv = canvas.current!, k = props.ancho / cv.clientWidth, x = e.nativeEvent.offsetX * k, y = e.nativeEvent.offsetY * k;
-    const R = RADIO_PAIS(props.paises.length) + 10;
-    const p = props.paises.find((q) => Math.hypot(q.x - x, q.y - y) <= R);
-    return p ? { p, x, y } : null;
+    const R = RADIO_PAIS(props.paises.length, !!props.mejorado) + 10;
+    const donde = (q: NodoPais) => estado.current.pos.get(q.cuenta) ?? q;
+    const p = props.paises.find((q) => Math.hypot(donde(q).x - x, donde(q).y - y) <= R);
+    return p ? { p, x: donde(p).x, y: donde(p).y } : null;
   };
   return (
     <canvas ref={canvas} className="block w-full" style={{ aspectRatio: `${props.ancho} / ${props.alto}`, cursor: estado.current.encima ? "pointer" : "default" }}
       role="img" aria-label="Red neuronal en vivo de cambios de estado por país"
       onMouseMove={(e) => { const h = paisEn(e)?.p.cuenta ?? null; if (h !== estado.current.encima) { estado.current.encima = h; e.currentTarget.style.cursor = h && props.onPais ? "pointer" : "default"; } }}
       onMouseLeave={() => { estado.current.encima = null; }}
-      onClick={(e) => { const h = paisEn(e); if (h) props.onPais?.(h.p.cuenta, h.p.x, h.p.y); }} />
+      onClick={(e) => { const h = paisEn(e); if (h) props.onPais?.(h.p.cuenta, h.x, h.y); }} />
   );
 });
 
@@ -500,4 +585,7 @@ function alfa(n: Neurona) {
   return Math.min(1, n.vida / 600, (n.max - n.vida) / 1200);
 }
 const xy = (p: { x: number; y: number }) => ({ cx: p.x, cy: p.y });
-const RADIO_PAIS = (n: number) => (n === 1 ? 62 : 44);
+// Radio del hexágono de la bandera; más grande con el metaverso (pedido del dueño, 20-nov).
+const RADIO_PAIS = (n: number, mejorado = false) => (mejorado ? (n === 1 ? 76 : 56) : n === 1 ? 62 : 44);
+// Número fijo por nombre, para que cada país y estado tenga su propia fase al flotar.
+const semilla = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 1000; return (h / 1000) * Math.PI * 2; };

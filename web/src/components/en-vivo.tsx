@@ -103,7 +103,8 @@ function geometria(cuentas: string[]) {
 
 // cuentas: las tiendas activas que el usuario puede ver, en el orden de las banderas (de todas las sociedades).
 // logo: el de la sociedad que se está mirando (null si no tiene o si se miran varias).
-export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: string | null }) {
+// demo: en la demostración (congelada desde el 17-nov) En vivo se ve como antes, sin el metaverso nuevo ni los misiles.
+export function EnVivo({ cuentas: TIENDAS, logo, demo = false }: { cuentas: string[]; logo: string | null; demo?: boolean }) {
   const [sel, setSel] = useState<string[]>(TIENDAS);
   const [ventana, setVentana] = useState(60);
   const [dias, setDias] = useState<Dias | null>(null); // con calendario manda el rango de días
@@ -424,13 +425,13 @@ export function EnVivo({ cuentas: TIENDAS, logo }: { cuentas: string[]; logo: st
                   ))}
                 </div>
               </div>
-              <MapaNeuronal ref={mapaRef} pais={infoCuenta(mapa).pais} datos={mapaDatos} ancho={ANCHO} alto={ALTO}
+              <MapaNeuronal ref={mapaRef} pais={infoCuenta(mapa).pais} datos={mapaDatos} ancho={ANCHO} alto={ALTO} misiles={!demo}
                 colores={Object.fromEntries([...ETAPAS.map((e) => [e.id, e.color]), ...ESTADOS.map((e) => [e.id, COLOR_ESTADO[e.id]])])} />
             </div>
           ) : (
           <div className={entrando ? "zoom-pais" : ""}
             style={entrando ? { transformOrigin: `${(entrando.x / ANCHO) * 100}% ${(entrando.y / ALTO) * 100}%` } : undefined}>
-          <RedNeuronal ref={red} ancho={ANCHO} alto={ALTO} centro={geo.sola ? null : { x: CX, y: CY }} total={sumaMovimientos()} maxNodo={maxNodo} logo={logo}
+          <RedNeuronal ref={red} ancho={ANCHO} alto={ALTO} centro={geo.sola ? null : { x: CX, y: CY }} total={sumaMovimientos()} maxNodo={maxNodo} logo={logo} mejorado={!demo}
             onPais={entrarMapa}
             paises={geo.paises.map((p) => ({
               cuenta: p.cuenta, bandera: infoCuenta(p.cuenta).bandera, x: p.x, y: p.y, total: movimientos(p.cuenta),
