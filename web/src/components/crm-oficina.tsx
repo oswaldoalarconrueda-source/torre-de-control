@@ -23,6 +23,8 @@ import { BarraHorizontal } from "./barra-horizontal";
 // - "Ya realizó el retiro": 7 días arriba de la lista ("🔁 Volver a llamar") desde el día en que se marcó; si pasan los
 //   7 días y Effi no la muestra entregada, sale de la lista inicial y va a "🚫 Dijo que fue y no fue".
 // Buscando por guía, cliente o teléfono se encuentran en cualquier filtro.
+// Arreglo del 20-nov-2026: la fila que la asesora está trabajando ya no desaparece al escoger la fecha de retiro o al marcar
+// un contacto; se queda en la vista actual (con un aviso de a qué filtro pasa) hasta cambiar de filtro o recargar.
 
 type Resultado = "contesto" | "no_contesto" | "telefono_malo";
 export type Llamada = { id: number; intento: number; resultado: Resultado; canal: "llamada" | "whatsapp"; nota: string | null; usuario: string | null; creado_en: string };
@@ -92,6 +94,10 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
   const [guardando, setGuardando] = useState<string | null>(null);
   // Cambios guardados en esta sesión, para verlos al instante antes de que la página se refresque.
   const [locales, setLocales] = useState<Record<string, Llamada[]>>({});
+  // Guías tocadas en esta vista (contacto u observación): no se esconden mientras la asesora sigue trabajándolas.
+  const [quedan, setQuedan] = useState<Set<string>>(new Set());
+  const quedarse = (guia: string) => setQuedan((x) => (x.has(guia) ? x : new Set(x).add(guia)));
+  useEffect(() => { setQuedan(new Set()); }, [filtro]);
   const [obs, setObs] = useState<Record<string, { codigo: CodigoObs | ""; fecha: string | null; texto?: string }>>({});
   const [mostrar, setMostrar] = useState(POR_PAGINA);
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set()); // fichas con todos los datos a la vista (celular)
@@ -147,6 +153,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
   const lista = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return guias.filter((g) => {
+      if (!q && quedan.has(g.guia)) return true;
       const ult = llamadasDe(g).at(-1);
       const m = marca(g);
       if (filtro === "compromiso") { if (m?.tipo !== "compromiso") return false; }
@@ -166,7 +173,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
         || (a.m && b.m ? a.m.orden - b.m.orden : 0) || a.i - b.i)
       .map((x) => x.g);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guias, filtro, buscar, locales, obs, hoy]);
+  }, [guias, filtro, buscar, locales, obs, hoy, quedan]);
   const marcas = guias.map((g) => marca(g));
   const fuera = (i: number) => marcas[i]?.tipo === "compromiso" || marcas[i]?.tipo === "no_fue";
   const porSeguir = guias.filter((g, i) => !fuera(i) && seguimiento(g)).length;
@@ -181,6 +188,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
 
   async function marcar(g: GuiaOficina, intento: number, canal: "llamada" | "whatsapp", resultado: Resultado | "") {
     if (!resultado) return;
+    quedarse(g.guia);
     setGuardando(`${g.guia}|${intento}`); setError(null);
     const supabase = createClient();
     const actual = llamadasDe(g).find((l) => l.intento === intento);
@@ -197,6 +205,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
   // escriba lo que dijo el cliente.
   async function guardarObs(g: GuiaOficina, codigo: CodigoObs | "", fecha: string | null, texto?: string) {
     setObs((o) => ({ ...o, [g.guia]: { codigo, fecha, texto } }));
+    quedarse(g.guia);
     if (CON_FECHA.includes(codigo as CodigoObs) && !fecha) return;
     // El calendario no deja escoger días pasados, pero escribiendo la fecha sí: se frena aquí (y años mal escritos).
     if (fecha && (fecha < hoy || fecha.slice(0, 4) > String(Number(hoy.slice(0, 4)) + 1))) { setError("Esa fecha no sirve: escoge un día de hoy en adelante."); return; }
@@ -335,6 +344,11 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                     {porVenir && (
                       <div className="mb-1 inline-block rounded-full bg-green px-2 py-0.5 font-sans text-[10px] font-bold text-black" title={porVenir.titulo}>
                         {porVenir.etiqueta}
+                      </div>
+                    )}
+                    {m && (m.tipo === "compromiso" || m.tipo === "no_fue") && filtro !== m.tipo && quedan.has(g.guia) && (
+                      <div className="mb-1 max-w-[9rem] whitespace-normal font-sans text-[10px] leading-tight text-muted">
+                        Queda guardada en {m.tipo === "compromiso" ? "«🤝 Compromiso de retiro»" : "«🚫 Dijo que fue y no fue»"}
                       </div>
                     )}
                     {seg && !ret && (

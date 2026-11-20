@@ -118,8 +118,11 @@ const RECURSOS: Record<string, Recurso> = {
   wallet: { path: 'movimiento_dinero_effi', desde: 'fecha_desde', hasta: 'fecha_hasta', paginable: true, tramoJobMs: DAY_MS },
   guias: { path: 'guia_transporte', desde: 'desde', hasta: 'hasta', paginable: true, tramoJobMs: 2 * DAY_MS },
   novedades_1: { path: 'novedad_guia_transporte', desde: 'desde', hasta: 'hasta', paginable: false, extra: { t_novedad: '1' }, tramoJobMs: DAY_MS },
-  novedades_2: { path: 'novedad_guia_transporte', desde: 'desde', hasta: 'hasta', paginable: false, extra: { t_novedad: '2' }, tramoJobMs: 7 * DAY_MS },
+  novedades_2: { path: 'novedad_guia_transporte', desde: 'desde', hasta: 'hasta', paginable: false, extra: { t_novedad: '2' }, tramoJobMs: DAY_MS / 2 },
 };
+// novedades_2 va en tramos de medio día (20-nov-2026): con 7 días, Ecuador (cientos de novedades por semana) gastaba las
+// 80 peticiones de la corrida partiendo el tramo y nunca lo terminaba; el repaso de 10 días quedó atascado desde el 17-nov
+// y las novedades viejas («Cerrada por nueva novedad ingresada») seguían como pendientes.
 const INCREMENTALES = ['hist', 'wallet', 'guias', 'novedades_1', 'novedades_2'];
 
 // Trae y guarda todo lo del rango [a, b] (ms UTC). Devuelve filas guardadas.
