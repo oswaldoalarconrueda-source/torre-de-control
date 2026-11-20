@@ -7,6 +7,9 @@ import { WalletEnVivo } from "@/components/wallet-en-vivo";
 export default async function WalletEnVivoPage() {
   await exigirModulo("dinero");
   const demo = await enDemo();
+  // Pedido del dueño (20-nov-2026): las billeteras de O.A. quedan ocultas hasta nueva orden. Para volver a mostrarlas,
+  // MOSTRAR_OA = true (la base las sigue calculando en wallet_en_vivo).
+  const MOSTRAR_OA = false;
   return (
     <div className="pt-8">
       <div className="mb-5">
@@ -15,7 +18,7 @@ export default async function WalletEnVivoPage() {
           Saldo de cada wallet Effi en su moneda, en tiempo real: cada entrega pagada lo sube y cada flete, costo o retiro lo baja.
         </p>
       </div>
-      <WalletEnVivo dropi={!demo} />
+      <WalletEnVivo dropi={MOSTRAR_OA && !demo} />
     </div>
   );
 }
