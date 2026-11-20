@@ -27,7 +27,9 @@ export default async function EnVivoPage() {
     .map((c) => c.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
   // Logo al centro solo si todo lo que se ve es de una sola sociedad y esa sociedad tiene logo.
   const sociedades = [...new Set((data ?? []).map((c) => c.sociedad as string))];
-  const logo = sociedades.length === 1 ? ((soc ?? []).find((x) => x.nombre === sociedades[0])?.logo as string | null) ?? null : null;
+  const logoSoc = sociedades.length === 1 ? ((soc ?? []).find((x) => x.nombre === sociedades[0])?.logo as string | null) ?? null : null;
+  // La demostración quedó congelada el 17-nov con el logo anterior de Joalix (desde el 20-nov la sociedad usa el de Effi AI).
+  const logo = demo && logoSoc ? "/logo-joalix.jpg" : logoSoc;
   return (
     <div className="pt-8">
       <div className="mb-5">

@@ -532,7 +532,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         }
       }
       if (centro) {
-        // Logo de Joalix en un círculo con halo dorado que late con cada movimiento.
+        // Logo de la sociedad en un círculo con halo dorado que late con cada movimiento.
         const l = Math.max(st.torre ? Math.max(0, 1 - (ahora - st.torre) / 600) : 0,
           st.torreEntrega ? 1.8 * Math.max(0, 1 - (ahora - st.torreEntrega) / 1200) : 0);
         const R = 66 * (1 + 0.05 * Math.min(l, 1.5));
@@ -543,8 +543,11 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
         if (logo.current) {
           ctx.save();
           ctx.beginPath(); ctx.arc(cx, cy, R - 2, 0, Math.PI * 2); ctx.clip();
-          const z = R * 2.25; // el logo trae margen negro: se amplía un poco para que llene el círculo
-          ctx.drawImage(logo.current, cx - z / 2, cy - z / 2 + 4, z, z);
+          // El logo anterior de Joalix (el de la demostración) trae margen negro: se amplía para que llene el círculo. Los
+          // demás (p. ej. Effi AI, fondo blanco) van del tamaño del círculo.
+          const viejo = logo.current.src.includes("logo-joalix");
+          const z = R * (viejo ? 2.25 : 2);
+          ctx.drawImage(logo.current, cx - z / 2, cy - z / 2 + (viejo ? 4 : 0), z, z);
           ctx.restore();
         }
         ctx.strokeStyle = `rgba(212,166,74,${0.75 + 0.25 * l})`; ctx.lineWidth = 2;
