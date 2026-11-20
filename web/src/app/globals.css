@@ -198,6 +198,23 @@ body {
   .pulso { animation: none; }
 }
 
+/* 🐝 Zumbido: lo urgente (filtros de Disponible en oficina con tareas pendientes) tiembla cada pocos segundos. */
+@keyframes zumbido {
+  0%, 84%, 100% { transform: translateX(0) rotate(0deg); }
+  86% { transform: translateX(-2px) rotate(-1.5deg); }
+  88% { transform: translateX(2px) rotate(1.5deg); }
+  90% { transform: translateX(-2px) rotate(-1deg); }
+  92% { transform: translateX(2px) rotate(1deg); }
+  94% { transform: translateX(-1px) rotate(0deg); }
+  96% { transform: translateX(1px) rotate(0deg); }
+}
+.zumbido {
+  animation: zumbido 2.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .zumbido { animation: none; }
+}
+
 /* ⚡ En vivo: un impulso viaja del país a su estado y el nodo late al recibirlo. */
 @keyframes viaje {
   from { transform: translate(0, 0); opacity: 1; }

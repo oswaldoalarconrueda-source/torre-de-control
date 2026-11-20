@@ -64,10 +64,14 @@ export const transCorta = (t: string | null | undefined) => {
 };
 
 // Cuánto lleva algo, en minutos (desde un día, en días): "45 min", "380 min", "2 d".
+// Tiempo desde una hora (regla del dueño, 20-nov): hasta 60 minutos en minutos, desde 1 hora en horas y desde 24 horas en días.
 export const minutosDesde = (iso: string | null | undefined, ahora = Date.now()) => {
   if (!iso) return "—";
   const m = Math.max(0, Math.round((ahora - Date.parse(iso)) / 60_000));
-  return m < 1440 ? `${m} min` : `${Math.floor(m / 1440)} d`;
+  if (m < 60) return `${m} min`;
+  if (m < 1440) return `${Math.floor(m / 60)} h`;
+  const d = Math.floor(m / 1440);
+  return `${d} ${d === 1 ? "día" : "días"}`;
 };
 
 // Regla del dueño (28-oct, ajustada 31-oct): la segunda plataforma se muestra como "Otra P", nunca con su nombre real.

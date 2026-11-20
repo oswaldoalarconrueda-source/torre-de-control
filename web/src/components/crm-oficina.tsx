@@ -262,13 +262,23 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {FILTROS.map((f) => (
-          <button key={f.id} onClick={() => { setFiltro(f.id); setMostrar(POR_PAGINA); }}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filtro === f.id ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
-            {f.label}{f.id === "seguimiento" ? ` (${entero(porSeguir)})` : f.id === "volver" ? ` (${entero(porVolver)})`
-              : f.id === "compromiso" ? ` (${entero(porCompromiso)}${vencidos ? ` · ${entero(vencidos)} vencidos` : ""})` : f.id === "no_fue" ? ` (${entero(porNoFue)})` : ""}
-          </button>
-        ))}
+        {FILTROS.map((f) => {
+          // Lo urgente (hay que llamar ya) zumba y va en rojo mientras no esté elegido.
+          const pendientes = f.id === "volver" ? porVolver : f.id === "seguimiento" ? porSeguir : f.id === "compromiso" ? vencidos : f.id === "no_fue" ? porNoFue : 0;
+          const activo = filtro === f.id, urgente = pendientes > 0 && !activo;
+          return (
+            // Tocar el filtro elegido lo quita y vuelve a «Todas».
+            <button key={f.id} aria-pressed={activo} onClick={() => { setFiltro((x) => (x === f.id ? "todas" : f.id)); setMostrar(POR_PAGINA); }}
+              title={activo && f.id !== "todas" ? "Tocar otra vez para quitar el filtro" : undefined}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${activo ? "border-blue/50 bg-blue/15 text-text"
+                : urgente ? "zumbido border-red/50 bg-red/10 text-text hover:bg-red/15" : "border-line text-muted hover:text-text"}`}>
+              {urgente && <span className="pulso size-1.5 rounded-full bg-red shadow-[0_0_8px_var(--red)]" />}
+              {f.label}{f.id === "seguimiento" ? ` (${entero(porSeguir)})` : f.id === "volver" ? ` (${entero(porVolver)})`
+                : f.id === "compromiso" ? ` (${entero(porCompromiso)}${vencidos ? ` · ${entero(vencidos)} vencidos` : ""})` : f.id === "no_fue" ? ` (${entero(porNoFue)})` : ""}
+              {activo && f.id !== "todas" && <span aria-hidden className="ml-0.5 text-muted">✕</span>}
+            </button>
+          );
+        })}
         <label className="ml-auto flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-sm max-md:w-full">
           <Search size={14} className="text-muted" />
           <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Guía, cliente, teléfono, ciudad, producto u observación"
