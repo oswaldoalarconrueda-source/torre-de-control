@@ -17,8 +17,12 @@ import { BarraHorizontal } from "./barra-horizontal";
 // de qué pasó con lo que llegó a oficina está en el cuadre).
 // "Hacer seguimiento" guarda el día en que el cliente pidió que lo llamen: desde ese día la guía va siempre arriba de la
 // lista, resaltada, hasta que alguien cambie la observación (o la guía se entregue o se devuelva y salga sola).
-// "Volver a llamar" sube de primeras lo que el cliente dijo pero sigue en oficina: "ya retiró" marcado hace 24 horas o
-// más (Effi no la muestra entregada; 1 de cada 3 no se confirma) y "realizará el retiro el…" con el día ya pasado.
+// Pedido del dueño (19-nov-2026), para que las asesoras sepan por dónde empezar:
+// - "🤝 Compromiso de retiro": toda guía con "realizará el retiro el…" sale de la lista inicial y queda en este filtro,
+//   que se revisa cada día. Arriba las vencidas (el día prometido ya pasó y sigue en oficina): hay que volver a llamar.
+// - "Ya realizó el retiro": 7 días arriba de la lista ("🔁 Volver a llamar") desde el día en que se marcó; si pasan los
+//   7 días y Effi no la muestra entregada, sale de la lista inicial y va a "🚫 Dijo que fue y no fue".
+// Buscando por guía, cliente o teléfono se encuentran en cualquier filtro.
 
 type Resultado = "contesto" | "no_contesto" | "telefono_malo";
 export type Llamada = { id: number; intento: number; resultado: Resultado; canal: "llamada" | "whatsapp"; nota: string | null; usuario: string | null; creado_en: string };
@@ -45,13 +49,15 @@ const FILTROS = [
   { id: "todas", label: "Todas" },
   { id: "volver", label: "🔁 Volver a llamar" },
   { id: "seguimiento", label: "📌 Seguimiento hoy" },
+  { id: "compromiso", label: "🤝 Compromiso de retiro" },
+  { id: "no_fue", label: "🚫 Dijo que fue y no fue" },
   { id: "sin_llamar", label: "Sin contactar" },
   { id: "contesto", label: "Contactado" },
   { id: "no_contesto", label: "No contesta" },
   { id: "telefono_malo", label: "No aplica" },
 ] as const;
 const POR_PAGINA = 60;
-const HORAS_RETIRO = 24;
+const DIAS_YA_RETIRO = 7; // "ya realizó el retiro": días arriba de la lista antes de pasar a "Dijo que fue y no fue"
 const MORADO = "#b48cff";
 // Hora local de cada tienda e indicativo para abrir WhatsApp.
 
@@ -102,50 +108,72 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
     const o = obs[g.guia] ?? { codigo: g.observacion?.codigo ?? "", fecha: g.observacion?.fecha ?? null };
     return o.codigo === "seguimiento" && !!o.fecha && o.fecha <= hoy ? o.fecha : null;
   };
-  // Lo que el cliente dijo y no se cumplió (la guía sigue en oficina): horas de atraso y la etiqueta de la fila. Lo
-  // cambiado en esta sesión manda (si ya se reagendó o se cambió la observación, sale).
-  const volverALlamar = (g: GuiaOficina): { horas: number; etiqueta: string; titulo: string } | null => {
+  // Lo que el cliente dijo sobre el retiro, con la etiqueta de la fila. Lo cambiado en esta sesión manda.
+  //   tipo "compromiso": dio un día para retirar (vencida = el día ya pasó y sigue en oficina, o la fecha quedó mal puesta).
+  //   tipo "ya_retiro": dijo que ya retiró hace 7 días o menos (va arriba de la lista).
+  //   tipo "no_fue": dijo que ya retiró hace más de 7 días y la guía sigue en oficina.
+  type Marca = { tipo: "compromiso" | "ya_retiro" | "no_fue"; vencida: boolean; orden: number; etiqueta: string; titulo: string };
+  const marca = (g: GuiaOficina): Marca | null => {
     const o = g.observacion, local = obs[g.guia];
     const codigo = local ? local.codigo : o?.codigo ?? "", fecha = local ? local.fecha : o?.fecha ?? null;
-    if (codigo === "ya_retiro" && o?.codigo === "ya_retiro") {
-      const h = (Date.now() - Date.parse(o.actualizado_en)) / 3_600_000;
-      if (h < HORAS_RETIRO) return null;
-      return { horas: h, etiqueta: `❓ Dijo que retiró · hace ${h >= 48 ? `${Math.floor(h / 24)} d` : `${Math.floor(h)} h`}`,
-        titulo: `Marcado "ya retiró" el ${hora(o.actualizado_en)}; Effi todavía no la muestra entregada` };
+    if (codigo === "ya_retiro") {
+      const desde = !local && o?.codigo === "ya_retiro" ? o.actualizado_en : new Date().toISOString();
+      const h = (Date.now() - Date.parse(desde)) / 3_600_000;
+      const d = Math.round((Date.parse(hoy) - Date.parse(dia(desde))) / 86_400_000);
+      const cuando = h >= 48 ? `${Math.floor(h / 24)} d` : `${Math.floor(h)} h`;
+      return d > DIAS_YA_RETIRO
+        ? { tipo: "no_fue", vencida: true, orden: -h, etiqueta: `🚫 Dijo que retiró · hace ${cuando}`,
+            titulo: `Marcado "ya retiró" el ${hora(desde)} y en ${DIAS_YA_RETIRO} días Effi no la mostró entregada: volver a llamar` }
+        : { tipo: "ya_retiro", vencida: false, orden: -h, etiqueta: `❓ Dijo que retiró · hace ${cuando}`,
+            titulo: `Marcado "ya retiró" el ${hora(desde)}; Effi todavía no la muestra entregada` };
     }
-    // Fecha imposible (año mal escrito o anterior al día en que se marcó): también hay que llamar y corregirla.
+    if (codigo !== "retira_fecha" || !fecha) return null;
+    // Fecha imposible (año mal escrito o anterior al día en que se marcó): hay que llamar y corregirla.
     const marcado = local || !o ? hoy : dia(o.actualizado_en);
-    if (codigo === "retira_fecha" && fecha && (fecha < marcado || fecha.slice(0, 4) < hoy.slice(0, 4))) {
-      const h = o && !local ? (Date.now() - Date.parse(o.actualizado_en)) / 3_600_000 : 0;
-      return { horas: h, etiqueta: `⚠️ Fecha mal puesta: ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}/${fecha.slice(0, 4)}`,
+    if (fecha < marcado || fecha.slice(0, 4) < hoy.slice(0, 4))
+      return { tipo: "compromiso", vencida: true, orden: Date.parse(fecha), etiqueta: `⚠️ Fecha mal puesta: ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}/${fecha.slice(0, 4)}`,
         titulo: "La fecha de retiro quedó mal escrita: llama al cliente y vuelve a escoger el día" };
-    }
-    if (codigo === "retira_fecha" && fecha && fecha < hoy) {
+    const dm = `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`;
+    if (fecha < hoy) {
       const d = Math.round((Date.parse(hoy) - Date.parse(fecha)) / 86_400_000);
-      return { horas: d * 24, etiqueta: `⏰ Prometió ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} · no ha ido`,
-        titulo: `Dijo que retiraba el ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} (hace ${d} ${d === 1 ? "día" : "días"}) y sigue en oficina` };
+      return { tipo: "compromiso", vencida: true, orden: Date.parse(fecha), etiqueta: `⏰ Prometió ${dm} · no ha ido`,
+        titulo: `Dijo que retiraba el ${dm} (hace ${d} ${d === 1 ? "día" : "días"}) y sigue en oficina: volver a llamar` };
     }
-    return null;
+    return { tipo: "compromiso", vencida: false, orden: Date.parse(fecha), etiqueta: `🤝 Retira ${fecha === hoy ? "hoy" : dm}`,
+      titulo: `Se comprometió a retirar el ${dm}` };
   };
+  // "Volver a llamar" (arriba de la lista inicial): solo "ya retiró" de los últimos 7 días.
+  const volverALlamar = (g: GuiaOficina) => { const m = marca(g); return m?.tipo === "ya_retiro" ? m : null; };
   const lista = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return guias.filter((g) => {
       const ult = llamadasDe(g).at(-1);
+      const m = marca(g);
+      if (filtro === "compromiso") { if (m?.tipo !== "compromiso") return false; }
+      else if (filtro === "no_fue") { if (m?.tipo !== "no_fue") return false; }
+      // Las de compromiso y las de "dijo que fue y no fue" no salen en la lista inicial ni en los otros filtros (sí al buscar).
+      else if (!q && (m?.tipo === "compromiso" || m?.tipo === "no_fue")) return false;
       if (filtro === "seguimiento" && !seguimiento(g)) return false;
       if (filtro === "volver" && !volverALlamar(g)) return false;
       if (filtro === "sin_llamar" && ult) return false;
-      if (filtro !== "todas" && filtro !== "sin_llamar" && filtro !== "seguimiento" && filtro !== "volver" && ult?.resultado !== filtro) return false;
+      if (["contesto", "no_contesto", "telefono_malo"].includes(filtro) && ult?.resultado !== filtro) return false;
       return !q || [g.guia, g.destinatario, g.telefono, g.ciudad, g.contenido, g.transportadora, g.observacion?.texto].some((x) => (x ?? "").toLowerCase().includes(q));
-    // Arriba: primero lo que hay que volver a llamar (lo más atrasado primero), luego los seguimientos que ya tocan (el más
-    // atrasado primero); el resto sigue en su orden.
-    }).map((g, i) => ({ g, i, r: volverALlamar(g)?.horas ?? null, s: seguimiento(g) }))
-      .sort((a, b) => (a.r ? 0 : 1) - (b.r ? 0 : 1) || (a.r && b.r ? b.r - a.r : 0)
-        || (a.s ? 0 : 1) - (b.s ? 0 : 1) || (a.s && b.s ? a.s.localeCompare(b.s) : 0) || a.i - b.i)
+    // Arriba: primero lo que toca volver a llamar ("ya retiró" reciente, compromisos vencidos y "dijo que fue y no fue"; lo
+    // más atrasado primero), luego los seguimientos que ya tocan; en Compromiso, después de las vencidas, por día prometido.
+    }).map((g, i) => { const m = marca(g); return { g, i, m, r: m && (m.tipo !== "compromiso" || m.vencida) ? m.orden : null, s: seguimiento(g) }; })
+      .sort((a, b) => (a.r != null ? 0 : 1) - (b.r != null ? 0 : 1) || (a.r != null && b.r != null ? a.r - b.r : 0)
+        || (a.s ? 0 : 1) - (b.s ? 0 : 1) || (a.s && b.s ? a.s.localeCompare(b.s) : 0)
+        || (a.m && b.m ? a.m.orden - b.m.orden : 0) || a.i - b.i)
       .map((x) => x.g);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guias, filtro, buscar, locales, obs, hoy]);
-  const porSeguir = guias.filter((g) => seguimiento(g)).length;
-  const porVolver = guias.filter((g) => volverALlamar(g)).length;
+  const marcas = guias.map((g) => marca(g));
+  const fuera = (i: number) => marcas[i]?.tipo === "compromiso" || marcas[i]?.tipo === "no_fue";
+  const porSeguir = guias.filter((g, i) => !fuera(i) && seguimiento(g)).length;
+  const porVolver = marcas.filter((m) => m?.tipo === "ya_retiro").length;
+  const porCompromiso = marcas.filter((m) => m?.tipo === "compromiso").length;
+  const vencidos = marcas.filter((m) => m?.tipo === "compromiso" && m.vencida).length;
+  const porNoFue = marcas.filter((m) => m?.tipo === "no_fue").length;
 
   const todas = guias.flatMap((g) => llamadasDe(g));
   const deHoy = todas.filter((l) => dia(l.creado_en) === hoy);
@@ -186,16 +214,28 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
 
   return (
     <div className="space-y-3">
-      {/* El cliente dijo que retiró o que retiraba un día que ya pasó, y la guía sigue en oficina: volver a llamar. */}
+      {/* Compromisos de retiro vencidos: la tarea de cada día (están en su propio filtro, no en la lista inicial). */}
+      {vencidos > 0 && (
+        <button onClick={() => { setFiltro("compromiso"); setMostrar(POR_PAGINA); }}
+          className="w-full flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-left"
+          style={{ borderColor: `${MORADO}80`, background: `${MORADO}1a` }}>
+          <span className="text-2xl">🤝</span>
+          <span className="font-display text-lg font-semibold" style={{ color: MORADO }}>
+            {vencidos === 1 ? "1 compromiso de retiro vencido" : `${entero(vencidos)} compromisos de retiro vencidos`}
+          </span>
+          <span className="text-xs text-muted">Dijeron que retiraban un día que ya pasó y la guía sigue en oficina: volver a llamar. Están en el filtro «Compromiso de retiro».</span>
+        </button>
+      )}
+      {/* Dijo que ya retiró (últimos 7 días) y la guía sigue en oficina: arriba de la lista. */}
       {porVolver > 0 && (
         <button onClick={() => { setFiltro("volver"); setMostrar(POR_PAGINA); }}
           className="w-full flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-left"
           style={{ borderColor: `${MORADO}80`, background: `${MORADO}1a` }}>
           <span className="text-2xl">🔁</span>
           <span className="font-display text-lg font-semibold" style={{ color: MORADO }}>
-            {porVolver === 1 ? "1 cliente para volver a llamar" : `${entero(porVolver)} clientes para volver a llamar`}
+            {porVolver === 1 ? "1 cliente dijo que ya retiró" : `${entero(porVolver)} clientes dijeron que ya retiraron`}
           </span>
-          <span className="text-xs text-muted">Dijeron que ya retiraron (hace más de {HORAS_RETIRO} horas) o que retiraban un día que ya pasó, y la guía sigue en oficina. Van de primeras en la lista.</span>
+          <span className="text-xs text-muted">La guía sigue en oficina. Van de primeras en la lista por {DIAS_YA_RETIRO} días; después pasan a «Dijo que fue y no fue».</span>
         </button>
       )}
       {/* Clientes que pidieron que los llamen hoy (o antes y siguen pendientes): siempre a la vista. */}
@@ -225,7 +265,8 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
         {FILTROS.map((f) => (
           <button key={f.id} onClick={() => { setFiltro(f.id); setMostrar(POR_PAGINA); }}
             className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filtro === f.id ? "border-blue/50 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
-            {f.label}{f.id === "seguimiento" ? ` (${entero(porSeguir)})` : f.id === "volver" ? ` (${entero(porVolver)})` : ""}
+            {f.label}{f.id === "seguimiento" ? ` (${entero(porSeguir)})` : f.id === "volver" ? ` (${entero(porVolver)})`
+              : f.id === "compromiso" ? ` (${entero(porCompromiso)}${vencidos ? ` · ${entero(vencidos)} vencidos` : ""})` : f.id === "no_fue" ? ` (${entero(porNoFue)})` : ""}
           </button>
         ))}
         <label className="ml-auto flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-sm max-md:w-full">
@@ -265,7 +306,10 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
               const dias = g.llegada ? (Date.now() - Date.parse(g.llegada)) / 86_400_000 : 0;
               const tels = telefonos(g.telefono);
               const seg = seguimiento(g);
-              const ret = volverALlamar(g);
+              // Etiqueta morada: "ya retiró", compromiso vencido o "dijo que fue y no fue". Compromiso por venir: etiqueta verde.
+              const m = marca(g);
+              const ret = m && (m.tipo !== "compromiso" || m.vencida) ? m : null;
+              const porVenir = m && m.tipo === "compromiso" && !m.vencida ? m : null;
               // En celular, lo que casi no se usa al llamar queda detrás de "Ver más datos".
               const extra = abiertas.has(g.guia) ? "" : "max-md:hidden";
               return (
@@ -276,6 +320,11 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                     {ret && (
                       <div className="mb-1 inline-block rounded-full px-2 py-0.5 font-sans text-[10px] font-bold text-black" style={{ background: MORADO }} title={ret.titulo}>
                         {ret.etiqueta}
+                      </div>
+                    )}
+                    {porVenir && (
+                      <div className="mb-1 inline-block rounded-full bg-green px-2 py-0.5 font-sans text-[10px] font-bold text-black" title={porVenir.titulo}>
+                        {porVenir.etiqueta}
                       </div>
                     )}
                     {seg && !ret && (

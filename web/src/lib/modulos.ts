@@ -12,6 +12,8 @@ export const MODULOS = [
   { id: "proveeduria", nombre: "Proveeduría", detalle: "Tablero de Distrilatam: ventas a las tiendas, inventario, compras y cartera", rutas: ["/proveeduria"] },
   // Lo llenan el dueño, los socios y la empleada que tenga el módulo marcado.
   { id: "pedidos_lucid", nombre: "Data Lucid", detalle: "Llenar cada día los pedidos de LucidSales por país (los socios también lo llenan)", rutas: ["/pedidos-lucid"] },
+  // Exclusivo: solo a quien se le marque (p. ej. la encargada que sube cada mañana la cartera de Dropi y la billetera de Drop).
+  { id: "cargas", nombre: "Cargar archivos", detalle: "Subir los Excel de cartera y órdenes (Dropi, Drop, icomfly) de sus tiendas", rutas: ["/cargas"], exclusivo: true },
 ] as const;
 export type ModuloId = (typeof MODULOS)[number]["id"];
 // Módulos exclusivos: solo el dueño y a quien se le marquen; a los socios no les llegan solos.

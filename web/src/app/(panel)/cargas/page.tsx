@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { createClient, getUsuario } from "@/lib/supabase/server";
+import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { NOMBRE_TIPO, type TipoCarga } from "@/lib/cargas";
 import { entero, fechaHora } from "@/lib/formato";
 import { infoCuenta, nombreConSociedad, ordenCuenta } from "@/lib/paises";
@@ -9,17 +8,21 @@ import { DocumentosCarga, type Documento } from "@/components/documentos-carga";
 
 // 📤 Cargar archivos: Dropi (órdenes, productos, cartera) y Meta (CSV por BM) mientras no hay API.
 export default async function CargasPage() {
-  const u = await getUsuario();
-  if (u?.rol !== "owner") redirect("/");
+  // El dueño, o quien tenga el módulo «Cargar archivos» (solo en las tiendas que se le asignaron).
+  const u = await exigirModulo("cargas");
+  const dueno = u.rol === "owner";
   const supabase = await createClient();
   // Tiendas de la sociedad que el dueño está viendo (la base filtra effi_accounts por esa sociedad).
-  const [{ data: cargas }, { data: estado }, { data: documentos }, { data: tiendasData }] = await Promise.all([
+  const [{ data: cargas }, { data: estado }, { data: documentos }, { data: tiendasData }, { data: permitidas }] = await Promise.all([
     supabase.from("app_cargas").select("id,tipo,cuenta,archivo,filas,resumen,creado_en").order("id", { ascending: false }).limit(30),
     supabase.rpc("app_estado_cargas"),
-    supabase.from("app_documentos").select("id,tipo,cuenta,mes,nota,archivo,ruta,bytes,subido_por,creado_en").order("id", { ascending: false }).limit(100),
+    dueno ? supabase.from("app_documentos").select("id,tipo,cuenta,mes,nota,archivo,ruta,bytes,subido_por,creado_en").order("id", { ascending: false }).limit(100) : Promise.resolve({ data: [] }),
     supabase.from("effi_accounts").select("slug").eq("tipo", "tienda").eq("activa", true),
+    dueno ? Promise.resolve({ data: null }) : supabase.rpc("app_cuentas_visibles", { p_modulo: "cargas" }),
   ]);
-  const tiendas = (tiendasData ?? []).map((t) => t.slug as string).sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
+  const conCargas = new Set((permitidas as string[] | null) ?? []);
+  const tiendas = (tiendasData ?? []).map((t) => t.slug as string).filter((s) => dueno || conCargas.has(s))
+    .sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
   const filasEstado = (estado ?? []) as { cuenta: string; fuente: string; filas: number; desde: string | null; hasta: string | null }[];
 
   return (
@@ -34,7 +37,8 @@ export default async function CargasPage() {
 
       <Cargador tiendas={tiendas} />
 
-      <DocumentosCarga documentos={(documentos ?? []) as Documento[]} usuario={u?.email ?? null} />
+      {/* Documentos financieros (extractos, facturas de Meta): solo el dueño. */}
+      {dueno && <DocumentosCarga documentos={(documentos ?? []) as Documento[]} usuario={u?.email ?? null} />}
 
       <Panel titulo="Qué hay cargado" detalle="Por tienda y fuente">
         {filasEstado.length ? (

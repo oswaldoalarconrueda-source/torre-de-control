@@ -38,7 +38,8 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/tiempo-empleados", label: "Gestión tiempo empleados", emoji: "⏱️", estado: "vivo", soloOwner: true },
   { href: "/agente-admin", label: "Agente admin", emoji: "🧾", estado: "vivo", soloOwner: true },
   { href: "/sync", label: "Estado de los datos", emoji: "🔄", estado: "vivo", soloOwner: true },
-  { href: "/cargas", label: "Cargar archivos", emoji: "📤", estado: "vivo", soloOwner: true },
+  // Del dueño (en «Solo para ti») y de quien tenga el módulo Cargar archivos (en el menú normal).
+  { href: "/cargas", label: "Cargar archivos", emoji: "📤", estado: "vivo", soloOwner: true, modulo: "cargas" },
   { href: "/usuarios", label: "Usuarios y permisos", emoji: "👥", estado: "vivo", soloOwner: true },
 ];
 

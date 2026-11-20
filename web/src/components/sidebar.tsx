@@ -97,7 +97,8 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   }, [abierto]);
 
   const visible = (it: ItemMenu) => {
-    if (it.soloOwner && !esOwner) return false;
+    // «Solo dueño» con módulo (Cargar archivos): también lo ve quien tenga ese módulo.
+    if (it.soloOwner && !esOwner && !(it.modulo && tieneModulo(acceso, it.modulo))) return false;
     if (it.soloSocios && !esSocio(acceso)) return false;
     if (it.soloProveeduria && !conProveeduria) return false;
     if (it.noProveeduria && soloProveeduria && !esOwner) return false;
@@ -185,7 +186,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
             })}
           </div>
         ) : (<>
-        <div className="space-y-0.5">{MENU_JOALIX.filter((it) => !it.soloOwner).map((it) => (it.hijos ? grupo(it) : item(it)))}</div>
+        <div className="space-y-0.5">{MENU_JOALIX.filter((it) => !it.soloOwner || (!esOwner && it.modulo)).map((it) => (it.hijos ? grupo(it) : item(it)))}</div>
         {MENU_EN_VIVO.some((it) => !it.modulo || tieneModulo(acceso, it.modulo)) && (
           <div>
             <div className={titulo}>En vivo</div>

@@ -23,7 +23,9 @@ export default async function HomologarPage({ searchParams }: PageProps<"/produc
   ]);
   const d = data as { campanas: CampanaHomologar[]; productos: string[] } | null;
   // Lo que la tienda ha vendido en toda su historia (más vendido primero); si algo falla, los nombres de las reglas.
-  const productos = (hist as ProductoHistorico[] | null)?.length ? (hist as ProductoHistorico[]) : (d?.productos ?? []).map((producto) => ({ producto, guias: 0 }));
+  const vendidos = (hist as ProductoHistorico[] | null)?.length ? (hist as ProductoHistorico[]) : (d?.productos ?? []).map((producto) => ({ producto, guias: 0 }));
+  // «Testeo» siempre disponible (de primera): campañas de prueba que no son de un producto vendido (pedido del dueño, 19-nov).
+  const productos = [{ producto: "Testeo", guias: 0 }, ...vendidos.filter((p) => p.producto.trim().toLowerCase() !== "testeo")];
 
   return (
     <>

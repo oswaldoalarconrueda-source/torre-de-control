@@ -14,7 +14,9 @@
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const MCP = 'https://mcp.dropi.co/mcp';
-const AUTH = 'https://integrations.dropi.co';
+// 19-nov-2026: Dropi movió su servidor de permisos a mcp.dropi.co (integrations.dropi.co dejó de renovar). Los permisos
+// viejos no sirven en el nuevo: cada tienda se autoriza de nuevo con scripts/autorizar-dropi.mjs.
+const AUTH = 'https://mcp.dropi.co';
 const CUENTAS = ['AUNCLIC_GT', 'TIENDA_GT', 'TIENDA_CO'];
 const ZONA: Record<string, string> = { AUNCLIC_GT: 'America/Guatemala', TIENDA_GT: 'America/Guatemala', TIENDA_CO: 'America/Bogota' };
 
@@ -158,13 +160,19 @@ function local(iso: string | null, zona: string) {
 }
 const lista = (r: O): O[] => (Array.isArray(r) ? r : r.items ?? r.orders ?? r.data ?? r.objects ?? []) as O[];
 
-async function sincronizar(cuenta: string, desde: string, hasta: string, explorar: boolean, prueba: boolean) {
+async function sincronizar(cuenta: string, desde: string, hasta: string, explorar: boolean, prueba: boolean, herramientas = false) {
   const tok = await acceso(cuenta);
   if (!tok) return { cuenta, omitida: 'sin permiso de Dropi' };
   const m = new Mcp(tok);
   await m.iniciar();
   const zona = ZONA[cuenta];
 
+  // ?herramientas=1: solo la lista de herramientas que ofrece el MCP (nombre, descripción y parámetros), sin datos.
+  if (herramientas) {
+    const t = await m.enviar('tools/list', {});
+    return { cuenta, herramientas: (t?.tools ?? []).map((x: O) => ({ nombre: x.name, descripcion: String(x.description ?? '').slice(0, 220),
+      parametros: Object.keys(x.inputSchema?.properties ?? {}) })) };
+  }
   if (explorar) {
     const r = await m.llamar('list_orders', { from: desde, until: hasta, result_number: 2 });
     const o = lista(r)[0];
@@ -250,14 +258,15 @@ Deno.serve(async (req) => {
   const hasta = fecha('hasta') ?? hoy;
   const explorar = url.searchParams.get('explorar') === '1';
   const prueba = url.searchParams.get('prueba') === '1';
+  const herramientas = url.searchParams.get('herramientas') === '1';
   const pedida = url.searchParams.get('cuenta');
   const cuentas = pedida ? CUENTAS.filter((c) => c === pedida) : CUENTAS;
   const resultados = [];
   for (const c of cuentas) {
     try {
-      const r = await sincronizar(c, desde, hasta, explorar, prueba);
+      const r = await sincronizar(c, desde, hasta, explorar, prueba, herramientas);
       resultados.push(r);
-      if (!explorar && !('omitida' in r)) await rpc('dropi_sync_resultado', { p_cuenta: c, p_error: null, p_resumen: r });
+      if (!explorar && !herramientas && !('omitida' in r)) await rpc('dropi_sync_resultado', { p_cuenta: c, p_error: null, p_resumen: r });
     } catch (e) {
       const msg = String((e as Error).message ?? e).slice(0, 300);
       resultados.push({ cuenta: c, error: msg });
