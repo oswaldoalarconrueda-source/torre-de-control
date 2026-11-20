@@ -7,14 +7,16 @@ import { useEffect } from "react";
 // lo que aparece después (tablas que se recargan, filtros, gráficas). Para agregar un producto nuevo, sumarlo a la lista.
 const PRODUCTOS = /(DREN|LINFAT|AGUAJE|BERBERIN|MAYAVERRA|ZOO+NE|OFTALMIEL|CLOROFIL|MULLEIN|GORDOLOBO|PRIVADO (ALI|SN)|BREATY|STONE DISOLVER|CANDELA CREAM|ROMPECALCULO|NIPPORI|DEBLOAT|CURCUMA|FUNRICH|VITALDROP|AMUA|BEEVANA|PIERDPESO|ERODUS)/;
 // La otra plataforma tampoco se nombra (17-nov): sus cifras van sumadas, pero los textos que la mencionan se limpian.
-const PLATAFORMA = /otra p\b|dropi/i;
+// Desde el 20-nov la otra plataforma se llama «O.A.» en pantalla (antes «Otra P»): la demostración esconde los dos nombres.
+const OA = "(?:Otra P|O\\.A\\.)";
+const PLATAFORMA = new RegExp(`${OA}|dropi`, "i");
 const sinPlataforma = (t: string) => t
-  .replace(/Effi\s+[\d.,]+\s*·\s*Otra P\s+[\d.,]+/gi, "")
-  .replace(/\s*·\s*Otra P[^·]*/gi, "")
-  .replace(/\s+y precio de proveedor Otra P/gi, " y precio de proveedor")
-  .replace(/Effi y Otra P/gi, "Effi")
-  .replace(/Comisi[oó]n Otra P/gi, "Comisión de plataforma")
-  .replace(/Otra P|Dropi/gi, "la plataforma")
+  .replace(new RegExp(`Effi\\s+[\\d.,]+\\s*·\\s*${OA}\\s+[\\d.,]+`, "gi"), "")
+  .replace(new RegExp(`\\s*·\\s*${OA}[^·]*`, "gi"), "")
+  .replace(new RegExp(`\\s+y precio de proveedor ${OA}`, "gi"), " y precio de proveedor")
+  .replace(new RegExp(`Effi y ${OA}`, "gi"), "Effi")
+  .replace(new RegExp(`Comisi[oó]n ${OA}`, "gi"), "Comisión de plataforma")
+  .replace(new RegExp(`${OA}|Dropi`, "gi"), "la plataforma")
   .trim();
 const normal = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 
@@ -28,7 +30,7 @@ function borrar(raiz: Node) {
     if (/^\s*ambas\s*$/i.test(n.textContent ?? "") && el.tagName === "SPAN") { el.style.display = "none"; continue; }
     if (el && PLATAFORMA.test(n.textContent ?? "")) {
       // Etiqueta suelta ("Otra P"): se esconde; frase: se reescribe sin nombrarla.
-      if (/^\s*(otra p|dropi)\s*$/i.test(n.textContent ?? "")) el.style.display = "none";
+      if (/^\s*(otra p|o\.a\.|dropi)\s*$/i.test(n.textContent ?? "")) el.style.display = "none";
       else n.textContent = sinPlataforma(n.textContent ?? "");
     }
     if (!el || el.dataset.borroso || !PRODUCTOS.test(normal(n.textContent ?? ""))) continue;

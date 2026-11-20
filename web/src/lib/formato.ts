@@ -74,5 +74,5 @@ export const minutosDesde = (iso: string | null | undefined, ahora = Date.now())
   return `${d} ${d === 1 ? "día" : "días"}`;
 };
 
-// Regla del dueño (28-oct, ajustada 31-oct): la segunda plataforma se muestra como "Otra P", nunca con su nombre real.
-export const nombrePlataforma = (p: string) => (p === "Dropi" ? "Otra P" : p);
+// Regla del dueño (28-oct, ajustada 31-oct): la segunda plataforma se muestra como "O.A.", nunca con su nombre real.
+export const nombrePlataforma = (p: string) => (p === "Dropi" ? "O.A." : p);

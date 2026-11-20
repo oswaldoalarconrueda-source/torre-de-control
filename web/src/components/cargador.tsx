@@ -45,7 +45,7 @@ async function verificar(l: Lectura): Promise<{ cuenta: string; por: string } | 
   const { data } = await createClient().rpc("dropi_verificar", { p_tiendas: tiendas, p_ordenes: ordenes.slice(0, 5000), p_guias: guias.slice(0, 5000) });
   const v = (data ?? {}) as { tiendas?: Record<string, string[]>; ordenes?: Record<string, number>; guias?: Record<string, number> };
   const porTienda = [...new Set(Object.values(v.tiendas ?? {}).flat())];
-  if (porTienda.length === 1) return { cuenta: porTienda[0], por: `tienda Dropi ${Object.keys(v.tiendas ?? {}).join(", ")}` };
+  if (porTienda.length === 1) return { cuenta: porTienda[0], por: `tienda O.A. ${Object.keys(v.tiendas ?? {}).join(", ")}` };
   const porOrden = Object.entries(v.ordenes ?? {}).sort((a, b) => b[1] - a[1]);
   if (porOrden.length && porOrden[0][1] >= 0.5 * porOrden.reduce((s, x) => s + x[1], 0))
     return { cuenta: porOrden[0][0], por: `${nf.format(porOrden[0][1])} órdenes ya cargadas ahí` };
@@ -65,7 +65,7 @@ async function leerArchivo(f: File): Promise<Lectura> {
     return leerTabla(data);
   }
   if (/\.xlsx$/i.test(f.name)) return leerTabla((await readSheet(f)) as Celda[][]);
-  throw new Error("Solo se aceptan .xlsx (Otra P) y .csv (Meta).");
+  throw new Error("Solo se aceptan .xlsx (O.A.) y .csv (Meta).");
 }
 
 // tiendas: las de la sociedad que el dueño está viendo (la barra lateral); el archivo nuevo va a la de ese país.
@@ -155,7 +155,7 @@ export function Cargador({ tiendas }: { tiendas: string[] }) {
         <FileUp className="size-7 text-blue-2" aria-hidden />
         <div className="font-semibold">Arrastra aquí los archivos o haz clic para elegirlos</div>
         <div className="text-xs text-muted max-w-xl">
-          Otra P: <span className="font-mono">ordenes_*.xlsx</span>, <span className="font-mono">ordenes_productos_*.xlsx</span> e <span className="font-mono">historial de cartera-*.xlsx</span>.
+          O.A.: <span className="font-mono">ordenes_*.xlsx</span>, <span className="font-mono">ordenes_productos_*.xlsx</span> e <span className="font-mono">historial de cartera-*.xlsx</span>.
           Drop + icomfly (A un clic Honduras y El Salvador): <span className="font-mono">reporte-ordenes-*.xlsx</span>, <span className="font-mono">movimientos-*.xlsx</span> y <span className="font-mono">trazabilidad_pedidos_*.xlsx</span>, los tres juntos.
           Meta: el CSV de cada Business Manager con país, cuenta, campaña, día y monto gastado en COP. Puedes subir varios a la vez.
         </div>

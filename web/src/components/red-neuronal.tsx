@@ -50,6 +50,8 @@ const MAX_CHISPAS = 1400;
 const ORO = "255,214,120";
 const BLANCO = "255,255,255";
 const COMBO_MS = 6000; // entregas del mismo país dentro de este tiempo suman combo
+const GIRO_SUAVE_MS = 4000; // qué tan despacio llega la constelación a su nuevo giro (más alto = más lento)
+const GIRO_ESPERA_MS = 9000; // tiempo mínimo entre un giro por entrega y el siguiente
 
 const hexRgb = (hex: string) => {
   const h = hex.replace("#", "");
@@ -85,6 +87,7 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
     combo: new Map<string, { n: number; t: number }>(), // país → entregas seguidas
     torre: 0, torreEntrega: 0, sacudida: 0, encima: null as string | null,
     pos: new Map<string, { x: number; y: number }>(), // dónde se dibujó cada país y estado en el último cuadro
+    giro: 0, giroObjetivo: 0, giroCambio: -1e9, // giro de la constelación: cada entrega lleva su país arriba
   });
   const logo = useRef<HTMLImageElement | null>(null);
   const alDia = useRef<() => void>(() => {});
@@ -161,6 +164,17 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
     }
     // Una entrega: supernova en el hexágono, ondas de choque escalonadas, metralla, sacudida, combo y cometa al logo.
     const entrega = (x: number, y: number, color: string, cuenta: string, ahora: number) => {
+      // Metaverso: el país de la entrega gira hasta quedar arriba, por el camino más corto (a la derecha o a la
+      // izquierda). Si llegan entregas seguidas de varios países, se espera un rato antes de volver a girar.
+      const { paises: ps, centro: ce, mejorado } = datos.current;
+      const pa = ps.find((q) => q.cuenta === cuenta);
+      if (mejorado && ce && pa && ps.length > 1 && ahora - st.giroCambio > GIRO_ESPERA_MS) {
+        const base = Math.atan2((pa.y - ce.y) / 225, (pa.x - ce.x) / 300);
+        let objetivo = -Math.PI / 2 - base;
+        while (objetivo - st.giro > Math.PI) objetivo -= Math.PI * 2;
+        while (objetivo - st.giro < -Math.PI) objetivo += Math.PI * 2;
+        st.giroObjetivo = objetivo; st.giroCambio = ahora;
+      }
       st.destellos.push({ x, y, t: ahora, dur: 1100, R: 150, color, giro: Math.random() * Math.PI });
       if (st.destellos.length > 8) st.destellos.shift();
       st.ondas.push({ x, y, r: 12, max: 420, color, grosor: 4.5 });
@@ -203,10 +217,13 @@ export const RedNeuronal = forwardRef<RedNeuronalApi, Props>(function RedNeurona
       const cx = centro?.x ?? W / 2, cy = centro?.y ?? H / 2;
       // Metaverso: cada país y cada estado flota en su propia órbita suave (apagado en la demostración).
       const mej = !!datos.current.mejorado && !reducir;
-      // Con varios países, toda la constelación gira alrededor del logo (una vuelta cada minuto y medio) con un vaivén: Colombia
-      // pasa por la derecha, abajo y la izquierda. Cada estado gira con su país y flota en su propia órbita.
+      // Con varios países, la constelación gira alrededor del logo: se mece despacio de derecha a izquierda y, con cada
+      // entrega, lleva ese país arriba (pedido del dueño, 20-nov). Cada estado gira con su país y flota en su órbita.
       const pos = new Map<string, { x: number; y: number }>();
-      const giro = mej && centro ? (ahora / 90_000) * Math.PI * 2 + 0.18 * Math.sin(ahora / 7000) : 0;
+      // Giro lento: la constelación se acerca poco a poco al objetivo (el país de la última entrega arriba) y, mientras
+      // tanto, se mece de derecha a izquierda.
+      st.giro += (st.giroObjetivo - st.giro) * (1 - Math.exp(-dt / GIRO_SUAVE_MS));
+      const giro = mej && centro ? st.giro + 0.14 * Math.sin(ahora / 11_000) : 0;
       const gc = Math.cos(giro), gs = Math.sin(giro);
       for (const p of paises) {
         const a = semilla(p.cuenta);

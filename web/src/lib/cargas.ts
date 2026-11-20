@@ -7,9 +7,9 @@ export type Celda = string | number | boolean | Date | null | undefined;
 export type Fila = Record<string, unknown>;
 
 export const NOMBRE_TIPO: Record<TipoCarga, string> = {
-  dropi_ordenes: "Otra P · Órdenes",
-  dropi_productos: "Otra P · Órdenes por producto",
-  dropi_cartera: "Otra P · Historial de cartera",
+  dropi_ordenes: "O.A. · Órdenes",
+  dropi_productos: "O.A. · Órdenes por producto",
+  dropi_cartera: "O.A. · Historial de cartera",
   meta_bm: "Meta · CSV por BM",
   drop_ordenes: "Drop · Órdenes",
   drop_billetera: "Drop · Billetera",
@@ -276,7 +276,7 @@ export async function leerTabla(tabla: Celda[][]): Promise<Lectura> {
   if (tipo === "dropi_productos") return dropiProductos(filas);
   if (tipo === "dropi_cartera") return dropiCartera(filas);
   if (tipo === "meta_bm") return metaBm(filas);
-  throw new Error("No reconozco el archivo: no es de Dropi (órdenes, productos o cartera), de Drop (órdenes o billetera), de icomfly (pedidos) ni un CSV de Meta.");
+  throw new Error("No reconozco el archivo: no es de O.A. (órdenes, productos o cartera), de Drop (órdenes o billetera), de icomfly (pedidos) ni un CSV de Meta.");
 }
 
 // ───────────── Drop + icomfly (A un clic Honduras y El Salvador; skill "a-un-clic-honduras-el-salvador-drop") ─────────────

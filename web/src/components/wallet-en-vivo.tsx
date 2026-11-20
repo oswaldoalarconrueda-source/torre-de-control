@@ -77,7 +77,7 @@ export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
     .sort((a, b) => ORDEN.indexOf(a.cuenta) - ORDEN.indexOf(b.cuenta) || Number(a.origen === "dropi") - Number(b.origen === "dropi"));
   const conDropi = new Set(cuentas.filter((w) => w.origen === "dropi").map((w) => w.cuenta));
   const elegida = sel ? cuentas.find((w) => clave(w) === sel) ?? null : null;
-  const nombre = (w: { cuenta: string; origen?: string }) => `${infoCuenta(w.cuenta).nombre}${w.origen === "dropi" ? " · Dropi" : ""}`;
+  const nombre = (w: { cuenta: string; origen?: string }) => `${infoCuenta(w.cuenta).nombre}${w.origen === "dropi" ? " · O.A." : ""}`;
   // Todas: los recientes de cada wallet, cruzados por fecha.
   const todos = cuentas.flatMap((w) => w.recientes.map((m) => ({ ...m, cuenta: w.cuenta, origen: w.origen, divisa: w.divisa })))
     .sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40);
@@ -127,7 +127,7 @@ export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
       )}
       <p className="text-[11px] text-muted">
         El saldo es la suma de todos los movimientos de la wallet desde su primer día, como lo calcula Effi: un movimiento anulado y su reversión se cancelan entre sí. Se actualiza cada minuto con Effi y esta pantalla consulta cada 15 segundos.
-        {conDropi.size > 0 && " Las tarjetas de Dropi muestran el saldo del último historial de cartera cargado: se ponen al día cada vez que se carga la cartera."}
+        {conDropi.size > 0 && " Las tarjetas de O.A. muestran el saldo del último historial de cartera cargado: se ponen al día cada vez que se carga la cartera."}
       </p>
     </div>
   );
@@ -155,7 +155,7 @@ function Tarjeta({ w, cambio, activa, marcarEffi, onClick }: { w: Wallet; cambio
         <span className="flex items-center gap-2 text-sm font-semibold">{pais.bandera} {pais.nombre}</span>
         <span className="flex items-center gap-1">
           {w.origen === "drop" && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Billetera de Drop, cargada por archivo">Drop</span>}
-          {w.origen === "dropi" && <span className="rounded-full border border-blue/40 px-2 py-0.5 text-[10px] font-mono text-blue" title="Billetera de Dropi: saldo del último historial de cartera cargado">Dropi</span>}
+          {w.origen === "dropi" && <span className="rounded-full border border-blue/40 px-2 py-0.5 text-[10px] font-mono text-blue" title="Billetera de O.A.: saldo del último historial de cartera cargado">O.A.</span>}
           {marcarEffi && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Wallet de Effi, al día cada minuto">Effi</span>}
           <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted">{w.divisa ?? pais.divisa}</span>
         </span>
