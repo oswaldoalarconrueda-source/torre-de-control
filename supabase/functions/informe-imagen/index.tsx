@@ -17,11 +17,11 @@ const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const C = { bg: '#04060a', panel: '#0d1220', line: '#1c2438', text: '#eef2f8', muted: '#8a94a8', green: '#2fd28f', red: '#ff5a6a', amber: '#ffb547', blue: '#2f7bff', pink: '#ff6ad5', violet: '#b48cff', gris: '#c9d3ea' };
 const PAIS: Record<string, { nombre: string; bandera: string; verde: number; naranja: number }> = {
-  TIENDA_CO: { nombre: 'Colombia', bandera: '🇨🇴', verde: 0.25, naranja: 0.32 },
-  TIENDA_EC: { nombre: 'Ecuador', bandera: '🇪🇨', verde: 0.25, naranja: 0.35 },
-  TIENDA_GT: { nombre: 'Guatemala', bandera: '🇬🇹', verde: 0.22, naranja: 0.3 },
-  TIENDA_CR: { nombre: 'Costa Rica', bandera: '🇨🇷', verde: 0.25, naranja: 0.35 },
-  VALKA_GT: { nombre: 'Valka', bandera: '🇬🇹', verde: 0.22, naranja: 0.3 },
+  TIENDA_CO: { nombre: 'Colombia', bandera: '🇨🇴', verde: 0.25, naranja: 0.3 },
+  TIENDA_EC: { nombre: 'Ecuador', bandera: '🇪🇨', verde: 0.25, naranja: 0.3 },
+  TIENDA_GT: { nombre: 'Guatemala', bandera: '🇬🇹', verde: 0.2, naranja: 0.25 },
+  TIENDA_CR: { nombre: 'Costa Rica', bandera: '🇨🇷', verde: 0.35, naranja: 0.4 },
+  VALKA_GT: { nombre: 'Valka', bandera: '🇬🇹', verde: 0.2, naranja: 0.25 },
 };
 // Mismo orden y colores del "Resumen diario por estados" de Datos.
 const ESTADOS = [

@@ -10,21 +10,21 @@ export type InfoCuenta = {
 };
 
 export const CUENTAS: Record<string, InfoCuenta> = {
-  TIENDA_CO: { pais: "CO", nombre: "Colombia", bandera: "🇨🇴", divisa: "COP", decimales: 0, verde: 0.25, naranja: 0.32, zona: "America/Bogota", indicativo: "57" },
-  TIENDA_EC: { pais: "EC", nombre: "Ecuador", bandera: "🇪🇨", divisa: "USD", decimales: 2, verde: 0.25, naranja: 0.35, zona: "America/Guayaquil", indicativo: "593" },
-  TIENDA_GT: { pais: "GT", nombre: "Guatemala", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
-  TIENDA_CR: { pais: "CR", nombre: "Costa Rica", bandera: "🇨🇷", divisa: "CRC", decimales: 0, verde: 0.25, naranja: 0.35, zona: "America/Costa_Rica", indicativo: "506" },
+  TIENDA_CO: { pais: "CO", nombre: "Colombia", bandera: "🇨🇴", divisa: "COP", decimales: 0, verde: 0.25, naranja: 0.3, zona: "America/Bogota", indicativo: "57" },
+  TIENDA_EC: { pais: "EC", nombre: "Ecuador", bandera: "🇪🇨", divisa: "USD", decimales: 2, verde: 0.25, naranja: 0.3, zona: "America/Guayaquil", indicativo: "593" },
+  TIENDA_GT: { pais: "GT", nombre: "Guatemala", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.2, naranja: 0.25, zona: "America/Guatemala", indicativo: "502" },
+  TIENDA_CR: { pais: "CR", nombre: "Costa Rica", bandera: "🇨🇷", divisa: "CRC", decimales: 0, verde: 0.35, naranja: 0.4, zona: "America/Costa_Rica", indicativo: "506" },
   // Valka: sociedad aparte, con su propia cuenta de Effi en Guatemala.
-  VALKA_GT: { pais: "GT", nombre: "Valka", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
+  VALKA_GT: { pais: "GT", nombre: "Valka", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.2, naranja: 0.25, zona: "America/Guatemala", indicativo: "502" },
   // A un clic: Guatemala con Effi; Honduras (lempiras) y El Salvador (dólares) con Drop + icomfly por archivo. En las banderas
   // sale solo el país, como en Joalix; "sociedad" las distingue donde se mezclan (p. ej. al cargar archivos).
-  AUNCLIC_GT: { pais: "GT", nombre: "Guatemala", sociedad: "A un clic", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
+  AUNCLIC_GT: { pais: "GT", nombre: "Guatemala", sociedad: "A un clic", bandera: "🇬🇹", divisa: "GTQ", decimales: 0, verde: 0.2, naranja: 0.25, zona: "America/Guatemala", indicativo: "502" },
   AUNCLIC_HN: { pais: "HN", nombre: "Honduras", sociedad: "A un clic", bandera: "🇭🇳", divisa: "HNL", decimales: 0, verde: 0.22, naranja: 0.3, zona: "America/Tegucigalpa", indicativo: "504" },
   AUNCLIC_SV: { pais: "SV", nombre: "El Salvador", sociedad: "A un clic", bandera: "🇸🇻", divisa: "USD", decimales: 2, verde: 0.22, naranja: 0.3, zona: "America/El_Salvador", indicativo: "503" },
   // Distrilatam (proveeduría): tres empresas de Effi, cada una por separado aunque dos sean de Guatemala.
-  DISTRI_GT: { pais: "GT", nombre: "DistriGuatemala", bandera: "🇬🇹", divisa: "GTQ", decimales: 2, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
-  DISTRI_LAB: { pais: "GT", nombre: "DistriLab", bandera: "🇬🇹", divisa: "GTQ", decimales: 2, verde: 0.22, naranja: 0.3, zona: "America/Guatemala", indicativo: "502" },
-  DISTRI_CR: { pais: "CR", nombre: "DistriCostaRica", bandera: "🇨🇷", divisa: "CRC", decimales: 0, verde: 0.25, naranja: 0.35, zona: "America/Costa_Rica", indicativo: "506" },
+  DISTRI_GT: { pais: "GT", nombre: "DistriGuatemala", bandera: "🇬🇹", divisa: "GTQ", decimales: 2, verde: 0.2, naranja: 0.25, zona: "America/Guatemala", indicativo: "502" },
+  DISTRI_LAB: { pais: "GT", nombre: "DistriLab", bandera: "🇬🇹", divisa: "GTQ", decimales: 2, verde: 0.2, naranja: 0.25, zona: "America/Guatemala", indicativo: "502" },
+  DISTRI_CR: { pais: "CR", nombre: "DistriCostaRica", bandera: "🇨🇷", divisa: "CRC", decimales: 0, verde: 0.35, naranja: 0.4, zona: "America/Costa_Rica", indicativo: "506" },
 };
 export const ORDEN_CUENTAS = Object.keys(CUENTAS);
 export const ordenCuenta = (slug: string) => (ORDEN_CUENTAS.includes(slug) ? ORDEN_CUENTAS.indexOf(slug) : 99);
