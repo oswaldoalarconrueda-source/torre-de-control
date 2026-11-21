@@ -4,8 +4,10 @@ import { hoyBogota } from "@/lib/filtros";
 import { ordenCuenta } from "@/lib/paises";
 import { PedidosLucid } from "@/components/pedidos-lucid";
 
-// Data Lucid (antes Pedidos Lucid): la persona encargada llena cada día cuántos pedidos entraron a LucidSales en cada país (el mismo
-// número de la hoja "RELACION DE PEDIDOS JOALIX"). Con eso 📢 Publicidad saca el CPA real del día: gasto ÷ pedidos.
+// 📝 Pedidos plataformas (antes Data Lucid y Pedidos Lucid; nombre del 20-nov-2026): la persona encargada llena cada día cuántos
+// pedidos entraron a LucidSales en cada país (el mismo número de la hoja "RELACION DE PEDIDOS JOALIX"). Con eso 📢 Publicidad
+// saca el CPA real del día: gasto ÷ pedidos. En A un clic también todo llega por Lucid: Guatemala, Honduras y El Salvador
+// se llenan igual, a mano (la encargada mira cuántos llegaron y los anota).
 // Módulo exclusivo: solo el dueño y a quien se le marque en /usuarios. Puede corregir los últimos 7 días.
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
@@ -23,9 +25,13 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
   const esOwner = u.rol === "owner";
   // Llenan el dueño, los socios (tiendas de su sociedad) y la empleada que tenga el módulo; los dos últimos, 7 días atrás.
   const esSocio = u.rol === "socio";
-  // Tiendas: el dueño, las de Joalix; los socios, las tiendas que ven; los empleados, las que tengan con este módulo.
+  // Tiendas: el dueño, las de la sociedad que tenga elegida arriba (sin elegir, Joalix); los socios, las tiendas que ven;
+  // los empleados, las que tengan con este módulo.
+  const vista = esOwner
+    ? ((await supabase.from("app_usuarios").select("sociedad_vista").eq("user_id", u.id).maybeSingle()).data?.sociedad_vista as string | null) ?? "Joalix AA Group"
+    : null;
   const { data: tiendas } = esOwner
-    ? await supabase.from("effi_accounts").select("slug").eq("tipo", "tienda").eq("sociedad", "Joalix AA Group").eq("activa", true)
+    ? await supabase.from("effi_accounts").select("slug").eq("tipo", "tienda").eq("sociedad", vista).eq("activa", true)
     : esSocio
       ? await supabase.from("effi_accounts").select("slug").eq("tipo", "tienda").eq("activa", true)
       : await supabase.from("app_permisos").select("slug:cuenta").eq("user_id", u.id).contains("modulos", ["pedidos_lucid"]);
@@ -40,7 +46,7 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
       <div className="pt-8 mb-6">
         <h1 className="flex items-center gap-3 font-display text-3xl sm:text-4xl font-semibold tracking-tight">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/lucid.svg" alt="" className="size-9" />Data Lucid
+          <img src="/lucid.svg" alt="" className="size-9" />Pedidos plataformas
         </h1>
         <p className="text-sm text-muted mt-1.5">
           Cuántos pedidos entraron a LucidSales cada día en cada país.

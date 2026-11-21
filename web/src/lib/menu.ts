@@ -29,7 +29,7 @@ export const MENU_JOALIX: ItemMenu[] = [
   ] },
   // El nombre lo pone la barra lateral según la sociedad: ValerIA en Joalix, Agente en las demás.
   { href: "/agente", label: "Agente", emoji: "🤖", estado: "vivo", modulo: "automatizacion" },
-  { href: "/pedidos-lucid", label: "Data Lucid", emoji: "📝", icono: "/lucid.svg", estado: "vivo", modulo: "pedidos_lucid", noProveeduria: true },
+  { href: "/pedidos-lucid", label: "Pedidos plataformas", emoji: "📝", icono: "/lucid.svg", estado: "vivo", modulo: "pedidos_lucid", noProveeduria: true },
   { href: "/proveeduria", label: "Proveeduría", emoji: "🏭", estado: "vivo", modulo: "proveeduria", soloProveeduria: true },
   { href: "/global", label: "Global", emoji: "🌎", estado: "vivo", modulo: "global" },
   { href: "/publicidad", label: "Publicidad", emoji: "📢", estado: "vivo", modulo: "resumen", noProveeduria: true, soloSocios: true },

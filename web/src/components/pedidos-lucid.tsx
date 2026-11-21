@@ -6,10 +6,11 @@ import { createClient } from "@/lib/supabase/client";
 import { entero } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
 
-// Cuadro del mes como la hoja de la empleada, pero con los días hacia abajo y un país por columna. Al dar Enter (o salir
+// 📝 Pedidos plataformas (antes Data Lucid). Cuadro del mes como la hoja de la empleada, pero con los días hacia abajo y un país por columna. Al dar Enter (o salir
 // de la casilla con un número distinto) sale "¿Está segura?" con el país, el día y el número: solo con "Sí" se guarda
 // (rpc pedidos_lucid_guardar); con "No" la casilla vuelve a lo que tenía para revisarla. Los días que ya no se pueden
-// corregir quedan en solo lectura.
+// corregir quedan en solo lectura. Debajo del total del mes va el promedio por día (pedido del dueño, 20-nov-2026): solo los
+// días ya cerrados que tienen dato (hoy sigue abierto).
 type Fila = { cuenta: string; fecha: string; pedidos: number; por: string | null };
 type Pendiente = { cuenta: string; fecha: string; nuevo: number | null; antes: number | null; el: HTMLInputElement };
 
@@ -24,6 +25,13 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = f
   const editable = (fecha: string) => !soloLectura && fecha <= hoy && (esOwner || fecha >= limite);
   const fechas = Array.from({ length: dias }, (_, i) => `${mes}-${String(i + 1).padStart(2, "0")}`).filter((f) => f <= hoy).reverse();
   const total = (c: string) => fechas.reduce((s, f) => s + (valores[`${c}|${f}`] ?? 0), 0);
+  const cerrados = fechas.filter((f) => f < hoy);
+  const promedio = (vals: (number | null | undefined)[]) => {
+    const con = vals.filter((v): v is number => v != null && v > 0);
+    return con.length ? Math.round(con.reduce((a, b) => a + b, 0) / con.length) : null;
+  };
+  const promedioDe = (c: string) => promedio(cerrados.map((f) => valores[`${c}|${f}`]));
+  const promedioTotal = promedio(cerrados.map((f) => cuentas.reduce((s, c) => s + (valores[`${c}|${f}`] ?? 0), 0)));
 
   const [pendiente, setPendiente] = useState<Pendiente | null>(null);
   const diaLargo = (f: string) => new Date(`${f}T12:00:00`).toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" });
@@ -71,10 +79,15 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = f
           </tr>
         </thead>
         <tbody>
-          <tr className="font-semibold border-b border-line">
+          <tr className="font-semibold">
             <td className="px-4 py-2">Total del mes</td>
             {cuentas.map((c) => <td key={c} className="px-4 py-2 text-right num">{entero(total(c))}</td>)}
             <td className="px-4 py-2 text-right num">{entero(cuentas.reduce((s, c) => s + total(c), 0))}</td>
+          </tr>
+          <tr className="border-b border-line text-muted" title="Promedio de los días ya cerrados que tienen dato (hoy sigue abierto)">
+            <td className="px-4 pb-2 text-xs">Promedio por día</td>
+            {cuentas.map((c) => { const p = promedioDe(c); return <td key={c} className="px-4 pb-2 text-right num text-xs">{p == null ? "—" : entero(p)}</td>; })}
+            <td className="px-4 pb-2 text-right num text-xs font-semibold text-tinte">{promedioTotal == null ? "—" : entero(promedioTotal)}</td>
           </tr>
           {fechas.map((f) => {
             const dia = new Date(`${f}T12:00:00`).toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" });

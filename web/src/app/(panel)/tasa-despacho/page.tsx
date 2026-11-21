@@ -59,7 +59,7 @@ export default async function TasaDespachoPage({ searchParams }: PageProps<"/tas
               nota={`${entero(t.guias)} guías de ${entero(t.ventas)} ventas`} />
             <Kpi etiqueta="Promedio de los % diarios" valor={pct(t.promedio)} semaforo={semaforo(t.promedio)}
               nota={`${conVentas.length} días con ventas cargadas`} />
-            <Kpi etiqueta="Ventas LucidBot" valor={entero(t.ventas)} nota="Las que se cargan en Data Lucid" />
+            <Kpi etiqueta="Ventas LucidBot" valor={entero(t.ventas)} nota="Las que se cargan en Pedidos plataformas" />
             <Kpi etiqueta="Guías generadas" valor={entero(t.guias)}
               nota={t.dropi ? `${entero(t.guias - t.dropi)} Effi · ${entero(t.dropi)} O.A.` : "Effi, sin anuladas"} />
           </div>
@@ -116,7 +116,7 @@ export default async function TasaDespachoPage({ searchParams }: PageProps<"/tas
           </div>
           <p className="text-xs text-muted mt-3">
             LucidBot solo dice cuántas ventas entraron cada día, no cuáles; por eso se compara día contra día y no venta por venta. Los últimos días
-            suben cuando se generan las guías pendientes. <Link href={`/pedidos-lucid?c=${cuenta}`} className="underline">Ver Data Lucid</Link>
+            suben cuando se generan las guías pendientes. <Link href={`/pedidos-lucid?c=${cuenta}`} className="underline">Ver Pedidos plataformas</Link>
           </p>
         </>
       ) : (
