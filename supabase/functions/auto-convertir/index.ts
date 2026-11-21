@@ -71,6 +71,14 @@ const MEDIDAS: Record<string, Record<number, { alto: number; ancho: number; larg
 // Cliente con "**" al inicio: pedido con abono. El agente no lo toca (ni remisión ni guía): lo hace una persona en Effi.
 const conAbono = (nombre: unknown) => String(nombre ?? '').trim().startsWith('**');
 
+// Regla del dueño (21-nov): cliente con el nombre ilegible («??????? ???????», «Mar?a», «�» o sin letras) → no se hace
+// remisión: la orden queda en revisión y le llega una alerta al celular al dueño para que la cubra una persona.
+const nombreIlegible = (nombre: unknown) => {
+  const n = String(nombre ?? '').replace(/^[*+]+/, '').trim();
+  return (n.match(/\p{L}/gu) ?? []).length < 2 || /[?\uFFFD]/.test(n);
+};
+const MOTIVO_ILEGIBLE = 'Nombre del cliente ilegible (???): no se hace la remisión, corregir el cliente y hacerla a mano en Effi';
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Colombia (reglas del dueño, 27-oct; ver tools/propuestas/reglas-envio-colombia.md). La mercancía sale siempre de
 // Bogotá. Transportadoras habilitadas: 1 Envía, 4 Inter, 6 Servientrega, 10 Coordinadora (sin TCC ni Domina).
@@ -480,7 +488,7 @@ async function convertir(cuenta: string, ahora = false) {
   // transacción de dropshipping ("Error al intentar crear la transacción Dropshipping", Colombia, 27-oct).
   const articulos = (await api.todas('articulo', {})).filter((a) => a.vigente !== '0' && norm(a.descripcion ?? '') !== 'FLETE')
     .map((a) => ({ id: Number(a.id), nombre: norm(a.descripcion ?? ''), descripcion: String(a.descripcion ?? '') }));
-  const guardadas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id=in.(${pendientes.map((o) => o.id).join(',')})&select=sucursal,id,articulos`);
+  const guardadas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id=in.(${pendientes.map((o) => o.id).join(',')})&select=sucursal,id,articulos,plan_motivo`);
   const historial: { total: string; contenido: string; n: number }[] = await rpc('auto_historial_contenido', { p_cuenta: cuenta });
   const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado,centro_sin_confirmar`);
   // Detalle de las órdenes pendientes (api/detalle_orden_v: artículo, cantidad y precio de cada concepto, 29-oct): la
@@ -507,6 +515,17 @@ async function convertir(cuenta: string, ahora = false) {
     const plan: Json = {};
     const revision = (motivo: string) => planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: plan.articulos ?? null, estado: 'revision', motivo, plan });
     if (conAbono(o.nombre_cliente)) { plan.abono = true; revision('Con abono: el agente no la toca, hacer el proceso a mano en Effi'); continue; }
+    if (nombreIlegible(o.nombre_cliente)) {
+      revision(MOTIVO_ILEGIBLE);
+      // Una sola alerta por orden: si ya estaba en revisión por lo mismo, no se vuelve a avisar en cada corrida.
+      const antes = guardadas.find((g) => Number(g.id) === Number(o.id) && Number(g.sucursal) === Number(o.sucursal));
+      if (antes?.plan_motivo !== MOTIVO_ILEGIBLE) {
+        await rpc('push_avisar', { p_tipo: 'agente', p_titulo: `⚠️ ${cuenta}: orden ${o.id} con nombre ilegible`,
+          p_cuerpo: `El cliente llegó como «${String(o.nombre_cliente ?? '').trim() || 'sin nombre'}». El agente no hizo la remisión: corrígelo y hazla a mano en Effi.`,
+          p_url: '/agente' }).catch(() => {});
+      }
+      continue;
+    }
 
     // 0. Conceptos de la orden con su cantidad y precio. Solo se usan si todos son artículos de venta (sin FLETE) y sin
     // impuestos, y si cuadran con el total de la orden; si no, se sigue con el método de antes.
