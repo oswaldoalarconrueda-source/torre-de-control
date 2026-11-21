@@ -76,3 +76,10 @@ export const minutosDesde = (iso: string | null | undefined, ahora = Date.now())
 
 // Regla del dueño (28-oct, ajustada 31-oct): la segunda plataforma se muestra como "O.A.", nunca con su nombre real.
 export const nombrePlataforma = (p: string) => (p === "Dropi" ? "O.A." : p);
+
+// Regla del dueño (21-nov): los nombres de centro de costos siempre con inicial mayúscula y lo demás en minúscula
+// («VENTAS RECUPERADAS» → «Ventas recuperadas»). En la base, v_guias ya los entrega así (función nombre_centro).
+export const nombreCentro = (c: string | null | undefined) => {
+  const t = (c ?? "").trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : t;
+};

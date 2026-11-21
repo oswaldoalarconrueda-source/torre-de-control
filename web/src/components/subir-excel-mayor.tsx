@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { readSheet } from "read-excel-file/browser";
 import { Loader2, Upload, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { dinero, entero } from "@/lib/formato";
+import { dinero, entero, nombreCentro } from "@/lib/formato";
 import { infoCuenta } from "@/lib/paises";
 import { leerExcelMayor } from "@/lib/excel-mayor";
 import { TablaScroll } from "./ui";
@@ -155,7 +155,7 @@ export function SubirExcelMayor({ cuenta }: { cuenta: string }) {
                         : x.anulada ? <span className="text-red">Anulada en Effi</span>
                         : x.pagada ? <span className="text-red">Ya está en un pago registrado</span>
                         : x.cargada ? <span className="text-amber">Ya cargada: se reemplaza</span>
-                        : <span className="text-muted">{x.centro ?? "Nueva"}</span>}
+                        : <span className="text-muted">{x.centro ? nombreCentro(x.centro) : "Nueva"}</span>}
                     </td>
                   </tr>
                 );

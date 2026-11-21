@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Fingerprint, Loader2, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { dinero, entero, haceCuanto } from "@/lib/formato";
+import { dinero, entero, haceCuanto, nombreCentro } from "@/lib/formato";
 
 // Piezas de la lista de órdenes "estilo Effi" del agente (pedido del dueño, 11-nov-2026): el cliente con su centro de costos,
 // documento, teléfono y dirección en una sola celda; totales; pago; historial del cliente (huella) y las transportadoras a la
@@ -59,7 +59,7 @@ export const direccionDe = (o: OrdenCelda) =>
 
 // Centro de costos por donde entró la orden: el de Effi; si todavía no llega, el que dice el cliente (*, +, **).
 export function centroDe(o: OrdenCelda) {
-  if (o.centro_orden) return o.centro_orden;
+  if (o.centro_orden) return nombreCentro(o.centro_orden);
   const c = o.cliente?.trim() ?? "";
   return c.startsWith("**") ? "Abono" : c.startsWith("+") ? "Sin confirmar" : o.recuperado ? "Recuperado" : "Principal";
 }
