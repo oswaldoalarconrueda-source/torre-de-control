@@ -14,6 +14,9 @@ export const MODULOS = [
   { id: "pedidos_lucid", nombre: "Pedidos plataformas", detalle: "Llenar cada día los pedidos que entran a LucidSales por país (los socios también lo llenan)", rutas: ["/pedidos-lucid"] },
   // Exclusivo: solo a quien se le marque (p. ej. la encargada que sube cada mañana la cartera de Dropi y la billetera de Drop).
   { id: "cargas", nombre: "Cargar archivos", detalle: "Subir los Excel de cartera y órdenes (O.A., Drop, icomfly) de sus tiendas", rutas: ["/cargas"], exclusivo: true },
+  // Pedido del dueño (21-nov-2026): Productos, Utilidad y Glosario ya no vienen con Data Experience; cada uno se da aparte.
+  { id: "productos", nombre: "Productos y utilidad", detalle: "Ventas por producto, homologar campañas y la utilidad (también necesita Data Experience para ver los datos)", rutas: ["/productos", "/utilidad"] },
+  { id: "glosario", nombre: "Glosario", detalle: "Qué significa cada cifra del Centro de Control", rutas: ["/glosario"] },
 ] as const;
 export type ModuloId = (typeof MODULOS)[number]["id"];
 // Módulos exclusivos: solo el dueño y a quien se le marquen; a los socios no les llegan solos.

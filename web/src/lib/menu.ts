@@ -50,9 +50,9 @@ export const MENU_EN_VIVO: ItemMenu[] = [
 ];
 
 export const MENU_PRONTO: ItemMenu[] = [
-  { href: "/productos", label: "Productos", emoji: "📦", estado: "vivo", modulo: "resumen" },
+  { href: "/productos", label: "Productos", emoji: "📦", estado: "vivo", modulo: "productos" },
   { href: "/flujo-caja", label: "Flujo de Caja", emoji: "💵", estado: "vivo", modulo: "dinero", soloSocios: true },
   { href: "/pagos-publicidad", label: "Pagos de publicidad", emoji: "💳", estado: "pronto", modulo: "dinero" },
-  { href: "/utilidad", label: "Utilidad", emoji: "📈", estado: "pronto", modulo: "resumen" },
-  { href: "/glosario", label: "Glosario", emoji: "📖", estado: "vivo" },
+  { href: "/utilidad", label: "Utilidad", emoji: "📈", estado: "pronto", modulo: "productos" },
+  { href: "/glosario", label: "Glosario", emoji: "📖", estado: "vivo", modulo: "glosario" },
 ];

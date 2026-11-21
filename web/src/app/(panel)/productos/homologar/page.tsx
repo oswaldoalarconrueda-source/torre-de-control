@@ -10,7 +10,7 @@ import type { ProductoHistorico } from "@/components/asignar-producto";
 // 📦 Homologación de campañas → producto. Las reglas por palabra asignan casi todo solas; aquí el dueño o un socio
 // asigna las que quedan "Sin identificar" (o corrige una regla). Lo asignado a mano manda sobre las reglas.
 export default async function HomologarPage({ searchParams }: PageProps<"/productos/homologar">) {
-  await exigirModulo("resumen");
+  await exigirModulo("productos");
   const u = await getUsuario();
   const sp = await searchParams;
   const f = leerFiltros(sp);

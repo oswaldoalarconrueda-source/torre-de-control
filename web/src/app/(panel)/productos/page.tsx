@@ -12,7 +12,7 @@ import type { ProductoHistorico } from "@/components/asignar-producto";
 const INICIO_PRODUCTOS = "2026-07-01";
 
 export default async function ProductosPage({ searchParams }: PageProps<"/productos">) {
-  await exigirModulo("resumen");
+  await exigirModulo("productos");
   const sp = await searchParams;
   const base = leerFiltros(sp);
   const desde = base.desde < INICIO_PRODUCTOS ? INICIO_PRODUCTOS : base.desde;
