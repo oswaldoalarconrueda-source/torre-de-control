@@ -74,8 +74,13 @@ export const minutosDesde = (iso: string | null | undefined, ahora = Date.now())
   return `${d} ${d === 1 ? "día" : "días"}`;
 };
 
-// Regla del dueño (28-oct, ajustada 31-oct): la segunda plataforma se muestra como "O.A.", nunca con su nombre real.
-export const nombrePlataforma = (p: string) => (p === "Dropi" ? "O.A." : p);
+// Regla del dueño (28-oct, ajustada 31-oct): en Joalix la segunda plataforma se muestra como "O.A.", nunca con su nombre real.
+// En A un clic cada plataforma va con su nombre (Effi, Dropi, Smart; 22-nov-2026). Con el filtro «Smart» lo que no es Effi es Smart.
+export const nombrePlataforma = (p: string, cuenta?: string, sel?: string) => {
+  if (p !== "Dropi") return p;
+  if (sel === "smart") return "Smart";
+  return cuenta && infoCuenta(cuenta).sociedad === "A un clic" ? "Dropi" : "O.A.";
+};
 
 // Regla del dueño (21-nov): los nombres de centro de costos siempre con inicial mayúscula y lo demás en minúscula
 // («VENTAS RECUPERADAS» → «Ventas recuperadas»). En la base, v_guias ya los entrega así (función nombre_centro).

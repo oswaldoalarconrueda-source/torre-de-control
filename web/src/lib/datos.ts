@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 // Consultas de la pestaña Datos compartidas entre bloques: cache() evita repetirlas en la misma petición.
 
-export type Plataforma = "ambas" | "effi" | "dropi";
+export type Plataforma = "ambas" | "effi" | "dropi" | "smart";
 
 export type Despacho = {
   despachado: { n: number; venta: number; costo: number; costo_estimadas: number; flete: number };

@@ -70,6 +70,18 @@ function paisMeta(pais: string, campana: string) {
   return null;
 }
 
+// Ventas que registró la campaña en Meta (píxel), solo informativo (pedido del dueño, 22-nov-2026). Se toma la primera
+// acción de compra que traiga: «purchase» (la que muestra el administrador), si no la del píxel o la omnicanal.
+const TIPOS_COMPRA = ['purchase', 'offsite_conversion.fb_pixel_purchase', 'omni_purchase', 'onsite_web_purchase'];
+function comprasMeta(actions: unknown): number | null {
+  if (!Array.isArray(actions)) return null;
+  for (const t of TIPOS_COMPRA) {
+    const a = actions.find((x) => x?.action_type === t);
+    if (a) return Math.round(Number(a.value ?? 0));
+  }
+  return null;
+}
+
 async function sincronizar(tokens: { nombre: string; token: string }[], desde: string, hasta: string) {
   // Cuentas de todos los portafolios; si una la ven dos tokens, se trae una sola vez. Las marcadas "excluir" en
   // meta_cuentas_ads (no son de la sociedad, p. ej. las Alma) no se traen.
@@ -92,7 +104,7 @@ async function sincronizar(tokens: { nombre: string; token: string }[], desde: s
     if (divisa === 'GTQ') return Number(t?.gtq_cop ?? 0);
     return 0;
   };
-  const filas: { pais: string; fecha: string; cuenta_ads: string; campana: string; monto_cop: number }[] = [];
+  const filas: { pais: string; fecha: string; cuenta_ads: string; campana: string; monto_cop: number; compras: number | null }[] = [];
   const nombres: string[] = [];
   const resumen: Record<string, unknown> = {};
   const sinPais = new Set<string>();
@@ -102,7 +114,7 @@ async function sincronizar(tokens: { nombre: string; token: string }[], desde: s
     const id = String(c.account_id), nombre = String(c.name ?? id).trim(), divisa = String(c.currency ?? 'COP');
     try {
       const params = new URLSearchParams({
-        level: 'campaign', breakdowns: 'country', time_increment: '1', fields: 'campaign_name,spend', limit: '500',
+        level: 'campaign', breakdowns: 'country', time_increment: '1', fields: 'campaign_name,spend,actions', limit: '500',
         time_range: JSON.stringify({ since: desde, until: hasta }),
       });
       const datos = await todo(`${GRAPH}/act_${id}/insights?${params}`, token);
@@ -115,7 +127,7 @@ async function sincronizar(tokens: { nombre: string; token: string }[], desde: s
         if (!monto) continue;
         const pais = paisMeta(String(r.country ?? ''), campana);
         if (!pais) { sinPais.add(campana); continue; }
-        filas.push({ pais, fecha, cuenta_ads: nombre, campana, monto_cop: monto });
+        filas.push({ pais, fecha, cuenta_ads: nombre, campana, monto_cop: monto, compras: comprasMeta(r.actions) });
         total += monto;
       }
       if (divisa !== 'COP' && datos.length && !aCop(divisa, desde)) throw new Error(`Sin TRM para ${divisa}`);

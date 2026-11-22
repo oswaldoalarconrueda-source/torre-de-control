@@ -19,7 +19,7 @@ type Wallet = {
   cuenta: string; divisa: string | null; saldo: number; movimientos_total: number; desde: string | null; ultimo: string | null;
   hoy: { entradas: number; salidas: number; neto: number; movimientos: number; recaudos: number; recaudo: number };
   serie: number[]; recientes: Movimiento[];
-  origen?: "drop" | "dropi";                                          // drop: A un clic HN/SV · dropi: cartera de Dropi del país (por archivo)
+  origen?: "drop" | "dropi" | "smart";                                          // drop: A un clic HN/SV · dropi: cartera de Dropi del país (por archivo)
   retiros?: { fecha: string; concepto: string | null; monto: number }[]; // pendientes de saber cuántos pesos entraron y a qué cuenta
 };
 type Respuesta = { ahora: string; cuentas: Wallet[] };
@@ -74,10 +74,11 @@ export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
 
   // Orden de países; dentro de cada país, primero Effi y luego Dropi.
   const cuentas = (datos?.cuentas ?? []).slice()
-    .sort((a, b) => ORDEN.indexOf(a.cuenta) - ORDEN.indexOf(b.cuenta) || Number(a.origen === "dropi") - Number(b.origen === "dropi"));
+    .sort((a, b) => ORDEN.indexOf(a.cuenta) - ORDEN.indexOf(b.cuenta) || Number(!!a.origen) - Number(!!b.origen) || Number(a.origen === "smart") - Number(b.origen === "smart"));
   const conDropi = new Set(cuentas.filter((w) => w.origen === "dropi").map((w) => w.cuenta));
   const elegida = sel ? cuentas.find((w) => clave(w) === sel) ?? null : null;
-  const nombre = (w: { cuenta: string; origen?: string }) => `${infoCuenta(w.cuenta).nombre}${w.origen === "dropi" ? " · O.A." : ""}`;
+  // En A un clic cada billetera con su nombre (Dropi, Smart); en Joalix la de Dropi es «O.A.».
+  const nombre = (w: { cuenta: string; origen?: string }) => `${infoCuenta(w.cuenta).nombre}${w.origen === "smart" ? " · Smart" : w.origen === "dropi" ? (infoCuenta(w.cuenta).sociedad === "A un clic" ? " · Dropi" : " · O.A.") : ""}`;
   // Todas: los recientes de cada wallet, cruzados por fecha.
   const todos = cuentas.flatMap((w) => w.recientes.map((m) => ({ ...m, cuenta: w.cuenta, origen: w.origen, divisa: w.divisa })))
     .sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40);
@@ -155,7 +156,8 @@ function Tarjeta({ w, cambio, activa, marcarEffi, onClick }: { w: Wallet; cambio
         <span className="flex items-center gap-2 text-sm font-semibold">{pais.bandera} {pais.nombre}</span>
         <span className="flex items-center gap-1">
           {w.origen === "drop" && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Billetera de Drop, cargada por archivo">Drop</span>}
-          {w.origen === "dropi" && <span className="rounded-full border border-blue/40 px-2 py-0.5 text-[10px] font-mono text-blue" title="Billetera de O.A.: saldo del último historial de cartera cargado">O.A.</span>}
+          {w.origen === "dropi" && <span className="rounded-full border border-blue/40 px-2 py-0.5 text-[10px] font-mono text-blue" title="Billetera de O.A.: saldo del último historial de cartera cargado">{infoCuenta(w.cuenta).sociedad === "A un clic" ? "Dropi" : "O.A."}</span>}
+          {w.origen === "smart" && <span className="rounded-full border border-green/40 px-2 py-0.5 text-[10px] font-mono text-green" title="Billetera de Smart Commerce calculada con los pedidos cargados: ganancia de los entregados menos el envío de los devueltos (provisional)">Smart · calculada</span>}
           {marcarEffi && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Wallet de Effi, al día cada minuto">Effi</span>}
           <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted">{w.divisa ?? pais.divisa}</span>
         </span>

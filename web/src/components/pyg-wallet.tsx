@@ -19,8 +19,8 @@ export type LineaPyg = {
 const COLOR = { Effi: "var(--blue)", Dropi: "var(--amber)", Ambas: "#a78bfa" } as const;
 const GUARDADO = "torre.pyg.casillas"; // preferencia de este navegador: qué conceptos marcó o desmarcó
 
-export function PygWallet({ cuenta, lineas, despachos, entregas, variasPlataformas }: {
-  cuenta: string; lineas: LineaPyg[]; despachos: number; entregas: number; variasPlataformas: boolean;
+export function PygWallet({ cuenta, lineas, despachos, entregas, variasPlataformas, plataformaSel }: {
+  cuenta: string; lineas: LineaPyg[]; despachos: number; entregas: number; variasPlataformas: boolean; plataformaSel?: string;
 }) {
   const [cambios, setCambios] = useState<Record<string, boolean>>({});
   useEffect(() => {
@@ -51,9 +51,9 @@ export function PygWallet({ cuenta, lineas, despachos, entregas, variasPlataform
     <div className="space-y-4">
       <div className="grid gap-5 xl:grid-cols-2">
         <Tabla titulo="Ingresos" color="var(--green)" lineas={ingresos} total={totIng} etiquetaTotal="Total ingresos"
-          incluida={incluida} alternar={alternar} $={$} despachos={despachos} conPlataforma={variasPlataformas} />
+          incluida={incluida} alternar={alternar} $={$} despachos={despachos} conPlataforma={variasPlataformas} nom={(x: string) => nombrePlataforma(x, cuenta, plataformaSel)} />
         <Tabla titulo="Egresos" color="var(--red)" lineas={egresos} total={totEgr} etiquetaTotal="Total egresos"
-          incluida={incluida} alternar={alternar} $={$} despachos={despachos} conPlataforma={variasPlataformas} />
+          incluida={incluida} alternar={alternar} $={$} despachos={despachos} conPlataforma={variasPlataformas} nom={(x: string) => nombrePlataforma(x, cuenta, plataformaSel)} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line border-l-4 bg-green/[0.06] px-4 py-4 sm:px-6 sm:py-5" style={{ borderLeftColor: "var(--green)" }}>
@@ -74,9 +74,9 @@ export function PygWallet({ cuenta, lineas, despachos, entregas, variasPlataform
   );
 }
 
-function Tabla({ titulo, color, lineas, total, etiquetaTotal, incluida, alternar, $, despachos, conPlataforma }: {
+function Tabla({ titulo, color, lineas, total, etiquetaTotal, incluida, alternar, $, despachos, conPlataforma, nom }: {
   titulo: string; color: string; lineas: LineaPyg[]; total: number; etiquetaTotal: string;
-  incluida: (l: LineaPyg) => boolean; alternar: (l: LineaPyg) => void; $: (v: number) => string; despachos: number; conPlataforma: boolean;
+  incluida: (l: LineaPyg) => boolean; alternar: (l: LineaPyg) => void; $: (v: number) => string; despachos: number; conPlataforma: boolean; nom: (p: string) => string;
 }) {
   const max = Math.max(1, ...lineas.map((l) => Math.abs(l.monto)));
   return (
@@ -107,7 +107,7 @@ function Tabla({ titulo, color, lineas, total, etiquetaTotal, incluida, alternar
                       <input type="checkbox" checked={on} onChange={() => alternar(l)} className="size-4 shrink-0 accent-[var(--blue)]" />
                       <span className={`font-semibold ${on ? "" : "line-through"}`}>{l.concepto}</span>
                       {(l.plataforma === "Ambas" || conPlataforma) && (
-                        <span className="rounded-full border px-2 py-0.5 text-[10px] font-mono font-semibold" style={{ color: c, borderColor: `color-mix(in srgb, ${c} 45%, transparent)` }}>{nombrePlataforma(l.plataforma)}</span>
+                        <span className="rounded-full border px-2 py-0.5 text-[10px] font-mono font-semibold" style={{ color: c, borderColor: `color-mix(in srgb, ${c} 45%, transparent)` }}>{nom(l.plataforma)}</span>
                       )}
                       {l.aFlujo && (
                         <Link href="/flujo-caja" className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted hover:text-text">ver detalle en Flujo de Caja ↗</Link>

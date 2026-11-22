@@ -30,8 +30,8 @@ export async function CuadrosDatos({ f, plataforma, parte }: { f: Filtros; plata
 
   if (parte === "pendientes") return (
     <>
-      {p ? <Inconsistencias p={p.inconsistencias} $={$} /> : <p className="text-sm text-red mt-3">No se pudieron calcular las inconsistencias: {error}</p>}
-      {p && <Proyeccion filas={p.proyeccion} $={$} bodega={BODEGA[cuenta]} />}
+      {p ? <Inconsistencias p={p.inconsistencias} $={$} nom={(x: string) => nombrePlataforma(x, cuenta, plataforma)} /> : <p className="text-sm text-red mt-3">No se pudieron calcular las inconsistencias: {error}</p>}
+      {p && <Proyeccion filas={p.proyeccion} $={$} bodega={BODEGA[cuenta]} nom={(x: string) => nombrePlataforma(x, cuenta, plataforma)} />}
     </>
   );
 
@@ -69,7 +69,7 @@ function Recuadro({ titulo, ayuda, children }: { titulo: string; ayuda: string; 
 const TH = "text-[11px] uppercase tracking-widest font-mono text-muted font-medium px-3 pb-1";
 const fila = (color: string) => ({ className: "rounded-l-xl border-l-4 bg-tinte/[0.03] pl-3 pr-2 py-2.5", style: { borderColor: color } });
 
-function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kpiPendientes>>["data"]>["inconsistencias"]; $: (v: number) => string }) {
+function Inconsistencias({ p, $, nom }: { p: NonNullable<Awaited<ReturnType<typeof kpiPendientes>>["data"]>["inconsistencias"]; $: (v: number) => string; nom: (p: string) => string }) {
   const esperado = (i: (typeof p)[number]) => i.venta - i.costo - i.flete;
   const total = p.reduce((a, i) => a + esperado(i), 0);
   return (
@@ -89,7 +89,7 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
               <tr key={`${i.plataforma}-${i.guia}`}>
                 <td {...fila(COLOR_PLATAFORMA[i.plataforma])}>
                   <span className="font-mono font-semibold">{i.guia ?? "—"}</span>
-                  {i.plataforma === "Dropi" && <span className="ml-2 rounded-full border border-amber/40 px-1.5 text-[10px] text-amber">O.A.</span>}
+                  {i.plataforma === "Dropi" && <span className="ml-2 rounded-full border border-amber/40 px-1.5 text-[10px] text-amber">{nom("Dropi")}</span>}
                 </td>
                 <td className="bg-tinte/[0.03] px-3 whitespace-nowrap">{i.fecha}</td>
                 <td className="bg-tinte/[0.03] px-3">{i.transportadora ?? "—"}</td>
@@ -99,7 +99,7 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
                 <td className="bg-tinte/[0.03] px-3 text-right num font-semibold text-green">{$(esperado(i))}</td>
                 <td className="rounded-r-xl bg-tinte/[0.03] px-3 text-right text-xs max-w-[26rem]">
                   {i.plataforma === "Dropi"
-                    ? "Orden entregada sin ganancia en la cartera — pedir a O.A. que la liquide"
+                    ? `Orden entregada sin ganancia en la cartera — pedir a ${nom("Dropi")} que la liquide`
                     : i.flete_dev > 0
                       ? `Wallet solo tiene el cargo de flete de devolución (−${$(i.flete_dev)}) y la guía figura entregada — pedir a Effi que retroceda la devolución y liquide la venta`
                       : "Guía entregada sin ningún movimiento de recaudo en el wallet — pedir a Effi que la liquide"}
@@ -118,7 +118,7 @@ function Inconsistencias({ p, $ }: { p: NonNullable<Awaited<ReturnType<typeof kp
   );
 }
 
-function Proyeccion({ filas, $, bodega }: { filas: NonNullable<Awaited<ReturnType<typeof kpiPendientes>>["data"]>["proyeccion"]; $: (v: number) => string; bodega?: string }) {
+function Proyeccion({ filas, $, bodega, nom }: { filas: NonNullable<Awaited<ReturnType<typeof kpiPendientes>>["data"]>["proyeccion"]; $: (v: number) => string; bodega?: string; nom: (p: string) => string }) {
   const n = filas.reduce((a, x) => a + x.n, 0), flete = filas.reduce((a, x) => a + x.flete_proyectado, 0), full = filas.reduce((a, x) => a + Number(x.fulfillment), 0);
   return (
     <Recuadro titulo="Proyección: si lo pendiente termina en devolución"
@@ -138,7 +138,7 @@ function Proyeccion({ filas, $, bodega }: { filas: NonNullable<Awaited<ReturnTyp
             return (
               <tr key={`${x.plataforma}-${x.estado}`}>
                 <td {...fila(COLOR_PLATAFORMA[x.plataforma])}>
-                  <span className="inline-flex items-center gap-2 font-semibold"><span className="size-2 rounded-full" style={{ background: c, boxShadow: `0 0 8px ${c}` }} />{nombrePlataforma(x.plataforma)}</span>
+                  <span className="inline-flex items-center gap-2 font-semibold"><span className="size-2 rounded-full" style={{ background: c, boxShadow: `0 0 8px ${c}` }} />{nom(x.plataforma)}</span>
                 </td>
                 <td className="bg-tinte/[0.03] px-3 text-right">{NOMBRE_ESTADO[x.estado] ?? x.estado}</td>
                 <td className="bg-tinte/[0.03] px-3 text-right num">{entero(x.n)}</td>

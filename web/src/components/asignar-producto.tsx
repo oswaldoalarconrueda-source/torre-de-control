@@ -33,7 +33,8 @@ export function AsignarProducto({ cuenta, campana, productos, actual, quitar }: 
   const hallados = palabras.length ? productos.filter((p) => palabras.every((w) => normal(p.producto).includes(w))) : productos;
   const exacto = productos.some((p) => normal(p.producto) === normal(q));
   const opciones: { producto: string; guias: number | null }[] = [
-    ...hallados.slice(0, 8),
+    // Pedido del dueño (22-nov-2026): todos los productos, no solo los 8 primeros; la lista tiene scroll.
+    ...hallados,
     ...(q.trim() && !exacto ? [{ producto: q.trim(), guias: null }] : []),
   ];
   function elegir(producto: string) {
@@ -80,7 +81,7 @@ export function AsignarProducto({ cuenta, campana, productos, actual, quitar }: 
           className={`w-full rounded-lg border bg-panel px-2 py-1 text-sm ${sel ? "border-blue-2/60" : "border-line"}`}
         />
         {abierto && (
-          <ul className="mt-1 max-h-60 overflow-auto rounded-lg border border-line bg-panel text-sm shadow-lg">
+          <ul className="mt-1 max-h-72 overflow-auto rounded-lg border border-line bg-panel text-sm shadow-lg">
             {opciones.map((o, i) => (
               <li key={`${o.producto}-${o.guias ?? "nuevo"}`}>
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); elegir(o.producto); }} onMouseEnter={() => setActivo(i)}
@@ -92,7 +93,7 @@ export function AsignarProducto({ cuenta, campana, productos, actual, quitar }: 
               </li>
             ))}
             {!opciones.length && <li className="px-2 py-1.5 text-muted">Sin productos</li>}
-            {hallados.length > 8 && <li className="px-2 py-1 text-[11px] text-muted">… y {hallados.length - 8} más: escribe más letras</li>}
+            {hallados.length > 8 && <li className="px-2 py-1 text-[11px] text-muted">{hallados.length} productos · baja para ver todos o escribe para filtrar</li>}
           </ul>
         )}
       </div>

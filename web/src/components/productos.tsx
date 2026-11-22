@@ -20,7 +20,7 @@ export type DatosPais = {
   econ: Econ[];
   estados: Estado[];
   ads: [string, string, number][];
-  sin: [string, string, string, number][];
+  sin: [string, string, string, number, (number | null)?][]; // día, cuenta, campaña, inversión, ventas que registró Meta
   otros?: [string, string | null, string][]; // [campaña, producto, países] con pauta entregada en otro país
   ads_dia: [string, number][];
   meses: Record<string, { factor: number | null; gastos: number; entregas: number }>;
@@ -180,11 +180,12 @@ export function Productos({ paises, desde, hasta, puedeEditar = false, productos
   // campañas sin identificar
   const sinRows = useMemo(() => {
     if (sel.length) return [];
-    const acc: Record<string, { c: string; b: string; pais: string; v: number; ds: Set<string> }> = {};
-    paises.forEach((P) => P.sin.forEach(([d, b, c, cop]) => {
+    const acc: Record<string, { c: string; b: string; pais: string; v: number; ds: Set<string>; k: number | null }> = {};
+    paises.forEach((P) => P.sin.forEach(([d, b, c, cop, kv]) => {
       const mes = d.slice(0, 7); const fac = P.meses[mes]?.factor ?? 0;
-      const k = `${P.cuenta}||${b}||${c}`; const o = (acc[k] ??= { c, b, pais: P.cuenta, v: 0, ds: new Set() });
+      const k = `${P.cuenta}||${b}||${c}`; const o = (acc[k] ??= { c, b, pais: P.cuenta, v: 0, ds: new Set(), k: null });
       o.v += all ? cop : cop * fac; o.ds.add(d);
+      if (kv != null) o.k = (o.k ?? 0) + kv;
     }));
     return Object.values(acc).sort((a, b) => b.v - a.v);
   }, [paises, sel, all]);
@@ -349,17 +350,17 @@ export function Productos({ paises, desde, hasta, puedeEditar = false, productos
         </header>
         <div className="mt-3 overflow-x-auto -mx-4 sm:-mx-5 md:px-5">
           <table className="tabla w-full min-w-max text-sm">
-            <thead><tr><th className="text-left">Campaña</th>{all && <th className="text-left">País</th>}<th className="text-left">Cuenta</th><th className="text-right">Días con gasto</th><th className="text-right">Inversión</th><th className="text-right">% de la publicidad</th>{editar && <th className="text-left">¿De qué producto es?</th>}</tr></thead>
+            <thead><tr><th className="text-left">Campaña</th>{all && <th className="text-left">País</th>}<th className="text-left">Cuenta</th><th className="text-right">Días con gasto</th><th className="text-right" title="Compras que registró la campaña en Meta (píxel). Solo informativo: no entra en ningún cálculo.">Ventas Meta</th><th className="text-right">Inversión</th><th className="text-right">% de la publicidad</th>{editar && <th className="text-left">¿De qué producto es?</th>}</tr></thead>
             <tbody>
               {sinRows.map((r) => (
                 <tr key={`${r.pais}${r.b}${r.c}`}>
                   <td className="text-left">{r.c}<MarcaOtroPais paises={otrosCampana.get(r.c)} /></td>{all && <td className="text-left">{infoCuenta(r.pais).bandera}</td>}<td className="text-left">{r.b}</td>
-                  <td className="num text-right">{r.ds.size}</td><td className="num text-right">{fmz(r.v)}</td><td className="num text-right">{gt.ads > 0.005 ? `${nf((r.v / gt.ads) * 100, 1)} %` : "–"}</td>
+                  <td className="num text-right">{r.ds.size}</td><td className="num text-right text-muted">{r.k == null ? "–" : nf(r.k, 0)}</td><td className="num text-right">{fmz(r.v)}</td><td className="num text-right">{gt.ads > 0.005 ? `${nf((r.v / gt.ads) * 100, 1)} %` : "–"}</td>
                   {editar && <td className="text-left"><AsignarProducto cuenta={r.pais} campana={r.c} productos={productosHist} /></td>}
                 </tr>
               ))}
-              {sinRows.length === 0 && <tr><td colSpan={(all ? 6 : 5) + (editar ? 1 : 0)} className="text-center text-muted">{sel.length ? "Con productos elegidos no se muestran." : "✓ Todas las campañas de este período están asignadas a un producto."}</td></tr>}
-              {sinRows.length > 0 && <tr className="font-semibold"><td className="text-left">Total</td>{all && <td />}<td /><td /><td className="num text-right">{fmz(sinTot)}</td><td className="num text-right">{gt.ads > 0.005 ? `${nf((sinTot / gt.ads) * 100, 1)} %` : "–"}</td>{editar && <td />}</tr>}
+              {sinRows.length === 0 && <tr><td colSpan={(all ? 7 : 6) + (editar ? 1 : 0)} className="text-center text-muted">{sel.length ? "Con productos elegidos no se muestran." : "✓ Todas las campañas de este período están asignadas a un producto."}</td></tr>}
+              {sinRows.length > 0 && <tr className="font-semibold"><td className="text-left">Total</td>{all && <td />}<td /><td /><td className="num text-right text-muted">{sinRows.some((r) => r.k != null) ? nf(sinRows.reduce((s, r) => s + (r.k ?? 0), 0), 0) : "–"}</td><td className="num text-right">{fmz(sinTot)}</td><td className="num text-right">{gt.ads > 0.005 ? `${nf((sinTot / gt.ads) * 100, 1)} %` : "–"}</td>{editar && <td />}</tr>}
             </tbody>
           </table>
         </div>

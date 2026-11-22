@@ -1,10 +1,10 @@
 import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros, mismoDiaMesAnterior, type Filtros } from "@/lib/filtros";
-import { ordenCuenta } from "@/lib/paises";
+import { infoCuenta, ordenCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { SelectorPlataforma, leerPlataforma } from "@/components/selector-plataforma";
 import { enDemo } from "@/lib/demo-server";
-import { conDropi } from "@/lib/dropi";
+import { conDropi, conSmart } from "@/lib/dropi";
 import { GlobalVista, type DatosGlobal, type FilaMes } from "@/components/global-vista";
 
 // 🌎 Global, como en el Dashboard Joalix: todos los países (o los que elijas) juntos para el mismo calendario.
@@ -24,6 +24,8 @@ export default async function GlobalPage({ searchParams }: PageProps<"/global">)
   const { data: tiendasActivas } = await supabase.from("effi_accounts").select("slug").eq("activa", true).eq("tipo", "tienda");
   const elegidas = (tiendasActivas ?? []).map((t) => t.slug as string).filter((c) => !f.cuentas || f.cuentas.includes(c));
   const hayDropi = (await conDropi(supabase, elegidas)).length > 0;
+  const haySmart = hayDropi && (await conSmart(supabase, elegidas)).length > 0;
+  const aUnClic = elegidas.length > 0 && elegidas.every((c) => infoCuenta(c).sociedad === "A un clic");
   // 🎬 Demostración: las dos plataformas sumadas (como «Ambas»), sin selector y sin nombrar la otra plataforma
   // (components/borroso-productos.tsx quita esas menciones de la pantalla).
   const demo = await enDemo();
@@ -45,7 +47,7 @@ export default async function GlobalPage({ searchParams }: PageProps<"/global">)
         f={f}
         varios
       />
-      {hayDropi && !demo && <div className="mb-3 flex justify-end"><SelectorPlataforma sp={sp} actual={plataforma} /></div>}
+      {hayDropi && !demo && <div className="mb-3 flex justify-end"><SelectorPlataforma sp={sp} actual={plataforma} aUnClic={aUnClic} conSmart={haySmart} /></div>}
       {error && <p className="text-sm text-red mb-4">{error.message}</p>}
       {act && (
         <GlobalVista

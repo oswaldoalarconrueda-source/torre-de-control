@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { kpiDespacho, kpiUtilidad, type Plataforma, type Utilidad } from "@/lib/datos";
 import type { Filtros } from "@/lib/filtros";
-import { diaCorto, dinero, entero } from "@/lib/formato";
+import { diaCorto, dinero, entero, nombrePlataforma } from "@/lib/formato";
 import { TARIFA_FULFILLMENT, infoCuenta } from "@/lib/paises";
 
 // Bloque "Despachado vs Entregado" del Dashboard Joalix (pestaña Datos): Effi en vivo + Dropi por archivo.
@@ -20,17 +20,19 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
   // Effi: tarifa por guía despachada (NaturalFitt GT/EC), 4x1000 (CO) o, en las demás cuentas (p. ej. Valka), el
   // fulfillment que Effi cobra directamente en el wallet. Dropi: su comisión, que se cobra en las entregadas.
   const P = d.plataformas;
+  // Nombre de la otra plataforma: «O.A.» en Joalix; en A un clic Dropi (o Smart con ese filtro).
+  const OA = nombrePlataforma("Dropi", cuenta, plataforma);
   const delWallet = tarifa == null && Number(d.fulfillment_wallet ?? 0) !== 0;
   const full = tarifa != null
-    ? { total: P.effi * tarifa + d.comision_dropi, label: P.effi ? "Fulfillment" : "Comisión O.A." }
+    ? { total: P.effi * tarifa + d.comision_dropi, label: P.effi ? "Fulfillment" : `Comisión ${OA}` }
     : delWallet
-      ? { total: Number(d.fulfillment_wallet) + d.x4 + d.comision_dropi, label: P.effi ? "Fulfillment" : "Comisión O.A." }
-      : { total: d.x4 + d.comision_dropi, label: P.effi ? "4x1000" : "Comisión O.A." };
+      ? { total: Number(d.fulfillment_wallet) + d.x4 + d.comision_dropi, label: P.effi ? "Fulfillment" : `Comisión ${OA}` }
+      : { total: d.x4 + d.comision_dropi, label: P.effi ? "4x1000" : `Comisión ${OA}` };
   const fullSub = [
     P.effi ? (tarifa != null ? `${entero(P.effi)} guías Effi × ${$(tarifa)} por despacho`
       : delWallet ? "Lo que Effi cobró en el wallet por fulfillment (bodegaje, alistamiento, empaque)"
       : "4x1000 cobrado en el wallet sobre el recaudo") : null,
-    P.dropi ? `O.A.: comisión ${$(d.comision_dropi)} sobre ${entero(P.dropi_entregadas)} entregadas` : null,
+    P.dropi ? `${OA}: comisión ${$(d.comision_dropi)} sobre ${entero(P.dropi_entregadas)} entregadas` : null,
   ].filter(Boolean).join(" · ");
   const D = d.despachado, E = d.entregado;
   const ads = u?.publicidad;
@@ -42,7 +44,7 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
   return (
     <section className="space-y-3">
       <Fila titulo="Despachado" detalle="Todo lo montado en el periodo, sin importar su estado (sin anuladas ni canceladas)">
-        <Tarjeta titulo="Ventas" valor={entero(D.n)} ayuda={P.effi && P.dropi ? `Effi ${entero(P.effi)} · O.A. ${entero(P.dropi)}` : undefined} />
+        <Tarjeta titulo="Ventas" valor={entero(D.n)} ayuda={P.effi && P.dropi ? `Effi ${entero(P.effi)} · ${OA} ${entero(P.dropi)}` : undefined} />
         <Tarjeta titulo="Venta total (despachado)" badge={pctDe(D.venta, D.venta)} valor={$(D.venta)} ayuda={`${entero(D.n)} guías despachadas`} pie={prom(D.venta, D.n)} />
         <Tarjeta titulo="Costo mercancía (despachado)" badge={pctDe(D.costo, D.venta)} valor={$(D.costo)}
           ayuda={D.costo_estimadas ? `Incluye ${entero(D.costo_estimadas)} guías aún sin cobro de mercancía (costo estimado por producto). Devoluciones en 0.` : "Devoluciones en 0."}
@@ -55,10 +57,10 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
       </Fila>
 
       <Fila titulo="Entregado" detalle="Solo lo entregado al cliente (el wallet manda: si hay recaudo, cuenta como entregada)">
-        <Tarjeta titulo="Ventas entregadas" valor={entero(E.n)} ayuda={P.effi_entregadas && P.dropi_entregadas ? `Effi ${entero(P.effi_entregadas)} · O.A. ${entero(P.dropi_entregadas)}` : undefined} />
+        <Tarjeta titulo="Ventas entregadas" valor={entero(E.n)} ayuda={P.effi_entregadas && P.dropi_entregadas ? `Effi ${entero(P.effi_entregadas)} · ${OA} ${entero(P.dropi_entregadas)}` : undefined} />
         <Tarjeta titulo="Venta total (entregado)" badge={pctDe(E.venta, E.venta)} valor={$(E.venta)} pie={prom(E.venta, E.n)} />
         <Tarjeta titulo="Costo mercancía (entregado)" badge={pctDe(E.costo, E.venta)} valor={$(E.costo)}
-          ayuda={E.costo_estimadas ? `${entero(E.costo_estimadas)} entregadas sin cobro de mercancía aún (estimado)` : "Costo real: wallet Effi y precio de proveedor O.A."}
+          ayuda={E.costo_estimadas ? `${entero(E.costo_estimadas)} entregadas sin cobro de mercancía aún (estimado)` : `Costo real: wallet Effi y precio de proveedor ${OA}`}
           pie={prom(E.costo, E.n)} />
         <Tarjeta titulo="Flete (entregado)" badge={pctDe(E.flete, E.venta)} valor={$(E.flete)} pie={prom(E.flete, E.n)}>
           <div className="mt-2 space-y-0.5">

@@ -41,7 +41,7 @@ export async function EstadoPyG({ f, plataforma }: { f: Filtros; plataforma: Pla
           <Info size={15} />
         </span>
       </header>
-      <PygWallet cuenta={cuenta} lineas={lineas} despachos={d.despachado.n} entregas={d.entregado.n} variasPlataformas={!!(d.plataformas.effi && d.plataformas.dropi)} />
+      <PygWallet cuenta={cuenta} lineas={lineas} despachos={d.despachado.n} entregas={d.entregado.n} variasPlataformas={!!(d.plataformas.effi && d.plataformas.dropi)} plataformaSel={plataforma} />
     </section>
   );
 }

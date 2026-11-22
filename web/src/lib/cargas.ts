@@ -2,7 +2,7 @@
 // historial de cartera) y Meta (CSV por Business Manager). Se procesa en el navegador y solo se envía lo
 // necesario: sin nombre, teléfono, correo, documento ni dirección del cliente.
 
-export type TipoCarga = "dropi_ordenes" | "dropi_productos" | "dropi_cartera" | "meta_bm" | "drop_ordenes" | "drop_billetera" | "icomfly_pedidos";
+export type TipoCarga = "dropi_ordenes" | "dropi_productos" | "dropi_cartera" | "meta_bm" | "drop_ordenes" | "drop_billetera" | "icomfly_pedidos" | "smart_pedidos";
 export type Celda = string | number | boolean | Date | null | undefined;
 export type Fila = Record<string, unknown>;
 
@@ -14,6 +14,7 @@ export const NOMBRE_TIPO: Record<TipoCarga, string> = {
   drop_ordenes: "Drop · Órdenes",
   drop_billetera: "Drop · Billetera",
   icomfly_pedidos: "icomfly · Pedidos",
+  smart_pedidos: "Smart Commerce · Pedidos",
 };
 
 export type Lectura = {
@@ -32,6 +33,7 @@ const clave = (s: unknown) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/
 export function detectarTipo(encabezados: unknown[]): TipoCarga | null {
   const h = new Set(encabezados.map(clave));
   // Drop (Honduras y El Salvador de A un clic) e icomfly: se reconocen por columnas, no por el nombre del archivo.
+  if (h.has("TRACKING") && h.has("COSTE TOTAL PEDIDO") && h.has("DROPSHIPPER")) return "smart_pedidos";
   if (h.has("SALDO RESULTANTE") && h.has("MOVIMIENTO")) return "drop_billetera";
   if (h.has("PAQUETERA") && h.has("ACREDITACION")) return "drop_ordenes";
   if (h.has("PLATAFORMA DE ENVIO") && h.has("GUIA") && h.has("PRODUCTO")) return "icomfly_pedidos";
@@ -266,9 +268,13 @@ function metaBm(filas: Record<string, Celda>[]): Lectura {
   };
 }
 
-export async function leerTabla(tabla: Celda[][]): Promise<Lectura> {
+export async function leerTabla(tabla0: Celda[][]): Promise<Lectura> {
+  // Algunos reportes (Smart Commerce) traen un título y los filtros arriba: el encabezado es la primera fila que se reconoce.
+  const inicio = tabla0.slice(0, 25).findIndex((r) => detectarTipo(r) !== null);
+  const tabla = inicio > 0 ? tabla0.slice(inicio) : tabla0;
   const { encabezados, filas } = aObjetos(tabla);
   const tipo = detectarTipo(encabezados);
+  if (tipo === "smart_pedidos") return smartPedidos(filas);
   if (tipo === "drop_ordenes") return dropOrdenes(filas);
   if (tipo === "drop_billetera") return dropBilletera(filas);
   if (tipo === "icomfly_pedidos") return icomflyPedidos(filas);
@@ -276,7 +282,7 @@ export async function leerTabla(tabla: Celda[][]): Promise<Lectura> {
   if (tipo === "dropi_productos") return dropiProductos(filas);
   if (tipo === "dropi_cartera") return dropiCartera(filas);
   if (tipo === "meta_bm") return metaBm(filas);
-  throw new Error("No reconozco el archivo: no es de O.A. (órdenes, productos o cartera), de Drop (órdenes o billetera), de icomfly (pedidos) ni un CSV de Meta.");
+  throw new Error("No reconozco el archivo: no es de O.A. (órdenes, productos o cartera), de Drop (órdenes o billetera), de icomfly (pedidos), de Smart Commerce (pedidos) ni un CSV de Meta.");
 }
 
 // ───────────── Drop + icomfly (A un clic Honduras y El Salvador; skill "a-un-clic-honduras-el-salvador-drop") ─────────────
@@ -461,6 +467,67 @@ async function icomflyPedidos(filas: Record<string, Celda>[]): Promise<Lectura> 
       { etiqueta: "Líneas de producto", valor: out.length },
       { etiqueta: "Productos distintos", valor: productos.size },
       { etiqueta: "Con guía", valor: new Set(out.filter((f) => f.guia).map((f) => f.id)).size },
+    ],
+    avisos,
+  };
+}
+
+// ───────────── Smart Commerce (A un clic Guatemala, 22-nov-2026) ─────────────
+// «Reporte de pedidos» de Smart: se guarda en las tablas de Dropi con tienda 'smart'. No se guardan nombre, dirección,
+// teléfono ni correo. El id de la orden sale de los últimos 12 dígitos hexadecimales del «ID pedido» (cabe en un número).
+// Estado: manda el del envío cuando dice Entregado o Devuelto (la transportadora va más al día que el estado del pedido).
+// «Retirado» = el cliente retiró en agencia → entregado (regla provisional hasta que el dueño diga otra cosa).
+function estadoSmart(estado: string | null, envio: string | null): string {
+  const e = (estado ?? "").toUpperCase(), v = (envio ?? "").toUpperCase();
+  if (v === "ENTREGADO" || e === "ENTREGADO" || e === "RETIRADO" || v === "RETIRADO") return "ENTREGADO";
+  if (v === "DEVUELTO" || e === "DEVUELTO") return "DEVOLUCION";
+  if (e === "CANCELADO" || v === "ANULADO") return "CANCELADO";
+  if (v === "INCIDENCIA") return "INCIDENCIA";
+  if (e.startsWith("GU") || v.startsWith("ETIQUETA")) return "GUIA_GENERADA";
+  return "EN REPARTO";
+}
+function smartPedidos(filas: Record<string, Celda>[]): Lectura {
+  const avisos: string[] = [];
+  const validas = filas.filter((r) => texto(r["ID PEDIDO"]) && texto(r["TRACKING"]));
+  const paises = new Set(validas.map((r) => texto(r["PAIS"])));
+  if (paises.size > 1 || (paises.size === 1 && !paises.has("GT"))) avisos.push(`El archivo trae pedidos de ${[...paises].join(", ")}: solo se cargan los de Guatemala.`);
+  const out = sinDuplicados(validas.filter((r) => texto(r["PAIS"]) === "GT").map((r) => {
+    const hex = String(texto(r["ID PEDIDO"])).replace(/[^0-9a-f]/gi, "");
+    const venta = numero(r["PRECIO"]) ?? 0, costo = numero(r["COSTE PRODUCTOS"]) ?? 0, flete = numero(r["COSTE ENVIO"]) ?? 0;
+    const total = numero(r["COSTE TOTAL PEDIDO"]) ?? costo + flete;
+    const fp = fechaHora(r["FECHA PEDIDO"]);
+    return {
+      id: parseInt(hex.slice(-12), 16),
+      id_smart: hex,
+      fecha: fp?.slice(0, 10) ?? null,
+      hora: fp?.slice(11, 16) ?? null,
+      guia: id(r["TRACKING"]),
+      estatus: estadoSmart(texto(r["ESTADO"]), texto(r["ENVIO"])),
+      ultimo_movimiento: `${texto(r["ESTADO"]) ?? "—"} · envío ${texto(r["ENVIO"]) ?? "—"}`,
+      transportadora: texto(r["TRANSPORTADORA"]),
+      ciudad: texto(r["CIUDAD"]),
+      venta, costo, flete,
+      comision: Math.round((total - costo - flete) * 100) / 100,
+      producto: texto(r["PRODUCTOS"]),
+      sku: texto(r["CODIGO"]),
+      cantidad: numero(r["UNIDADES"]) ?? 1,
+      fecha_guia: fechaHora(r["FECHA GUIA"]),
+    };
+  }), (f) => f.id);
+  if (out.length < validas.filter((r) => texto(r["PAIS"]) === "GT").length) avisos.push("Había pedidos repetidos en el archivo: se cargó cada uno una vez.");
+  const ent = out.filter((f) => f.estatus === "ENTREGADO"), dev = out.filter((f) => f.estatus === "DEVOLUCION");
+  return {
+    tipo: "smart_pedidos",
+    filas: out.filter((f) => f.fecha && Number.isFinite(f.id)),
+    cuenta: "AUNCLIC_GT",
+    ...rango(out.map((f) => f.fecha)),
+    totales: [
+      { etiqueta: "Pedidos", valor: out.length },
+      { etiqueta: "Entregados (incluye «Retirado»)", valor: ent.length },
+      { etiqueta: "Devueltos", valor: dev.length },
+      { etiqueta: "Venta entregada", valor: suma(ent.map((f) => f.venta)), moneda: true },
+      { etiqueta: "Ganancia de entregados", valor: suma(ent.map((f) => f.venta - f.costo - f.flete - f.comision)), moneda: true },
+      { etiqueta: "Envío perdido en devoluciones (provisional)", valor: suma(dev.map((f) => f.flete)), moneda: true },
     ],
     avisos,
   };
