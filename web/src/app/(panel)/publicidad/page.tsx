@@ -50,7 +50,7 @@ function CpaReal({ porDia, pedidos }: { porDia: Dia[]; pedidos: { cuenta: string
     </>
   );
   return (
-    <Panel titulo="CPA real por día" detalle="Gasto en Meta del día ÷ pedidos que entraron a LucidSales ese día (los llena la encargada en Pedidos plataformas)" className="mb-3">
+    <Panel titulo="CPA real por día" detalle="Gasto en Meta del día ÷ pedidos que entraron ese día (los de 📝 Pedidos plataformas)" className="mb-3">
       <TablaScroll>
         <thead>
           <tr>
@@ -92,13 +92,34 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
   const hasta = f.hasta > hoy ? hoy : f.hasta;
 
   const supabase = await createClient();
-  const [{ data, error }, { data: pedidos }] = await Promise.all([
+  const [{ data, error }, { data: pedidos }, { data: porDivisa }] = await Promise.all([
     supabase.rpc("publicidad_resumen", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta }),
     // Pedidos de LucidSales por día (📝 Pedidos Lucid): con el gasto del mismo día dan el CPA real.
     supabase.from("app_pedidos_diarios").select("cuenta,fecha,pedidos").gte("fecha", f.desde).lte("fecha", hasta),
+    // Lo que cobró Meta en la moneda de cada cuenta publicitaria (dólares, quetzales o pesos), por país.
+    supabase.rpc("publicidad_por_divisa", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta }),
   ]);
   const r = data as Resumen | null;
   const tiendas = [...(r?.por_tienda ?? [])].sort((a, b) => ordenCuenta(a.cuenta) - ordenCuenta(b.cuenta));
+  // Pedido del dueño (22-nov-2026): si las cuentas publicitarias cobran en dólares (u otra moneda), cada país muestra
+  // primero lo que cobró Meta en esa moneda y debajo la conversión a la moneda del país y a pesos.
+  const divisas = ((porDivisa ?? []) as { cuenta: string; divisa: string; original: number | null; cop: number; local: number | null }[]);
+  const moneda = (v: number, d: string) => new Intl.NumberFormat("es-CO", { style: "currency", currency: d, currencyDisplay: d === "USD" ? "symbol" : "narrowSymbol", minimumFractionDigits: d === "COP" ? 0 : 2, maximumFractionDigits: d === "COP" ? 0 : 2 }).format(v);
+  const cobradoMeta = (c: string) => {
+    const filas = divisas.filter((x) => x.cuenta === c && Number(x.cop) > 0);
+    if (!filas.some((x) => x.divisa !== "COP")) return null;
+    return filas.sort((a, b) => Number(b.cop) - Number(a.cop))
+      .map((x) => `${x.original == null ? "—" : moneda(Number(x.original), x.divisa)}${x.divisa === "COP" ? " en pesos" : ""}`).join(" + ");
+  };
+  // En la moneda del país, a partir de lo cobrado: dólares × moneda del país por dólar del día (las cuentas en pesos, como antes).
+  const localDesdeMeta = (c: string) => {
+    const filas = divisas.filter((x) => x.cuenta === c && Number(x.cop) > 0);
+    if (filas.some((x) => x.local == null)) return null;
+    return filas.reduce((a, x) => a + Number(x.local), 0);
+  };
+  // Si todas las cuentas cobran en la misma moneda del país (El Salvador en dólares), no se repite la conversión.
+  const mismaMoneda = (c: string) => divisas.filter((x) => x.cuenta === c && Number(x.cop) > 0).every((x) => x.divisa === infoCuenta(c).divisa);
+  const sociedades = new Set(tiendas.map((t) => infoCuenta(t.cuenta).sociedad ?? "Joalix AA Group"));
   const paises = tiendas.map((t) => ({ cuenta: t.cuenta, nombre: infoCuenta(t.cuenta).nombre, color: COLOR[infoCuenta(t.cuenta).pais] ?? "#8a94a8", divisa: infoCuenta(t.cuenta).divisa }));
   const conGasto = r?.por_dia.length ? new Set(r.por_dia.map((d) => d.fecha)).size : 0;
   const apiTotal = (r?.por_cuenta_ads ?? []).filter((c) => c.por_api).reduce((a, c) => a + Number(c.total), 0);
@@ -114,7 +135,7 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
     <>
       <Encabezado
         titulo="📢 Publicidad"
-        subtitulo="Gasto en Meta por país, día, cuenta publicitaria y campaña. Llega solo por la API de Meta cada hora (un token por portafolio); el país de entrega del anuncio decide la tienda. Meta cobra en pesos: cada cifra va en pesos y, debajo, en la moneda del país con la tasa del día del gasto."
+        subtitulo="Gasto en Meta por país, día, cuenta publicitaria y campaña. Llega solo por la API de Meta cada hora (un token por portafolio); el país de entrega del anuncio decide la tienda. Cada cifra va en pesos y, debajo, en la moneda del país con la tasa del día del gasto. Si las cuentas publicitarias cobran en dólares, cada país muestra primero lo que cobró Meta en dólares y luego su conversión."
         f={f}
         varios
         inicio={INICIO_PUBLICIDAD}
@@ -132,7 +153,13 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
           <Kpi
             key={t.cuenta}
             etiqueta={`${infoCuenta(t.cuenta).bandera} ${infoCuenta(t.cuenta).nombre}${infoCuenta(t.cuenta).divisa !== "COP" ? ` · ${infoCuenta(t.cuenta).divisa}` : ""}`}
-            valor={infoCuenta(t.cuenta).divisa !== "COP" ? <>{cop(t.monto)}<div className="text-base text-blue-2 mt-1">{enLocal(t.local, t.cuenta)}</div></> : cop(t.monto)}
+            valor={cobradoMeta(t.cuenta)
+              ? <>
+                  <div title="Lo que cobró Meta en la moneda de cada cuenta publicitaria" className={cobradoMeta(t.cuenta)!.includes(" + ") ? "text-lg leading-snug" : ""}>{cobradoMeta(t.cuenta)}</div>
+                  {infoCuenta(t.cuenta).divisa !== "COP" && !mismaMoneda(t.cuenta) && <div className="text-base text-blue-2 mt-1">en {infoCuenta(t.cuenta).divisa}: {enLocal(localDesdeMeta(t.cuenta) ?? t.local, t.cuenta)}</div>}
+                  <div className="text-base text-muted mt-0.5">en pesos: {cop(t.monto)}</div>
+                </>
+              : infoCuenta(t.cuenta).divisa !== "COP" ? <>{cop(t.monto)}<div className="text-base text-blue-2 mt-1">{enLocal(t.local, t.cuenta)}</div></> : cop(t.monto)}
             nota={`${pct(Number(r?.total) ? t.monto / Number(r?.total) : 0)} del total · ${entero(t.cuentas_ads)} cuentas · hasta ${diaCorto(t.ultimo)}${t.sin_tasa ? ` · ${entero(t.sin_tasa)} días sin TRM` : ""}`}
           />
         ))}
@@ -144,7 +171,8 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
           : <Vacio>Sin gasto en este periodo.</Vacio>}
       </Panel>
 
-      <CpaReal porDia={r?.por_dia ?? []} pedidos={(pedidos ?? []).filter((p) => !f.cuentas || f.cuentas.includes(p.cuenta as string))
+      {/* Solo los países de la sociedad que se está viendo (en A un clic no salen Colombia, Ecuador ni Costa Rica). */}
+      <CpaReal porDia={r?.por_dia ?? []} pedidos={(pedidos ?? []).filter((p) => (!f.cuentas || f.cuentas.includes(p.cuenta as string)) && sociedades.has(infoCuenta(p.cuenta as string).sociedad ?? "Joalix AA Group"))
         .map((p) => ({ cuenta: p.cuenta as string, fecha: p.fecha as string, pedidos: Number(p.pedidos) }))} />
 
       {unica && r?.por_dia.length ? (
