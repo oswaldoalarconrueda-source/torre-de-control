@@ -15,9 +15,9 @@ import { Doble, cop, enLocal, portafolio } from "@/components/publicidad-montos"
 // Guatemala en quetzales, Ecuador en dólares, Costa Rica en colones. Con un solo país sale el detalle por día con las tasas.
 // Solo la ven el dueño y los socios (ni empleados ni proveedores).
 
-type PorTienda = { cuenta: string; monto: number; local: number | null; sin_tasa: number; dias: number; ultimo: string; cuentas_ads: number };
-type Campana = { campana: string; cuenta_ads: string; cuenta: string; monto: number; local: number | null; dias: number; ultimo: string };
-type Dia = { fecha: string; cuenta: string; monto: number; local: number | null; usd_cop: number | null; usd_gtq: number | null; usd_crc: number | null };
+type PorTienda = { cuenta: string; monto: number; local: number | null; usd?: number | null; sin_tasa: number; dias: number; ultimo: string; cuentas_ads: number };
+type Campana = { campana: string; cuenta_ads: string; cuenta: string; monto: number; local: number | null; usd?: number | null; dias: number; ultimo: string };
+type Dia = { fecha: string; cuenta: string; monto: number; local: number | null; usd?: number | null; usd_cop: number | null; usd_gtq: number | null; usd_crc: number | null };
 type Conexion = {
   portafolios: { portafolio: string; cuentas: number; con_error: number; ultima_sync: string | null }[];
   cuentas_sin_gasto: { nombre: string; portafolio: string | null; estado: number | null; divisa: string | null }[];
@@ -32,7 +32,7 @@ const COLOR: Record<string, string> = { CO: "#f5c542", EC: "#2f7bff", GT: "#36c5
 
 // CPA real por día: gasto de Meta del día ÷ pedidos que entraron a LucidSales ese día (📝 Pedidos Lucid). Solo salen
 // los países con pedidos cargados; un día sin pedidos queda en blanco (no es CPA infinito).
-function CpaReal({ porDia, pedidos }: { porDia: Dia[]; pedidos: { cuenta: string; fecha: string; pedidos: number }[] }) {
+function CpaReal({ porDia, pedidos, conUsd }: { porDia: Dia[]; pedidos: { cuenta: string; fecha: string; pedidos: number }[]; conUsd: string[] }) {
   const cuentas = [...new Set(pedidos.map((p) => p.cuenta))].sort((a, b) => ordenCuenta(a) - ordenCuenta(b));
   if (!cuentas.length) return null;
   const gasto = new Map(porDia.map((d) => [`${d.cuenta}|${d.fecha}`, d]));
@@ -40,13 +40,13 @@ function CpaReal({ porDia, pedidos }: { porDia: Dia[]; pedidos: { cuenta: string
   const fechas = [...new Set(pedidos.map((p) => p.fecha))].sort().reverse();
   const tot = (c: string) => fechas.reduce((s, f) => {
     const n = ped.get(`${c}|${f}`); const g = gasto.get(`${c}|${f}`);
-    return n ? { pedidos: s.pedidos + n, cop: s.cop + Number(g?.monto ?? 0), local: s.local + Number(g?.local ?? 0) } : s;
-  }, { pedidos: 0, cop: 0, local: 0 });
-  const celda = (c: string, n: number | undefined, enCop: number, local: number | null) => (
+    return n ? { pedidos: s.pedidos + n, cop: s.cop + Number(g?.monto ?? 0), local: s.local + Number(g?.local ?? 0), usd: s.usd + Number(g?.usd ?? 0) } : s;
+  }, { pedidos: 0, cop: 0, local: 0, usd: 0 });
+  const celda = (c: string, n: number | undefined, enCop: number, local: number | null, usd: number | null) => (
     <>
-      <td className="text-right num text-muted"><Doble local={local} enCop={enCop} cuenta={c} /></td>
+      <td className="text-right num text-muted"><Doble local={local} enCop={enCop} cuenta={c} usd={conUsd.includes(c) ? usd : undefined} /></td>
       <td className="text-right num">{n ? entero(n) : "—"}</td>
-      <td className="text-right num">{n ? <Doble local={local == null ? null : local / n} enCop={enCop / n} cuenta={c} fuerte /> : "—"}</td>
+      <td className="text-right num">{n ? <Doble local={local == null ? null : local / n} enCop={enCop / n} cuenta={c} fuerte usd={conUsd.includes(c) ? (usd == null ? null : usd / n) : undefined} /> : "—"}</td>
     </>
   );
   return (
@@ -65,12 +65,12 @@ function CpaReal({ porDia, pedidos }: { porDia: Dia[]; pedidos: { cuenta: string
         <tbody>
           <tr className="font-semibold">
             <td>Periodo</td>
-            {cuentas.map((c) => { const t = tot(c); return <Fragment key={c}>{celda(c, t.pedidos, t.cop, infoCuenta(c).divisa === "COP" ? null : t.local)}</Fragment>; })}
+            {cuentas.map((c) => { const t = tot(c); return <Fragment key={c}>{celda(c, t.pedidos, t.cop, infoCuenta(c).divisa === "COP" ? null : t.local, t.usd)}</Fragment>; })}
           </tr>
           {fechas.map((f) => (
             <tr key={f}>
               <td>{diaCorto(f)}</td>
-              {cuentas.map((c) => { const g = gasto.get(`${c}|${f}`); return <Fragment key={c}>{celda(c, ped.get(`${c}|${f}`), Number(g?.monto ?? 0), g?.local ?? null)}</Fragment>; })}
+              {cuentas.map((c) => { const g = gasto.get(`${c}|${f}`); return <Fragment key={c}>{celda(c, ped.get(`${c}|${f}`), Number(g?.monto ?? 0), g?.local ?? null, g?.usd ?? null)}</Fragment>; })}
             </tr>
           ))}
         </tbody>
@@ -118,6 +118,8 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
     return filas.reduce((a, x) => a + Number(x.local), 0);
   };
   // Si todas las cuentas cobran en la misma moneda del país (El Salvador en dólares), no se repite la conversión.
+  // Países con alguna cuenta publicitaria que cobra en dólares (u otra moneda): ahí salen siempre las tres monedas.
+  const conUsd = [...new Set(divisas.filter((x) => x.divisa !== "COP" && Number(x.cop) > 0).map((x) => x.cuenta))];
   const mismaMoneda = (c: string) => divisas.filter((x) => x.cuenta === c && Number(x.cop) > 0).every((x) => x.divisa === infoCuenta(c).divisa);
   const sociedades = new Set(tiendas.map((t) => infoCuenta(t.cuenta).sociedad ?? "Joalix AA Group"));
   const paises = tiendas.map((t) => ({ cuenta: t.cuenta, nombre: infoCuenta(t.cuenta).nombre, color: COLOR[infoCuenta(t.cuenta).pais] ?? "#8a94a8", divisa: infoCuenta(t.cuenta).divisa }));
@@ -173,7 +175,7 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
 
       {/* Solo los países de la sociedad que se está viendo (en A un clic no salen Colombia, Ecuador ni Costa Rica). */}
       <CpaReal porDia={r?.por_dia ?? []} pedidos={(pedidos ?? []).filter((p) => (!f.cuentas || f.cuentas.includes(p.cuenta as string)) && sociedades.has(infoCuenta(p.cuenta as string).sociedad ?? "Joalix AA Group"))
-        .map((p) => ({ cuenta: p.cuenta as string, fecha: p.fecha as string, pedidos: Number(p.pedidos) }))} />
+        .map((p) => ({ cuenta: p.cuenta as string, fecha: p.fecha as string, pedidos: Number(p.pedidos) }))} conUsd={conUsd} />
 
       {unica && r?.por_dia.length ? (
         <Panel
@@ -236,7 +238,7 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
 
       <Panel titulo="Cuentas publicitarias" detalle={`Gasto del periodo por cuenta y país: en pesos y, debajo, en la moneda de cada país${unica ? "" : " (el total suma países: solo pesos)"}`} className="mb-3">
         {r?.por_cuenta_ads.length ? (
-          <TablaCuentasAds filas={r.por_cuenta_ads} tiendas={tiendas.map((t) => t.cuenta)} total={Number(r.total)} unica={unica} />
+          <TablaCuentasAds filas={r.por_cuenta_ads} tiendas={tiendas.map((t) => t.cuenta)} total={Number(r.total)} unica={unica} conUsd={conUsd} />
         ) : <Vacio>Sin gasto en este periodo.</Vacio>}
       </Panel>
 
@@ -255,9 +257,9 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
                   <td className="max-w-[28rem] truncate" title={c.campana}>{c.campana}</td>
                   <td className="text-muted">{c.cuenta_ads}</td>
                   <td>{infoCuenta(c.cuenta).bandera}</td>
-                  <td className="text-right num"><Doble local={c.local} enCop={c.monto} cuenta={c.cuenta} fuerte /></td>
+                  <td className="text-right num"><Doble local={c.local} enCop={c.monto} cuenta={c.cuenta} fuerte usd={conUsd.includes(c.cuenta) ? c.usd ?? null : undefined} /></td>
                   <td className="text-right num text-muted">{entero(c.dias)}</td>
-                  <td className="text-right num"><Doble local={c.dias && c.local != null ? c.local / c.dias : null} enCop={c.dias ? c.monto / c.dias : 0} cuenta={c.cuenta} /></td>
+                  <td className="text-right num"><Doble local={c.dias && c.local != null ? c.local / c.dias : null} enCop={c.dias ? c.monto / c.dias : 0} cuenta={c.cuenta} usd={conUsd.includes(c.cuenta) ? (c.dias && c.usd != null ? c.usd / c.dias : null) : undefined} /></td>
                   <td className={`text-right ${c.ultimo === r.ultimo_dia ? "text-green" : "text-muted"}`}>{diaCorto(c.ultimo)}</td>
                 </tr>
               ))}

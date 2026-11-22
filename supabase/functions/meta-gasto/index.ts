@@ -8,7 +8,7 @@
 //   en el Vault. Nunca devuelve el token. Un token por portafolio comercial (cada uno con su app y su usuario del sistema);
 //   las cuentas que ve cada token se traen con ese token.
 // El país de entrega decide la tienda; si Meta lo da como "unknown", la etiqueta de la campaña: (COL), (EC), (GT)…
-// Las cuentas en otra divisa se pasan a COP con la TRM del mes (app_trm_mes).
+// Las cuentas en otra divisa se pasan a COP con la tasa del día (app_trm_dia); si falta, la del mes (app_trm_mes).
 // En cada pasada también se guardan las campañas de cada cuenta (meta_campanas): creación, inicio, fin y estado, para
 // mostrar en Homologar campañas cuándo empezó cada una y si sigue activa.
 
@@ -97,8 +97,19 @@ async function sincronizar(tokens: { nombre: string; token: string }[], desde: s
     } catch (e) { tokensConError[t.nombre] = (e as Error).message; }
   }
   const trm: { mes: string; usd_cop: number; gtq_cop: number }[] = await sb('app_trm_mes?select=mes,usd_cop,gtq_cop');
+  // Pedido del dueño (22-nov-2026): las cuentas en dólares o quetzales se pasan a pesos con la tasa DEL DÍA del gasto
+  // (app_trm_dia: TRM del Banco de la República y quetzales por dólar de Banguat; si ese día no tiene, la última anterior).
+  // Solo si no hay tasa del día se usa la del mes (app_trm_mes), como antes.
+  const inicioTrm = new Date(Date.parse(desde) - 15 * DAY_MS).toISOString().slice(0, 10);
+  const trmDia: { fecha: string; usd_cop: number | null; usd_gtq: number | null }[] =
+    await sb(`app_trm_dia?select=fecha,usd_cop,usd_gtq&fecha=gte.${inicioTrm}&fecha=lte.${hasta}&order=fecha.desc`);
+  const delDia = (fecha: string, campo: 'usd_cop' | 'usd_gtq') =>
+    Number(trmDia.find((x) => x.fecha <= fecha && x[campo] != null)?.[campo] ?? 0);
   const aCop = (divisa: string, fecha: string) => {
     if (divisa === 'COP') return 1;
+    const usdCop = delDia(fecha, 'usd_cop'), usdGtq = delDia(fecha, 'usd_gtq');
+    if (divisa === 'USD' && usdCop) return usdCop;
+    if (divisa === 'GTQ' && usdCop && usdGtq) return usdCop / usdGtq;
     const t = trm.find((x) => x.mes.slice(0, 7) === fecha.slice(0, 7)) ?? trm.sort((a, b) => b.mes.localeCompare(a.mes))[0];
     if (divisa === 'USD') return Number(t?.usd_cop ?? 0);
     if (divisa === 'GTQ') return Number(t?.gtq_cop ?? 0);

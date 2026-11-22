@@ -7,7 +7,7 @@ import { TablaScroll } from "./ui";
 import { Doble, cop, portafolio } from "./publicidad-montos";
 
 export type CuentaAds = {
-  cuenta_ads: string; total: number; por_tienda: Record<string, number>; por_tienda_local: Record<string, number | null>; ultimo: string;
+  cuenta_ads: string; total: number; por_tienda: Record<string, number>; por_tienda_local: Record<string, number | null>; por_tienda_usd?: Record<string, number | null>; ultimo: string;
   portafolio: string | null; por_api: boolean; ultima_sync: string | null; error: string | null;
 };
 
@@ -17,7 +17,7 @@ const origen = (c: CuentaAds) => (c.por_api ? `API · ${portafolio(c.portafolio)
 // Los países y el total ordenan por pesos; las celdas vacías van siempre al final.
 type Columna = "origen" | "cuenta" | "total" | "pct" | "ultimo" | `t:${string}`;
 
-export function TablaCuentasAds({ filas, tiendas, total, unica }: { filas: CuentaAds[]; tiendas: string[]; total: number; unica: string | null }) {
+export function TablaCuentasAds({ filas, tiendas, total, unica, conUsd = [] }: { filas: CuentaAds[]; tiendas: string[]; total: number; unica: string | null; conUsd?: string[] }) {
   const [orden, setOrden] = useState<{ col: Columna; asc: boolean }>({ col: "total", asc: false });
   const valor = (c: CuentaAds, col: Columna): string | number | null =>
     col === "origen" ? origen(c)
@@ -74,7 +74,7 @@ export function TablaCuentasAds({ filas, tiendas, total, unica }: { filas: Cuent
             <td className="font-medium">{c.cuenta_ads}</td>
             {tiendas.map((t) => (
               <td key={t} className="text-right num">
-                {c.por_tienda[t] ? <Doble local={c.por_tienda_local[t]} enCop={c.por_tienda[t]} cuenta={t} /> : <span className="text-muted">—</span>}
+                {c.por_tienda[t] ? <Doble local={c.por_tienda_local[t]} enCop={c.por_tienda[t]} cuenta={t} usd={conUsd.includes(t) ? c.por_tienda_usd?.[t] ?? null : undefined} /> : <span className="text-muted">—</span>}
               </td>
             ))}
             <td className="text-right num">
