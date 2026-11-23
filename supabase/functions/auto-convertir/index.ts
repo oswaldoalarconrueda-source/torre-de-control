@@ -6,6 +6,8 @@
 //
 // POST /functions/v1/auto-convertir?cuenta=TIENDA_GT              (cabecera x-sync-token) ← auto_convertir_tick (cron)
 // POST /functions/v1/auto-convertir?cuenta=TIENDA_GT&crear=1-6957  ← auto_decidir('ejecutar')
+// POST /functions/v1/auto-convertir?cuenta=TIENDA_CO&preparar=1-30460 ← auto_preparar_orden ("Ejecutar" en una orden que
+//   ValerIA aún no prepara): arma el plan de esa sola orden en el momento, sin crear nada (22-nov).
 // POST /functions/v1/auto-convertir?cuenta=TIENDA_EC&ahora=1&solo=guias ← auto_pasar_a_guia ("Pasar de remisión a guía"):
 //   solo las guías de las remisiones ya hechas, en tandas de 10 hasta acabarlas (se encadena si no alcanza el tiempo).
 //
@@ -438,7 +440,7 @@ async function aprenderReglas(api: Effi, off: number, cuenta: string) {
 }
 
 // ahora = "Ejecutar ahora" del dueño: crea lo que esté listo aunque el país esté en Manual.
-async function convertir(cuenta: string, ahora = false) {
+async function convertir(cuenta: string, ahora = false, una: { sucursal: number; id: number } | null = null) {
   const inicio = Date.now();
   const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,reglas_en,paralelo,max_crear`);
   if (!cfg || !['simular', 'automatico'].includes(cfg.modo)) return { omitida: 'modo sin conversión' };
@@ -464,7 +466,14 @@ async function convertir(cuenta: string, ahora = false) {
   // Van primero las que nunca se han preparado y luego las preparadas hace más tiempo: con muchas órdenes (Colombia, ~40
   // por hora) tomar siempre las 15 primeras de la lista dejaba el resto sin preparar (28-oct). Entre las nunca preparadas,
   // la más vieja primero: Effi lista de la más nueva a la más vieja y en hora pico las viejas se quedaban atrás (5-nov).
-  const sinRemision = (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => !o.id_remision_v);
+  // Una sola orden ("Ejecutar" en una orden que la vuelta de cada 2 minutos aún no prepara): solo esa, sin guías ni creación.
+  const esLaOrden = (o: Json) => !una || (Number(o.sucursal) === una.sucursal && Number(o.id) === una.id);
+  let sinRemision = una
+    ? (await api.get('orden_v', { id: una.id, sucursal: una.sucursal, desde, hasta, vigente: 1, por_pagina: 50, pagina: 1 })).data
+        .filter((o: Json) => esLaOrden(o) && o.vigente !== '0' && !o.id_remision_v)
+    : (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => !o.id_remision_v);
+  if (una && !sinRemision.length) sinRemision = (await api.todas('orden_v', { desde, hasta, vigente: 1 })).filter((o) => esLaOrden(o) && !o.id_remision_v);
+  if (una && !sinRemision.length) return { preparada: false, motivo: 'La orden ya no está vigente sin remisión en Effi, o es de hace más de 3 días' };
   const preparadas = new Map<string, number>();
   for (let i = 0; i < sinRemision.length; i += 150) {
     const ids = sinRemision.slice(i, i + 150).map((o) => o.id).join(',');
@@ -477,7 +486,7 @@ async function convertir(cuenta: string, ahora = false) {
     .sort((a, b) => a.t - b.t || Number(a.o.id) - Number(b.o.id) || a.i - b.i)
     .slice(0, MAX_ORDENES)
     .map((x) => x.o);
-  const planesGuia = await planearGuias(api, cuenta, reglas, memoria, await sinCoberturaTotal(cuenta), desde, hasta);
+  const planesGuia = una ? [] : await planearGuias(api, cuenta, reglas, memoria, await sinCoberturaTotal(cuenta), desde, hasta);
   if (!pendientes.length) {
     await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: planesGuia, p_reglas: reglasNuevas });
     return { pendientes: 0, guias: planesGuia.length };
@@ -625,6 +634,7 @@ async function convertir(cuenta: string, ahora = false) {
 
   const n = await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: [...planes, ...planesGuia], p_reglas: reglasNuevas });
   const salida: Json = { pendientes: pendientes.length, planes: planes.length, listas: planes.filter((p) => p.estado === 'lista').length, guardadas: n };
+  if (una) return { preparada: true, ...salida, estado: planes[0]?.estado ?? null, motivo: planes[0]?.motivo ?? null };
   if ((cfg.modo === 'automatico' || ahora) && PAISES_REMISION.includes(cuenta)) {
     salida.creadas = [];
     if (Number(cfg.paralelo) > 1) {
@@ -1045,6 +1055,16 @@ Deno.serve(async (req) => {
       return json(200, await anularGuiaFlete(cuenta, suc, id));
     } catch (e) {
       await rpc('auto_flete_resultado', { p_cuenta: cuenta, p_sucursal: suc, p_id: id, p_ok: false, p_mensaje: `Falla inesperada: ${String(e).slice(0, 300)}` }).catch(() => {});
+      return json(500, { ok: false, mensaje: String(e) });
+    }
+  }
+  const prepararParam = url.searchParams.get('preparar');
+  if (prepararParam) {
+    const [suc, id] = prepararParam.split('-').map(Number);
+    if (!suc || !id) return json(400, { ok: false, mensaje: 'preparar=sucursal-id' });
+    try {
+      return json(200, { ok: true, resultado: await convertir(cuenta, false, { sucursal: suc, id }) });
+    } catch (e) {
       return json(500, { ok: false, mensaje: String(e) });
     }
   }

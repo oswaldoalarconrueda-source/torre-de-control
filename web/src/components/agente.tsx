@@ -330,8 +330,11 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   // las tandas siguen siendo solo del dueño.
   // Si la creación se corta a medias, la orden queda marcada "ejecutar": a los 3 minutos el botón vuelve a quedar libre.
   const creando = (o: OrdenAuto) => o.decision === "ejecutar" && Date.now() - Date.parse(o.decision_en ?? "") < 3 * 60_000;
+  // También la orden en revisión que ya trae la remisión armada (trato especial, deficiencia en entregas): la persona que
+  // la atiende decide y la ejecuta (22-nov). El pedido con abono nunca: se hace a mano en Effi.
   const puedeEjecutar = (o: OrdenAuto) =>
-    porOrden && (o.plan_estado === "lista" || o.plan_estado === "error") &&
+    porOrden && (o.plan_estado === "lista" || o.plan_estado === "error" || (o.plan_estado === "revision" && !!o.plan?.remision)) &&
+    !(o.plan as { abono?: boolean } | null)?.abono &&
     ((!!o.plan?.remision && creaRemision) || (!!o.plan?.remision_existente && !!o.plan?.guia));
   // Colombia: lo que dice la asesora y la ⭐ de la matriz de entrega (mayor % de entrega a esa ciudad). Solo se ofrecen
   // Envía, Inter, Servientrega y Coordinadora con recaudo, cada una con su % de entrega y su flete hacia ese destino.
@@ -382,6 +385,43 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         }
       });
   }
+  // "Ejecutar" siempre disponible (pedido del dueño, 22-nov): la orden recién llegada que ValerIA todavía no prepara (la
+  // vuelta es cada 2 minutos, de a 15), o la que quedó en revisión sin remisión armada (por ejemplo, ya corrigieron el
+  // nombre en Effi), se prepara en el momento (auto_preparar_orden → auto-convertir?preparar) y, si queda lista, se abre
+  // el panel de siempre; si no, se dice por qué.
+  const sinPreparar = (o: OrdenAuto) => porOrden && !rango && creaRemision && o.estado === "sin_remision" && o.id_remision == null &&
+    !(o.plan as { abono?: boolean } | null)?.abono && ((!o.plan_estado && !o.plan) || (o.plan_estado === "revision" && !o.plan?.remision));
+  const [preparando, setPreparando] = useState<string | null>(null);
+  const [abrirAlLlegar, setAbrirAlLlegar] = useState<string | null>(null);
+  async function prepararYEjecutar(o: OrdenAuto) {
+    const clave = `${o.sucursal}-${o.id}`;
+    const ids = { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id };
+    setError(null); setPreparando(clave);
+    const supabase = createClient();
+    const { error: e } = await supabase.rpc("auto_preparar_orden", ids);
+    if (e) { setPreparando(null); setError(e.message); return; }
+    const inicio = Date.now();
+    while (Date.now() - inicio < 90_000) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const { data } = await supabase.rpc("auto_estado_orden", ids);
+      const d = data as { plan_estado?: string | null; plan_motivo?: string | null; plan_en?: string | null; con_remision?: boolean } | null;
+      if (d?.plan_estado && d.plan_en !== o.plan_en) {
+        setPreparando(null);
+        if (d.plan_estado === "lista" || d.plan_estado === "error" || (d.plan_estado === "revision" && d.con_remision)) setAbrirAlLlegar(clave);
+        else setError(`La orden ${o.id} no se puede crear todavía: ${d.plan_motivo ?? "la debe revisar una persona"}`);
+        router.refresh();
+        return;
+      }
+    }
+    setPreparando(null);
+    setError(`La orden ${o.id} todavía no quedó preparada: ValerIA la prepara en su próxima vuelta (cada 2 minutos).`);
+  }
+  // Cuando la lista ya trae el plan de la orden que se acaba de preparar, se abre su panel de Ejecutar.
+  useEffect(() => {
+    if (!abrirAlLlegar) return;
+    const o = ordenes.find((x) => `${x.sucursal}-${x.id}` === abrirAlLlegar);
+    if (o && puedeEjecutar(o)) { setAbrirAlLlegar(null); abrirEjecutar(o); }
+  }, [ordenes, abrirAlLlegar]); // eslint-disable-line react-hooks/exhaustive-deps
   async function ejecutar(o: OrdenAuto) {
     const clave = `${o.sucursal}-${o.id}`;
     setConfirmarOrden(null);
@@ -761,7 +801,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                   <td className="px-3 py-2 align-top">
                     <CeldaCliente o={o} cuenta={cuenta} accion={acciones[clave]} onCambio={() => router.refresh()}
                       modo={rango || o.id_remision != null || o.estado === "anulada" || o.estado === "completa" ? "ninguno" : s.clave === "direccion" ? "editar" : "enviar"}
-                      onEjecutar={puedeEjecutar(o) && !creando(o) ? () => abrirEjecutar(o) : null} />
+                      onEjecutar={puedeEjecutar(o) && !creando(o) ? () => abrirEjecutar(o)
+                        : sinPreparar(o) && preparando !== clave ? () => prepararYEjecutar(o) : null} />
                     <div className="text-xs">
                       {o.restriccion && (
                         <div className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${cumpleCondicion(o) ? "bg-green/15 text-green" : "bg-red/15 text-red"}`}
@@ -904,6 +945,15 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                             className="inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-3 py-1 text-xs font-semibold text-green hover:bg-green/20 disabled:opacity-60"
                           >
                             <Play size={12} /> {creando(o) ? "Creando…" : "Ejecutar"}
+                          </button>
+                        ) : sinPreparar(o) ? (
+                          <button
+                            onClick={() => prepararYEjecutar(o)}
+                            disabled={preparando === clave}
+                            title="ValerIA todavía no la prepara: la prepara ya y abre el panel para crearla"
+                            className="inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-3 py-1 text-xs font-semibold text-green hover:bg-green/20 disabled:opacity-60"
+                          >
+                            <Play size={12} /> {preparando === clave ? "Preparando…" : "Ejecutar"}
                           </button>
                         ) : (
                           <button
