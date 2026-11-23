@@ -518,7 +518,8 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
   // Solo se filtra por "desde": con vigente, hasta o est_facturacion Effi responde vacío (29-oct); lo vigente y sin
   // remisión se escoge aquí. Hasta 1000 filas por página.
   const detalle = new Map<string, Json[]>();
-  try {
+  // El reporte solo hace falta si alguna orden no trae sus conceptos (lista_detalles).
+  if (pendientes.some((o) => !(Array.isArray(o.lista_detalles) && o.lista_detalles.length))) try {
     for (let p = 1; p <= 10; p++) {
       const r = await api.get('detalle_orden_v', { desde, por_pagina: 1000, pagina: p });
       for (const f of r.data) {
@@ -549,7 +550,10 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
 
     // 0. Conceptos de la orden con su cantidad y precio. Solo se usan si todos son artículos de venta (sin FLETE) y sin
     // impuestos, y si cuadran con el total de la orden; si no, se sigue con el método de antes.
-    const filasDetalle = (detalle.get(`${o.id}|${o.fecha_trans}`) ?? []).filter((l) => Number(l.cantidad) > 0);
+    // Desde el 22-nov Effi manda los conceptos dentro de la orden (lista_detalles) y api/detalle_orden_v responde una página
+    // de error: se usan los de la orden y, si no vienen, los del reporte como antes.
+    const propios = Array.isArray(o.lista_detalles) && o.lista_detalles.length ? (o.lista_detalles as Json[]) : null;
+    const filasDetalle = (propios ?? detalle.get(`${o.id}|${o.fecha_trans}`) ?? []).filter((l) => Number(l.cantidad) > 0);
     let conceptos: { id: number; nombre: string; descripcion: string; cantidad: number; precio: number; descuento: number }[] | null =
       filasDetalle.length && filasDetalle.every((l) => Number(l.impuestos ?? 0) === 0 && articulos.some((a) => a.id === Number(l.articulo)))
         ? filasDetalle.map((l) => {

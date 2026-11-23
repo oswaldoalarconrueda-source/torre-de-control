@@ -135,19 +135,22 @@ async function cargarVentas(cuenta: { slug: string; tz_offset_min: number }, key
   return { nuevas, historial };
 }
 
-// Costo manual de cada remisión, para las comisiones: viene en el reporte de conceptos (una fila por artículo, con la cabecera
-// repetida; hasta 1000 filas por página). Solo se lee de Effi.
+// Costo manual de cada remisión, para las comisiones. Hasta el 22-nov-2026 venía en el reporte detalle_remision_v; Effi lo
+// quitó y desde el 23-nov lo trae la remisión misma: p_costo_manual en la cabecera y en cada concepto de lista_detalles
+// (costo unitario × cantidad). Solo se lee de Effi.
 async function costos(cuenta: { slug: string }, key: string, desde: string, hasta: string) {
   const porRemision = new Map<string, { sucursal: number; id: number; costo_manual: number; suma: number }>();
   let conceptos = 0;
   for (let pagina = 1; ; pagina++) {
-    const r = await effiGet(key, 'detalle_remision_v', { desde, hasta, por_pagina: 1000, pagina });
+    const r = await effiGet(key, 'remision_v', { desde, hasta, por_pagina: 100, pagina });
     for (const x of r.data ?? []) {
       const sucursal = Number(x.sucursal), id = Number(x.id), k = `${sucursal}|${id}`;
       const f = porRemision.get(k) ?? { sucursal, id, costo_manual: Number(x.p_costo_manual ?? 0), suma: 0 };
-      f.suma += Number(x.cantidad ?? 0) * Number(x.p_costo_manual_detalle ?? 0);
+      for (const d of (Array.isArray(x.lista_detalles) ? x.lista_detalles : []) as Record<string, unknown>[]) {
+        f.suma += Number(d.cantidad ?? 0) * Number(d.p_costo_manual ?? d.p_costo_manual_detalle ?? 0);
+        conceptos++;
+      }
       porRemision.set(k, f);
-      conceptos++;
     }
     if (pagina >= Number(r.paginacion?.total_paginas ?? 1) || !r.data?.length) break;
     await sleep(600);
