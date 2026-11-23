@@ -50,7 +50,12 @@ export const MENU_EN_VIVO: ItemMenu[] = [
 ];
 
 export const MENU_PRONTO: ItemMenu[] = [
-  { href: "/productos", label: "Productos", emoji: "📦", estado: "vivo", modulo: "productos" },
+  // Productos con su submenú (pedido del dueño, 23-nov-2026): «Campañas sin identificar» es otra pantalla con su propio
+  // permiso, para dársela a un empleado sin darle Productos.
+  { href: "#productos", label: "Productos", emoji: "📦", estado: "vivo", hijos: [
+    { href: "/productos", label: "Productos", emoji: "📦", estado: "vivo", modulo: "productos" },
+    { href: "/campanas-sin-identificar", label: "Campañas sin identificar", emoji: "🏷️", estado: "vivo", modulo: "campanas" },
+  ] },
   { href: "/flujo-caja", label: "Flujo de Caja", emoji: "💵", estado: "vivo", modulo: "dinero", soloSocios: true },
   { href: "/pagos-publicidad", label: "Pagos de publicidad", emoji: "💳", estado: "pronto", modulo: "dinero" },
   { href: "/utilidad", label: "Utilidad", emoji: "📈", estado: "pronto", modulo: "productos" },

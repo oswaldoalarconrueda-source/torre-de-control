@@ -16,6 +16,8 @@ export const MODULOS = [
   { id: "cargas", nombre: "Cargar archivos", detalle: "Subir los Excel de cartera y órdenes (O.A., Drop, icomfly) de sus tiendas", rutas: ["/cargas"], exclusivo: true },
   // Pedido del dueño (21-nov-2026): Productos, Utilidad y Glosario ya no vienen con Data Experience; cada uno se da aparte.
   { id: "productos", nombre: "Productos y utilidad", detalle: "Ventas por producto, homologar campañas y la utilidad (también necesita Data Experience para ver los datos)", rutas: ["/productos", "/utilidad"] },
+  // Pedido del dueño (23-nov-2026): homologar campañas aparte de Productos, para dárselo a un empleado solo con eso.
+  { id: "campanas", nombre: "Campañas sin identificar", detalle: "Decir de qué producto es cada campaña de Meta que no se reconoce sola (homologar)", rutas: ["/campanas-sin-identificar"] },
   { id: "glosario", nombre: "Glosario", detalle: "Qué significa cada cifra del Centro de Control", rutas: ["/glosario"] },
 ] as const;
 export type ModuloId = (typeof MODULOS)[number]["id"];

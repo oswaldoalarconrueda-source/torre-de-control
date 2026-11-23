@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Bell,
   Banknote, BookOpen, Bot, ChartNoAxesColumn, ChevronDown, ChevronLeft, ChevronRight, Coins, CreditCard, Factory, Globe, Hourglass, Mail, Megaphone,
   MessageSquareText, Package, PackageCheck, Radio, Receipt, Timer, RefreshCw, Store, TrendingUp, TriangleAlert, Truck, Upload,
-  UserCog, Wallet, type LucideIcon,
+  Tags, UserCog, Wallet, type LucideIcon,
 } from "lucide-react";
 import { MENU_EN_VIVO, MENU_JOALIX, MENU_PRONTO, type ItemMenu } from "@/lib/menu";
 import { esSocio, tieneModulo, type Acceso } from "@/lib/modulos";
@@ -24,7 +24,7 @@ const ICONOS: Record<string, LucideIcon> = {
   "/agente": Bot, "/pedidos-lucid": MessageSquareText, "/proveeduria": Factory, "/global": Globe, "/publicidad": Megaphone,
   "/sin-liquidar": Hourglass, "/agente-admin": Receipt, "/sync": RefreshCw, "/cargas": Upload, "/usuarios": UserCog,
   "/guias": Truck, "/wallet-en-vivo": Wallet, "/dinero": Coins, "/productos": Package, "/flujo-caja": Banknote,
-  "/pagos-publicidad": CreditCard, "/correos": Mail, "/en-vivo": Radio, "/utilidad": TrendingUp, "/glosario": BookOpen,
+  "#productos": Package, "/campanas-sin-identificar": Tags, "/pagos-publicidad": CreditCard, "/correos": Mail, "/en-vivo": Radio, "/utilidad": TrendingUp, "/glosario": BookOpen,
 };
 const Icono = ({ href }: { href: string }) => {
   const I = ICONOS[href];
@@ -180,7 +180,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
           <div className="space-y-0.5">
             <div className={`${titulo} !text-amber/90`}>Demostración · septiembre</div>
             {DEMO_RUTAS.map((href) => {
-              const todos = [...MENU_JOALIX.flatMap((it) => [it, ...(it.hijos ?? [])]), ...MENU_EN_VIVO, ...MENU_PRONTO];
+              const todos = [...MENU_JOALIX.flatMap((it) => [it, ...(it.hijos ?? [])]), ...MENU_EN_VIVO, ...MENU_PRONTO.flatMap((it) => [it, ...(it.hijos ?? [])])];
               const it = todos.find((x) => x.href === href) ?? { href, label: DEMO_TITULOS[href] ?? href, emoji: "", estado: "vivo" as const };
               return item({ ...it, soloOwner: false, soloSocios: false });
             })}
@@ -193,7 +193,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
             <div className="space-y-0.5">{MENU_EN_VIVO.map((it) => item(it))}</div>
           </div>
         )}
-        <div className="space-y-0.5">{MENU_PRONTO.map((it) => item(it))}</div>
+        <div className="space-y-0.5">{MENU_PRONTO.map((it) => (it.hijos ? grupo(it) : item(it)))}</div>
         {/* Usuario maestro: lo que nadie más puede ver, sin importar la sociedad. */}
         {esOwner && (
           <div className="border-t border-line pt-4">
