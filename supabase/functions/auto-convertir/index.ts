@@ -58,7 +58,8 @@ const PAISES_POR_ORDEN = TIENDAS;
 const ESPERA_GUIA_AHORA_MIN = 2; // "Ejecutar ahora": espera mínima tras la remisión, por si alguien está haciendo la guía
 const MAX_CREAR = 8;          // creaciones por corrida (cada una tarda unos 12 s); el resto va en la siguiente
 const MAX_GUIAS_AHORA = 10;   // "Ejecutar ahora": guías por corrida, de a 10 para no cargar el sistema (regla del dueño)
-const ESPERA_GUIA_MIN = 15;   // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía
+const ESPERA_GUIA_SIN_ORDEN_MIN = 2; // remisión sin orden de venta: la guía la hace ValerIA a los 2 minutos (regla del dueño, 23-nov)
+const ESPERA_GUIA_MIN = 2;    // remisiones hechas por otros: se espera este tiempo antes de hacerles la guía (2 min desde el 23-nov, regla del dueño; antes 15)
 const REINTENTO_GUIA_MIN = 9; // una guía que falló se reintenta una vez cada corrida de 10 minutos (no en la de antes de un corte)
 const PAGINAS_REGLAS = 30;    // guías y remisiones de 10 días (Ecuador hace unas 250 guías al día)
 const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIENDA_CO: 'COP', TIENDA_CR: 'CRC', AUNCLIC_GT: 'GTQ', VALKA_GT: 'GTQ' };
@@ -751,10 +752,16 @@ async function guiasPendientes(cuenta: string, ahora = false) {
   // Regla del dueño (3-nov): en Colombia la remisión sin guía se queda en el panel para una persona; solo va sola con una
   // regla clara para ese remitente y destino (entrega en oficina, o asesora y ⭐ coinciden), y de eso se encarga oficinasCO.
   // Con "Pasar de remisión a guía" la manda una persona: cada una va por la transportadora de su plan.
-  if (cuenta === 'TIENDA_CO') return ahora ? guiasPorPlanCO(cuenta) : [];
+  // Regla del dueño (23-nov, todos los países): la remisión SIN orden de venta (p. ej. las que crea icomfly con los pedidos
+  // de Shopify) lleva siempre la guía de ValerIA, aunque el país esté en Manual, sin esperar a una persona. En Colombia va
+  // por la transportadora que recomienda (asesora, oficina o ⭐). Las que salen de una orden siguen como antes: en Colombia
+  // la regla del 3-nov de arriba; en los demás, solo en Automático.
+  if (cuenta === 'TIENDA_CO' && ahora) return guiasPorPlanCO(cuenta);
   const inicio = Date.now();
   const [cfg] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=modo,reglas,centro_normal,paralelo,max_crear`);
-  if ((cfg?.modo !== 'automatico' && !ahora) || !PAISES_CREACION.includes(cuenta) || !cfg.reglas) return [];
+  if (!['simular', 'automatico'].includes(cfg?.modo) || !PAISES_CREACION.includes(cuenta) || !cfg.reglas) return [];
+  const soloSinOrden = cuenta === 'TIENDA_CO' || (cfg.modo !== 'automatico' && !ahora);
+  const soloSinOrdenCO = cuenta === 'TIENDA_CO';
   const paralelo = Number(cfg.paralelo) > 1 ? Number(cfg.paralelo) : 1;
   const espera = (ahora ? ESPERA_GUIA_AHORA_MIN : ESPERA_GUIA_MIN) * 60_000;
   const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
@@ -771,15 +778,24 @@ async function guiasPendientes(cuenta: string, ahora = false) {
     const f = fallos.get(id);
     return !f || (!SIN_REINTENTO.test(f.mensaje) && hoy - f.en > REINTENTO_GUIA_MIN * 60_000);
   };
-  const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
+  let rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
     .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0 && !conAbono(r.nombre_cliente))
-    .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > espera)
-    .filter((r) => !sinCobertura.has(Number(r.id)) && puedeReintentar(Number(r.id)))
-    .slice(0, ahora ? MAX_GUIAS_AHORA : paralelo > 1 ? Number(cfg.max_crear) || MAX_CREAR : MAX_CREAR);
+    .filter((r) => hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > ESPERA_GUIA_SIN_ORDEN_MIN * 60_000)
+    .filter((r) => !sinCobertura.has(Number(r.id)) && puedeReintentar(Number(r.id)));
+  // Remisiones que no salieron de una orden (ninguna orden de la Torre las tiene como su remisión): van a los 2 minutos, en
+  // todos los países. Las que salen de una orden esperan lo de siempre y solo van en Automático (en Colombia, nunca por aquí).
+  const conOrden = new Set<number>();
+  for (let i = 0; i < rems.length; i += 150) {
+    const ids = rems.slice(i, i + 150).map((r) => r.id).join(',');
+    for (const x of await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id_remision=in.(${ids})&select=id_remision`)) conOrden.add(Number(x.id_remision));
+  }
+  rems = rems.filter((r) => !conOrden.has(Number(r.id))
+    || (!soloSinOrden && hoy - Date.parse(`${String(r.fecha_trans).replace(' ', 'T')}Z`) > espera));
+  rems = rems.slice(0, ahora ? MAX_GUIAS_AHORA : paralelo > 1 ? Number(cfg.max_crear) || MAX_CREAR : MAX_CREAR);
   const hechas: Json[] = [];
   // Con paralelo = 1 va una por una; con más, cada guía usa su propia conexión a Effi (prueba de capacidad).
   await enParalelo(rems, paralelo, inicio, async (r) => {
-    if (!ahora && !(await sigueAutomatico(cuenta))) return;
+    if (!ahora && !soloSinOrden && !(await sigueAutomatico(cuenta))) return;
     const api = paralelo > 1 ? new Effi(key) : apiSerie;
     const [orden] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${r.sucursal}&id_remision=eq.${r.id}&select=sucursal,id,guia,plan,plan_estado,decision,decision_en`);
     // Effi a veces no marca la guía en la remisión aunque exista (hecha a mano): si la Torre ya la tiene, no se hace otra.
@@ -790,10 +806,15 @@ async function guiasPendientes(cuenta: string, ahora = false) {
       rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: orden?.sucursal ?? null, p_id: orden?.id ?? null, p_paso: 'guia', p_ok: ok, p_mensaje: mensaje, p_datos: datos });
     const remitente = cfg.reglas.remitentes?.[r.convenio_dropshipping];
     if (!remitente) { await ev(false, `Remisión ${r.id}: no hay guías anteriores con el convenio ${r.convenio_dropshipping} para saber el remitente`); return; }
-    const elegido = elegirTransporte(cuenta, cfg.reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
+    let elegido = elegirTransporte(cuenta, cfg.reglas, memoria, String(r.direccion_cliente ?? ''), Number(r.ciudad_cliente), String(r.nombre_ciudad ?? ''));
     if (!elegido) { await ev(false, `Remisión ${r.id}: no hay guías anteriores para saber la transportadora`); return; }
+    // Colombia: la transportadora de la asesora (o la de la oficina) o la ⭐, igual que en el panel de Ejecutar.
+    const rec = soloSinOrdenCO ? await recomendacionCO(String(r.direccion_cliente ?? ''), String(r.nombre_ciudad ?? ''), String(r.nombre_provincia ?? ''), remitente) : null;
+    if (rec) elegido = escogerCO(cfg.reglas, rec, elegido);
     const guia = guiaDeRemision(r, elegido.t, remitente, cfg.centro_normal);
-    await ev(null, `${ahora ? 'Ejecutar ahora' : 'Automático'}: haciendo la guía de la remisión ${r.id} (estaba sin guía)${elegido.motivo ? ` por ${String(elegido.t.nombre).split('|')[0].trim()}: ${elegido.motivo}` : ''}…`, { enviado: guia });
+    // Colombia: el valor declarado lo pone la regla de cada transportadora (no se copia del documento).
+    if (soloSinOrdenCO) { guia.valor_declarado_check = false; guia.valor_declarado = declaradoCO(Number(guia.transportadora), Number(r.total ?? 0)); }
+    await ev(null, `${ahora ? 'Ejecutar ahora' : 'Automático'}: haciendo la guía de la remisión ${r.id} (${conOrden.has(Number(r.id)) ? 'estaba sin guía' : 'remisión sin orden de venta'})${elegido.motivo ? ` por ${String(elegido.t.nombre).split('|')[0].trim()}: ${elegido.motivo}` : ''}…`, { enviado: guia });
     const h = await hacerGuia(api, cuenta, cfg.reglas, guia, { ciudad: Number(r.ciudad_cliente), nombre: String(r.nombre_ciudad ?? '') }, ev);
     if (!h.ok) {
       const motivo = `Effi no dejó crear la guía de la remisión ${r.id}: ${h.detalle}`;
