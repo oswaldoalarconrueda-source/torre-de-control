@@ -390,7 +390,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   // nombre en Effi), se prepara en el momento (auto_preparar_orden → auto-convertir?preparar) y, si queda lista, se abre
   // el panel de siempre; si no, se dice por qué.
   const sinPreparar = (o: OrdenAuto) => porOrden && !rango && creaRemision && o.estado === "sin_remision" && o.id_remision == null &&
-    !(o.plan as { abono?: boolean } | null)?.abono && ((!o.plan_estado && !o.plan) || (o.plan_estado === "revision" && !o.plan?.remision));
+    !(o.plan as { abono?: boolean } | null)?.abono && ((!o.plan_estado && !o.plan) || ((o.plan_estado === "revision" || o.plan_estado === "error") && !o.plan?.remision));
   const [preparando, setPreparando] = useState<string | null>(null);
   const [abrirAlLlegar, setAbrirAlLlegar] = useState<string | null>(null);
   async function prepararYEjecutar(o: OrdenAuto) {
@@ -457,8 +457,12 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   const esAbono = (o: OrdenAuto) => centroDe(o).toLowerCase().includes("abono") || !!o.cliente?.trim().startsWith("**");
   // Orden con error = no se dejó hacer la remisión (Effi la rechazó o necesita a una persona). Si la remisión ya existe y
   // después se anuló, no es error: tiene su motivo de anulación y va a una estadística aparte (pedido del dueño, 11-nov).
-  const tieneError = (o: OrdenAuto) => o.id_remision == null && o.estado !== "completa" && o.estado !== "anulada" && o.estado !== "resuelta" &&
-    !pendienteResuelto(o) && (o.plan_estado === "error" || (o.plan_estado === "revision" && !esAbono(o)));
+  // También la remisión hecha sin convenio (regla del dueño, 23-nov): en Joalix el remitente de la guía sale del convenio,
+  // así que ValerIA no le hace guía y la deja en error para una persona.
+  const sinConvenioRemision = (o: OrdenAuto) => o.id_remision != null && o.estado === "sin_guia" && o.plan_estado === "error" &&
+    !!o.plan_motivo?.startsWith("Sin convenio");
+  const tieneError = (o: OrdenAuto) => sinConvenioRemision(o) || (o.id_remision == null && o.estado !== "completa" && o.estado !== "anulada" && o.estado !== "resuelta" &&
+    !pendienteResuelto(o) && (o.plan_estado === "error" || (o.plan_estado === "revision" && !esAbono(o))));
   const errorDe = (o: OrdenAuto) => remisionAnulada(o)
     ? o.motivos.find((m) => m.startsWith("La remisión está anulada")) ?? "La remisión está anulada"
     : o.plan_motivo ?? (o.motivos.length ? o.motivos.join(" · ") : "Requiere revisión");

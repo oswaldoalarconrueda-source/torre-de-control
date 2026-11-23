@@ -37,6 +37,11 @@ const MIN_GAP_MS = 150;
 const DAY_MS = 86_400_000;
 const REGLAS_HORAS = 6;
 const MAX_ORDENES = 15;
+// Regla del dueño (23-nov): en Joalix todo va con convenio y el remitente de la guía sale del convenio. La orden o la
+// remisión sin convenio queda en error para que la atienda una persona y nunca se le hace guía.
+const JOALIX = (cuenta: string) => cuenta.startsWith('TIENDA_');
+const SIN_CONVENIO_ORDEN = 'Sin convenio de dropshipping: la orden no trae el convenio, así que no se sabe el proveedor ni el remitente de la guía. Una persona debe ponerlo en Effi.';
+const SIN_CONVENIO_REMISION = 'Sin convenio de dropshipping: la remisión se hizo sin convenio y la guía saldría sin el remitente del proveedor. Una persona debe revisarla en Effi; ValerIA no le hace guía.';
 // Mismo mando para todas las tiendas de todas las sociedades (30-oct; la proveeduría DistriLatam queda fuera): crean en
 // Effi en Automático o cuando el dueño pulsa "Ejecutar ahora", "Pasar de remisión a guía" o "Ejecutar" en una orden.
 const TIENDAS = ['TIENDA_GT', 'TIENDA_EC', 'TIENDA_CO', 'TIENDA_CR', 'AUNCLIC_GT', 'VALKA_GT'];
@@ -60,7 +65,9 @@ const DIVISA: Record<string, string> = { TIENDA_GT: 'GTQ', TIENDA_EC: 'USD', TIE
 // Países que escogen transportadora por dirección (ids de transportadora en Effi). Los demás usan la más común.
 const TRANSPORTE_PAIS: Record<string, { oficina: number; domicilio: number; respaldo: number }> = {
   TIENDA_EC: { oficina: 1, domicilio: 5, respaldo: 1 },   // 1 Servientrega · 5 Gintracom
-  TIENDA_CR: { oficina: 18, domicilio: 18, respaldo: 18 }, // regla del dueño (30-oct): en Costa Rica todo va por Red Logistic
+  // Regla del dueño (30-oct, repetida 22-nov «hasta nueva orden»): en Costa Rica todo va por Red Logistic. Es la 1 de la
+  // empresa en Effi (18 es su número en Efficommerce: con 18 no la encontraba y toda orden quedaba en revisión).
+  TIENDA_CR: { oficina: 1, domicilio: 1, respaldo: 1 },
 };
 // Transportadoras que en Effi piden además las medidas del paquete (alto, ancho, largo en cm): Servientrega,
 // Coordinadora, Laarcourier y CAEX. Sin medidas Effi responde HTTP 500 vacío, y sin volumen "Volumen total es
@@ -409,7 +416,11 @@ async function aprenderReglas(api: Effi, off: number, cuenta: string) {
     cant_paquetes: Number(g.cant_paquetes), peso_total: Number(g.peso_total),
   })));
   const nombreTransportadora = masComun(conDoc.map((g) => String(g.nombre_transportadora)));
-  const formaPagoRemision = masComun(rems.filter((r) => r.vigente !== '0').map((r) => Number(r.t_forma_pago)));
+  // La forma de pago de la remisión. Desde el 22-nov Effi ya no la trae suelta en remision_v, solo en lista_formas_pago; al
+  // reaprender las reglas quedaba vacía y Effi rechazaba toda remisión con "error interno" (GT, EC, CO y CR dejaron de crear
+  // ese día; a mano Effi pone "Contado a 1 día"). Se toma de donde venga.
+  const formaPagoRemision = masComun(rems.filter((r) => r.vigente !== '0')
+    .map((r) => Number(r.t_forma_pago ?? (r.lista_formas_pago as Json[] | undefined)?.[0]?.t_forma_pago)).filter(Number.isFinite));
   // Parámetros de cada transportadora (Ecuador usa dos, con forma de pago distinta).
   const transportes: Record<string, Json> = {};
   for (const id of new Set(conDoc.map((g) => String(g.transportadora)))) {
@@ -563,7 +574,11 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
 
     // 2. Convenio (el que trae la orden) y centro de costos.
     const convenio = String(o.observacion ?? '').match(/Dropshipping:\s*([A-Za-z0-9]+)/)?.[1];
-    if (!convenio) { revision('La orden no trae convenio de dropshipping'); continue; }
+    if (!convenio) {
+      if (JOALIX(cuenta)) planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: plan.articulos ?? null, estado: 'error', motivo: SIN_CONVENIO_ORDEN, plan });
+      else revision('La orden no trae convenio de dropshipping');
+      continue;
+    }
     const recuperado = String(o.nombre_cliente ?? '').trim().startsWith('*');
     const sinConfirmar = String(o.nombre_cliente ?? '').trim().startsWith('+');
     if (sinConfirmar && !centros.centro_sin_confirmar) { revision('Cliente con +: este país no tiene el centro de costos Sin confirmar'); continue; }
@@ -673,7 +688,7 @@ const guiaDeRemision = (r: Json, t: Json, remitente: string | number, centro: nu
 async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Set<number>, sinCobertura: Map<number, string>,
   desde: string, hasta: string) {
   const rems = (await api.todas('remision_v', { desde, hasta, vigente: 1 }, PAGINAS_REGLAS))
-    .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && r.convenio_dropshipping && Number(r.total) > 0 && !conAbono(r.nombre_cliente));
+    .filter((r) => r.vigente !== '0' && !r.id_guia_transporte && (r.convenio_dropshipping || JOALIX(cuenta)) && Number(r.total) > 0 && !conAbono(r.nombre_cliente));
   if (!rems.length) return [];
   const ordenes: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id_remision=in.(${rems.map((r) => r.id).join(',')})&select=sucursal,id,sucursal_remision,id_remision,guia`);
   const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado,centro_sin_confirmar`);
@@ -683,6 +698,7 @@ async function planearGuias(api: Effi, cuenta: string, reglas: Json, memoria: Se
     if (!o || o.guia) continue;
     const base = { sucursal: Number(o.sucursal), id: Number(o.id) };
     const plan: Json = { remision_existente: { sucursal: Number(r.sucursal), id: Number(r.id) } };
+    if (!r.convenio_dropshipping) { planes.push({ ...base, estado: 'error', motivo: SIN_CONVENIO_REMISION, plan }); continue; }
     const cobertura = sinCobertura.get(Number(r.id));
     if (cobertura) {
       const repetido = /Ya existe una gu.a de transporte vigente/.test(cobertura);
@@ -897,6 +913,11 @@ async function crear(cuenta: string, sucursal: number, id: number, automatico = 
       await ev('remision', false, motivo);
       await resultado('error', motivo, { paso: 'remision' });
       return { creada: false, motivo };
+    }
+    if (JOALIX(cuenta) && !rem.convenio_dropshipping) {
+      await ev('remision', false, SIN_CONVENIO_REMISION);
+      await resultado('error', SIN_CONVENIO_REMISION, { paso: 'remision' });
+      return { creada: false, motivo: SIN_CONVENIO_REMISION };
     }
     remision = { id: Number(rem.id), sucursal: Number(rem.sucursal), id_transaccion: rem.id_transaccion };
   }
