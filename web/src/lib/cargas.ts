@@ -2,7 +2,7 @@
 // historial de cartera) y Meta (CSV por Business Manager). Se procesa en el navegador y solo se envía lo
 // necesario: sin nombre, teléfono, correo, documento ni dirección del cliente.
 
-export type TipoCarga = "dropi_ordenes" | "dropi_productos" | "dropi_cartera" | "meta_bm" | "drop_ordenes" | "drop_billetera" | "icomfly_pedidos" | "smart_pedidos";
+export type TipoCarga = "dropi_ordenes" | "dropi_productos" | "dropi_cartera" | "meta_bm" | "drop_ordenes" | "drop_billetera" | "icomfly_pedidos" | "smart_pedidos" | "smart_billetera";
 export type Celda = string | number | boolean | Date | null | undefined;
 export type Fila = Record<string, unknown>;
 
@@ -15,6 +15,7 @@ export const NOMBRE_TIPO: Record<TipoCarga, string> = {
   drop_billetera: "Drop · Billetera",
   icomfly_pedidos: "icomfly · Pedidos",
   smart_pedidos: "Smart Commerce · Pedidos",
+  smart_billetera: "Smart Commerce · Billetera",
 };
 
 export type Lectura = {
@@ -34,6 +35,7 @@ export function detectarTipo(encabezados: unknown[]): TipoCarga | null {
   const h = new Set(encabezados.map(clave));
   // Drop (Honduras y El Salvador de A un clic) e icomfly: se reconocen por columnas, no por el nombre del archivo.
   if (h.has("TRACKING") && h.has("COSTE TOTAL PEDIDO") && h.has("DROPSHIPPER")) return "smart_pedidos";
+  if (h.has("NO. GUIA") && h.has("INGRESOS") && h.has("EGRESOS") && h.has("NETO")) return "smart_billetera";
   if (h.has("SALDO RESULTANTE") && h.has("MOVIMIENTO")) return "drop_billetera";
   if (h.has("PAQUETERA") && h.has("ACREDITACION")) return "drop_ordenes";
   if (h.has("PLATAFORMA DE ENVIO") && h.has("GUIA") && h.has("PRODUCTO")) return "icomfly_pedidos";
@@ -275,6 +277,7 @@ export async function leerTabla(tabla0: Celda[][]): Promise<Lectura> {
   const { encabezados, filas } = aObjetos(tabla);
   const tipo = detectarTipo(encabezados);
   if (tipo === "smart_pedidos") return smartPedidos(filas);
+  if (tipo === "smart_billetera") return smartBilletera(filas);
   if (tipo === "drop_ordenes") return dropOrdenes(filas);
   if (tipo === "drop_billetera") return dropBilletera(filas);
   if (tipo === "icomfly_pedidos") return icomflyPedidos(filas);
@@ -528,6 +531,56 @@ function smartPedidos(filas: Record<string, Celda>[]): Lectura {
       { etiqueta: "Venta entregada", valor: suma(ent.map((f) => f.venta)), moneda: true },
       { etiqueta: "Ganancia de entregados", valor: suma(ent.map((f) => f.venta - f.costo - f.flete - f.comision)), moneda: true },
       { etiqueta: "Envío perdido en devoluciones (provisional)", valor: suma(dev.map((f) => f.flete)), moneda: true },
+    ],
+    avisos,
+  };
+}
+
+// «Reporte de transacciones» de Smart (billetera real): cada «Liquidación #xxxx» con su guía y su neto; debajo vienen las
+// líneas del desglose («└ Ingreso por venta», «└ Tarifa COD», «└ Pago al proveedor», «└ Costo de envío» o, en una devolución,
+// «└ Costo de envío perdido» y «└ Penalización por devolución»). Se guarda una fila por liquidación; la orden se cruza por la
+// guía en la base. El id sale del código de la liquidación (con un desplazamiento para no chocar con los ids de Dropi).
+function smartBilletera(filas: Record<string, Celda>[]): Lectura {
+  const avisos: string[] = [];
+  type Liq = { id: number; fecha: string | null; guia: string | null; neto: number; devolucion: boolean; codigo: string; texto: string };
+  const liqs: Liq[] = [];
+  let actual: Liq | null = null;
+  for (const r of filas) {
+    const d = (texto(r["DESCRIPCION"]) ?? "").trim();
+    if (!d) continue;
+    if (d.startsWith("└")) {
+      if (actual && /PENALIZACI|ENV[IÍ]O PERDIDO/i.test(d)) actual.devolucion = true;
+      continue;
+    }
+    const codigo = /#\s*([0-9a-f]+)/i.exec(d)?.[1] ?? null;
+    const f = texto(r["FECHA"]);
+    const dia = fecha(f), h = hora12(f?.replace(/^[^,]*,\s*/, "") ?? null);
+    actual = codigo ? {
+      id: 7_000_000_000_000_000 + parseInt(codigo, 16), fecha: dia ? `${dia} ${h ?? "00:00"}` : null, guia: id(r["NO. GUIA"]),
+      neto: numero(r["NETO"]) ?? 0, devolucion: false, codigo, texto: d,
+    } : null;
+    if (actual) liqs.push(actual);
+    else avisos.push(`Movimiento sin código de liquidación, no se cargó: «${d.slice(0, 60)}»`);
+  }
+  const out = sinDuplicados(liqs, (l) => l.id).map((l) => ({
+    id: l.id, fecha: l.fecha, guia: l.guia, tipo: l.neto < 0 ? "SALIDA" : "ENTRADA", monto: Math.abs(l.neto),
+    descripcion: l.devolucion || l.neto < 0
+      ? `SALIDA DE COBRO DE DEVOLUCION (Smart Commerce, billetera real) Liquidación #${l.codigo}`
+      : `ENTRADA POR GANANCIA EN LA ORDEN (Smart Commerce, billetera real) Liquidación #${l.codigo}`,
+  }));
+  const ent = out.filter((x) => x.tipo === "ENTRADA"), sal = out.filter((x) => x.tipo === "SALIDA");
+  return {
+    tipo: "smart_billetera",
+    filas: out.filter((x) => x.fecha),
+    cuenta: "AUNCLIC_GT",
+    ...rango(out.map((x) => x.fecha)),
+    totales: [
+      { etiqueta: "Liquidaciones", valor: out.length },
+      { etiqueta: "Ventas liquidadas", valor: ent.length },
+      { etiqueta: "Ganancia liquidada", valor: suma(ent.map((x) => x.monto)), moneda: true },
+      { etiqueta: "Devoluciones cobradas", valor: sal.length },
+      { etiqueta: "Cobrado por devoluciones", valor: -suma(sal.map((x) => x.monto)), moneda: true },
+      { etiqueta: "Saldo (neto)", valor: suma(ent.map((x) => x.monto)) - suma(sal.map((x) => x.monto)), moneda: true },
     ],
     avisos,
   };

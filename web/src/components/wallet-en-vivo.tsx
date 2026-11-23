@@ -19,7 +19,8 @@ type Wallet = {
   cuenta: string; divisa: string | null; saldo: number; movimientos_total: number; desde: string | null; ultimo: string | null;
   hoy: { entradas: number; salidas: number; neto: number; movimientos: number; recaudos: number; recaudo: number };
   serie: number[]; recientes: Movimiento[];
-  origen?: "drop" | "dropi" | "smart";                                          // drop: A un clic HN/SV · dropi: cartera de Dropi del país (por archivo)
+  origen?: "drop" | "dropi" | "smart";
+  real?: boolean;                                                       // smart: true si el saldo sale de la billetera real cargada                                          // drop: A un clic HN/SV · dropi: cartera de Dropi del país (por archivo)
   retiros?: { fecha: string; concepto: string | null; monto: number }[]; // pendientes de saber cuántos pesos entraron y a qué cuenta
 };
 type Respuesta = { ahora: string; cuentas: Wallet[] };
@@ -157,7 +158,7 @@ function Tarjeta({ w, cambio, activa, marcarEffi, onClick }: { w: Wallet; cambio
         <span className="flex items-center gap-1">
           {w.origen === "drop" && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Billetera de Drop, cargada por archivo">Drop</span>}
           {w.origen === "dropi" && <span className="rounded-full border border-blue/40 px-2 py-0.5 text-[10px] font-mono text-blue" title="Billetera de O.A.: saldo del último historial de cartera cargado">{infoCuenta(w.cuenta).sociedad === "A un clic" ? "Dropi" : "O.A."}</span>}
-          {w.origen === "smart" && <span className="rounded-full border border-green/40 px-2 py-0.5 text-[10px] font-mono text-green" title="Billetera de Smart Commerce calculada con los pedidos cargados: ganancia de los entregados menos el envío de los devueltos (provisional)">Smart · calculada</span>}
+          {w.origen === "smart" && <span className="rounded-full border border-green/40 px-2 py-0.5 text-[10px] font-mono text-green" title={w.real ? "Billetera real de Smart Commerce: liquidaciones del reporte de transacciones cargado" : "Billetera de Smart Commerce calculada con los pedidos cargados (provisional hasta cargar el reporte de transacciones)"}>{w.real ? "Smart" : "Smart · calculada"}</span>}
           {marcarEffi && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Wallet de Effi, al día cada minuto">Effi</span>}
           <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted">{w.divisa ?? pais.divisa}</span>
         </span>

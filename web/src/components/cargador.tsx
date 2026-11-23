@@ -157,7 +157,7 @@ export function Cargador({ tiendas }: { tiendas: string[] }) {
         <div className="text-xs text-muted max-w-xl">
           O.A.: <span className="font-mono">ordenes_*.xlsx</span>, <span className="font-mono">ordenes_productos_*.xlsx</span> e <span className="font-mono">historial de cartera-*.xlsx</span>.
           Drop + icomfly (A un clic Honduras y El Salvador): <span className="font-mono">reporte-ordenes-*.xlsx</span>, <span className="font-mono">movimientos-*.xlsx</span> y <span className="font-mono">trazabilidad_pedidos_*.xlsx</span>, los tres juntos.
-          Smart Commerce (A un clic Guatemala): <span className="font-mono">Pedidos_*.xlsx</span>, el reporte de pedidos completo (se puede subir el acumulado).
+          Smart Commerce (A un clic Guatemala): <span className="font-mono">Pedidos_*.xlsx</span>, el reporte de pedidos completo, y <span className="font-mono">Transacciones_*.xlsx</span>, la billetera (los dos se pueden subir acumulados).
           Meta: el CSV de cada Business Manager con país, cuenta, campaña, día y monto gastado en COP. Puedes subir varios a la vez.
         </div>
         <input id="archivos-carga" ref={input} type="file" multiple accept=".xlsx,.csv" className="sr-only"
