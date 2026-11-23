@@ -11,12 +11,18 @@ import { infoCuenta } from "@/lib/paises";
 // (rpc pedidos_lucid_guardar); con "No" la casilla vuelve a lo que tenía para revisarla. Los días que ya no se pueden
 // corregir quedan en solo lectura. Debajo del total del mes va el promedio por día (pedido del dueño, 20-nov-2026): solo los
 // días ya cerrados que tienen dato (hoy sigue abierto).
+// Joalix Colombia, desde noviembre (pedido del dueño, 23-nov-2026): dos columnas, «Lucid» a mano y «Shopify · icomfly», que
+// llega sola cada hora (app_pedidos_plataforma) y no se edita. Los totales suman las dos.
 type Fila = { cuenta: string; fecha: string; pedidos: number; por: string | null };
 type Pendiente = { cuenta: string; fecha: string; nuevo: number | null; antes: number | null; el: HTMLInputElement };
+type Columna = { c: string; k: "lucid" | "icomfly" };
 
-export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = false, filas }: {
+export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = false, filas, conIcomfly = [], auto = [] }: {
   mes: string; dias: number; hoy: string; cuentas: string[]; esOwner: boolean; soloLectura?: boolean; filas: Fila[];
+  conIcomfly?: string[]; auto?: { cuenta: string; fecha: string; pedidos: number }[];
 }) {
+  const columnas: Columna[] = cuentas.flatMap((c) => conIcomfly.includes(c) ? [{ c, k: "lucid" as const }, { c, k: "icomfly" as const }] : [{ c, k: "lucid" as const }]);
+  const autoVal = Object.fromEntries(auto.map((f) => [`${f.cuenta}|${f.fecha}`, f.pedidos])) as Record<string, number>;
   const [valores, setValores] = useState<Record<string, number | null>>(() =>
     Object.fromEntries(filas.map((f) => [`${f.cuenta}|${f.fecha}`, f.pedidos])));
   const [estado, setEstado] = useState<Record<string, "guardando" | "ok" | "error">>({});
@@ -24,14 +30,16 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = f
   const limite = new Date(Date.parse(`${hoy}T12:00:00`) - 7 * 86_400_000).toISOString().slice(0, 10);
   const editable = (fecha: string) => !soloLectura && fecha <= hoy && (esOwner || fecha >= limite);
   const fechas = Array.from({ length: dias }, (_, i) => `${mes}-${String(i + 1).padStart(2, "0")}`).filter((f) => f <= hoy).reverse();
-  const total = (c: string) => fechas.reduce((s, f) => s + (valores[`${c}|${f}`] ?? 0), 0);
+  const valor = (col: Columna, f: string) => col.k === "lucid" ? valores[`${col.c}|${f}`] : autoVal[`${col.c}|${f}`];
+  const total = (col: Columna) => fechas.reduce((s, f) => s + (valor(col, f) ?? 0), 0);
   const cerrados = fechas.filter((f) => f < hoy);
   const promedio = (vals: (number | null | undefined)[]) => {
     const con = vals.filter((v): v is number => v != null && v > 0);
     return con.length ? Math.round(con.reduce((a, b) => a + b, 0) / con.length) : null;
   };
-  const promedioDe = (c: string) => promedio(cerrados.map((f) => valores[`${c}|${f}`]));
-  const promedioTotal = promedio(cerrados.map((f) => cuentas.reduce((s, c) => s + (valores[`${c}|${f}`] ?? 0), 0)));
+  const promedioDe = (col: Columna) => promedio(cerrados.map((f) => valor(col, f)));
+  const sumaDia = (f: string) => columnas.reduce((s, col) => s + (valor(col, f) ?? 0), 0);
+  const promedioTotal = promedio(cerrados.map(sumaDia));
 
   const [pendiente, setPendiente] = useState<Pendiente | null>(null);
   const diaLargo = (f: string) => new Date(`${f}T12:00:00`).toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" });
@@ -74,29 +82,50 @@ export function PedidosLucid({ mes, dias, hoy, cuentas, esOwner, soloLectura = f
         <thead>
           <tr className="bg-blue/10 text-left text-[11px] uppercase tracking-wider font-semibold">
             <th className="px-4 py-3">Día</th>
-            {cuentas.map((c) => <th key={c} className="px-4 py-3 text-right">{infoCuenta(c).bandera} {infoCuenta(c).nombre}</th>)}
+            {columnas.map((col) => (
+              <th key={`${col.c}-${col.k}`} className="px-4 py-3 text-right">
+                {infoCuenta(col.c).bandera} {infoCuenta(col.c).nombre}
+                {conIcomfly.includes(col.c) && (
+                  <span className="mt-0.5 flex items-center justify-end gap-1 text-[10px] font-medium normal-case tracking-normal text-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {col.k === "lucid" ? <><img src="/lucid.svg" alt="" className="size-3.5" />Lucid · a mano</>
+                      // eslint-disable-next-line @next/next/no-img-element
+                      : <><img src="/shopify.svg" alt="" className="size-3.5" /><img src="/icomfly.svg" alt="" className="size-3.5" />Shopify · icomfly (automático)</>}
+                  </span>
+                )}
+              </th>
+            ))}
             <th className="px-4 py-3 text-right">Total</th>
           </tr>
         </thead>
         <tbody>
           <tr className="font-semibold">
             <td className="px-4 py-2">Total del mes</td>
-            {cuentas.map((c) => <td key={c} className="px-4 py-2 text-right num">{entero(total(c))}</td>)}
-            <td className="px-4 py-2 text-right num">{entero(cuentas.reduce((s, c) => s + total(c), 0))}</td>
+            {columnas.map((col) => <td key={`${col.c}-${col.k}`} className="px-4 py-2 text-right num">{entero(total(col))}</td>)}
+            <td className="px-4 py-2 text-right num">{entero(columnas.reduce((s, col) => s + total(col), 0))}</td>
           </tr>
           <tr className="border-b border-line text-muted" title="Promedio de los días ya cerrados que tienen dato (hoy sigue abierto)">
             <td className="px-4 pb-2 text-xs">Promedio por día</td>
-            {cuentas.map((c) => { const p = promedioDe(c); return <td key={c} className="px-4 pb-2 text-right num text-xs">{p == null ? "—" : entero(p)}</td>; })}
+            {columnas.map((col) => { const p = promedioDe(col); return <td key={`${col.c}-${col.k}`} className="px-4 pb-2 text-right num text-xs">{p == null ? "—" : entero(p)}</td>; })}
             <td className="px-4 pb-2 text-right num text-xs font-semibold text-tinte">{promedioTotal == null ? "—" : entero(promedioTotal)}</td>
           </tr>
           {fechas.map((f) => {
             const dia = new Date(`${f}T12:00:00`).toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" });
-            const suma = cuentas.reduce((s, c) => s + (valores[`${c}|${f}`] ?? 0), 0);
+            const suma = sumaDia(f);
             return (
               <tr key={f} className={`border-b border-line/50 ${f === hoy ? "bg-tinte/[0.03]" : ""}`}>
                 <td className="px-4 py-1.5 whitespace-nowrap capitalize">{dia}{f === hoy && <span className="ml-2 text-[11px] text-muted normal-case">hoy (aún abierto)</span>}</td>
-                {cuentas.map((c) => {
+                {columnas.map((col) => {
+                  const c = col.c;
                   const clave = `${c}|${f}`;
+                  if (col.k === "icomfly") {
+                    const a = autoVal[clave];
+                    return (
+                      <td key={`${c}-icomfly`} className="px-4 py-1.5 text-right" title="Llega solo desde icomfly cada hora">
+                        <span className="num">{a == null ? <span className="text-muted">—</span> : entero(a)}</span>
+                      </td>
+                    );
+                  }
                   const v = valores[clave];
                   const st = estado[clave];
                   return (

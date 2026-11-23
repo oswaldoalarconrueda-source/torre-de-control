@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="icomfly">
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="#0E9BD8"/>
+  <path d="M18 40c8-1 15-6 20-14l4 7 6-17-17 5 6 3c-4 7-10 11-19 12z" fill="#fff"/>
+  <circle cx="20" cy="22" r="4" fill="#fff"/>
+</svg>

@@ -36,20 +36,34 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
       ? await supabase.from("effi_accounts").select("slug").eq("tipo", "tienda").eq("activa", true)
       : await supabase.from("app_permisos").select("slug:cuenta").eq("user_id", u.id).contains("modulos", ["pedidos_lucid"]);
   const cuentas = (tiendas ?? []).map((t) => t.slug as string).sort((x, y) => ordenCuenta(x) - ordenCuenta(y));
-  const { data: filas } = cuentas.length
-    ? await supabase.from("app_pedidos_diarios").select("cuenta,fecha,pedidos,actualizado_por,actualizado_en")
-      .in("cuenta", cuentas).gte("fecha", desde).lte("fecha", hasta)
-    : { data: [] };
+  const [{ data: filas }, { data: auto }] = cuentas.length
+    ? await Promise.all([
+        supabase.from("app_pedidos_diarios").select("cuenta,fecha,pedidos,actualizado_por,actualizado_en")
+          .in("cuenta", cuentas).gte("fecha", desde).lte("fecha", hasta),
+        // Pedidos automáticos de icomfly (Joalix Colombia, desde noviembre): van en su propia casilla, sin tocar los de Lucid.
+        supabase.from("app_pedidos_plataforma").select("cuenta,fecha,pedidos").eq("plataforma", "icomfly")
+          .in("cuenta", cuentas).gte("fecha", desde).lte("fecha", hasta),
+      ])
+    : [{ data: [] }, { data: [] }];
+  // Colombia de Joalix, desde noviembre (pedido del dueño, 23-nov-2026): dos casillas, Lucid a mano e icomfly automático.
+  const conIcomfly = mes >= "2026-11" ? cuentas.filter((c) => c === "TIENDA_CO") : [];
 
   return (
     <>
       <div className="pt-8 mb-6">
-        <h1 className="flex items-center gap-3 font-display text-3xl sm:text-4xl font-semibold tracking-tight">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/lucid.svg" alt="" className="size-9" />Pedidos plataformas
+        <h1 className="flex flex-wrap items-center gap-3 font-display text-3xl sm:text-4xl font-semibold tracking-tight">
+          <span className="flex items-center gap-1.5" aria-label="Lucid, Shopify e icomfly">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/lucid.svg" alt="Lucid" title="LucidSales" className="size-9" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/shopify.svg" alt="Shopify" title="Shopify" className="size-9" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icomfly.svg" alt="icomfly" title="icomfly" className="size-9" />
+          </span>
+          Pedidos plataformas
         </h1>
         <p className="text-sm text-muted mt-1.5">
-          Cuántos pedidos entraron a LucidSales cada día en cada país.
+          Cuántos pedidos entraron cada día en cada país.{conIcomfly.length ? " En Colombia, los de Lucid se llenan a mano y los de Shopify llegan solos desde icomfly." : ""}
           {esOwner ? " Al dar Enter pide confirmar. Tú puedes corregir cualquier día." : " Al dar Enter pide confirmar. Se pueden corregir los últimos 7 días."}
         </p>
       </div>
@@ -61,7 +75,8 @@ export default async function PedidosLucidPage({ searchParams }: PageProps<"/ped
         )}
       </div>
       {cuentas.length ? (
-        <PedidosLucid key={mes} mes={mes} dias={dias} hoy={hoy} cuentas={cuentas} esOwner={esOwner}
+        <PedidosLucid key={mes} mes={mes} dias={dias} hoy={hoy} cuentas={cuentas} esOwner={esOwner} conIcomfly={conIcomfly}
+          auto={(auto ?? []).map((f) => ({ cuenta: f.cuenta as string, fecha: f.fecha as string, pedidos: Number(f.pedidos) }))}
           filas={(filas ?? []).map((f) => ({ cuenta: f.cuenta as string, fecha: f.fecha as string, pedidos: Number(f.pedidos), por: (f.actualizado_por as string | null) ?? null }))} />
       ) : (
         <p className="text-sm text-muted">No tienes tiendas asignadas para llenar pedidos. Pídele al dueño que te las marque en Usuarios y permisos.</p>

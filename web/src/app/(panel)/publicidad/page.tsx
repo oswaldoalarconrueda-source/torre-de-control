@@ -94,8 +94,9 @@ export default async function PublicidadPage({ searchParams }: PageProps<"/publi
   const supabase = await createClient();
   const [{ data, error }, { data: pedidos }, { data: porDivisa }] = await Promise.all([
     supabase.rpc("publicidad_resumen", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta }),
-    // Pedidos de LucidSales por día (📝 Pedidos Lucid): con el gasto del mismo día dan el CPA real.
-    supabase.from("app_pedidos_diarios").select("cuenta,fecha,pedidos").gte("fecha", f.desde).lte("fecha", hasta),
+    // Pedidos por día (📝 Pedidos plataformas): Lucid a mano + icomfly automático (Colombia desde el 22-nov). Con el gasto
+    // del mismo día dan el CPA real.
+    supabase.from("v_pedidos_dia").select("cuenta,fecha,pedidos").gte("fecha", f.desde).lte("fecha", hasta),
     // Lo que cobró Meta en la moneda de cada cuenta publicitaria (dólares, quetzales o pesos), por país.
     supabase.rpc("publicidad_por_divisa", { p_cuentas: f.cuentas, p_desde: f.desde, p_hasta: hasta }),
   ]);

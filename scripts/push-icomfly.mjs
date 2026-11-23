@@ -1,5 +1,6 @@
 // Prueba los tokens de icomfly del .env contra la API y los sube cifrados al Vault de Supabase (icomfly_guardar_token).
-// ICOMFLY_TOKEN_HN → AUNCLIC_HN, ICOMFLY_TOKEN_SV → AUNCLIC_SV (scripts/guardar-icomfly.sh hn|sv).
+// ICOMFLY_TOKEN_HN → AUNCLIC_HN, ICOMFLY_TOKEN_SV → AUNCLIC_SV, ICOMFLY_TOKEN_CO → TIENDA_CO (Joalix Colombia)
+// (scripts/guardar-icomfly.sh hn|sv|co).
 // Uso: node --env-file=.env scripts/push-icomfly.mjs
 // Nunca imprime los tokens ni datos de clientes: solo cuántos pedidos ve el token y de qué país/moneda son.
 
@@ -7,9 +8,9 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const sync = process.env.EFFI_SYNC_TOKEN;
 if (!url || !anon || !sync) { console.error('Faltan NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY o EFFI_SYNC_TOKEN en el .env'); process.exit(1); }
-const TIENDA = { HN: 'AUNCLIC_HN', SV: 'AUNCLIC_SV' };
-const PAIS = { HN: 'Honduras', SV: 'El Salvador' };
-const tokens = Object.entries(process.env).filter(([k]) => /^ICOMFLY_TOKEN_(HN|SV)$/.test(k));
+const TIENDA = { HN: 'AUNCLIC_HN', SV: 'AUNCLIC_SV', CO: 'TIENDA_CO' };
+const PAIS = { HN: 'Honduras', SV: 'El Salvador', CO: 'Colombia' };
+const tokens = Object.entries(process.env).filter(([k]) => /^ICOMFLY_TOKEN_(HN|SV|CO)$/.test(k));
 if (!tokens.length) { console.error('No hay ICOMFLY_TOKEN_HN ni ICOMFLY_TOKEN_SV en el .env (scripts/guardar-icomfly.sh hn)'); process.exit(1); }
 
 // Busca en la respuesta el total de pedidos y los campos de país/moneda/tienda, sin tocar datos personales.
@@ -35,8 +36,10 @@ for (const [k, token] of tokens) {
   console.log(`✓ ${k}: el token funciona. Pedidos que ve: ${prueba.pedidos_total ?? '(sin total)'} · ${Object.entries(pais).map(([a, b]) => `${a}: ${b}`).join(' · ') || 'sin campos de país'}`);
   // icomfly a veces ata el token a otra tienda del mismo usuario: si la tienda no es la del país, no se guarda.
   const nombreTienda = String(pais.store_name ?? pais.tienda ?? '');
-  const esperado = p === 'HN' ? /\bHN\b|hondur/i : /\bSV\b|salvador/i;
-  if (nombreTienda && !esperado.test(nombreTienda)) {
+  // Colombia: basta con que no sea una tienda de A un clic (Honduras o El Salvador).
+  const esperado = p === 'HN' ? /\bHN\b|hondur/i : p === 'SV' ? /\bSV\b|salvador/i : null;
+  const ajena = p === 'CO' && /\bHN\b|hondur|\bSV\b|salvador|a un clic/i.test(nombreTienda);
+  if (nombreTienda && ((esperado && !esperado.test(nombreTienda)) || ajena)) {
     fallas++;
     console.error(`  ✗ Este token es de la tienda «${nombreTienda}», no de ${PAIS[p]}. No se guardó. Genera el token estando dentro de la tienda de ${PAIS[p]}.`);
     continue;

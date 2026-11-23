@@ -1,4 +1,5 @@
-// icomfly-sync: trae los pedidos de icomfly (A un clic Honduras y El Salvador) por API y los guarda en icomfly_pedidos,
+// icomfly-sync: trae los pedidos de icomfly (A un clic Honduras y El Salvador; Joalix Colombia desde el 23-nov, pedidos de
+// Shopify) por API y los guarda en icomfly_pedidos,
 // con la misma forma que el archivo «icomfly · Pedidos»: id "#8665", una fila por producto, huella del cliente (sha-256 del
 // nombre, sin guardar nombre, teléfono ni dirección). Luego cruza el producto con las órdenes de Drop (drop_conciliar_sistema).
 //
@@ -12,7 +13,15 @@
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const API = 'https://api.icomfly.com/api';
-const CUENTAS = ['AUNCLIC_HN', 'AUNCLIC_SV'];
+const CUENTAS = ['AUNCLIC_HN', 'AUNCLIC_SV', 'TIENDA_CO'];
+// Zona por defecto si icomfly no la manda.
+const ZONA: Record<string, string> = { AUNCLIC_HN: 'America/Tegucigalpa', AUNCLIC_SV: 'America/El_Salvador', TIENDA_CO: 'America/Bogota' };
+// El token debe ser de la tienda del país (icomfly a veces ata el token a otra tienda del usuario). Colombia: basta con que
+// no sea una tienda de A un clic.
+const tiendaAjena = (cuenta: string, nombre: string) =>
+  cuenta === 'AUNCLIC_HN' ? !/\bHN\b|hondur/i.test(nombre)
+  : cuenta === 'AUNCLIC_SV' ? !/\bSV\b|salvador/i.test(nombre)
+  : /\bHN\b|hondur|\bSV\b|salvador|a un clic/i.test(nombre);
 
 async function rpc(fn: string, body: unknown) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
@@ -50,8 +59,8 @@ function local(iso: string | null, zona: string) {
 }
 
 type O = Record<string, any>;
-async function filas(o: O) {
-  const zona = o.store_timezone || 'America/Tegucigalpa';
+async function filas(o: O, cuenta: string) {
+  const zona = o.store_timezone || ZONA[cuenta] || 'America/Tegucigalpa';
   const { fecha, hora } = local(o.created_at, zona);
   const id = o.shopify_display_number || (o.store_web_seq != null ? `#${o.store_web_seq}` : o.order_number || String(o.id));
   const items: O[] = Array.isArray(o.items) && o.items.length ? o.items : [{ product_name: o.product_name, quantity: o.quantity }];
@@ -100,17 +109,17 @@ async function sincronizar(cuenta: string, desde: string, hasta: string, cruzar:
     for (const o of (b.data ?? []) as O[]) {
       // Seguridad: el token debe ser de la tienda del país (icomfly a veces ata el token a otra tienda del usuario).
       tienda ??= o.store_name ?? null;
-      const esperado = cuenta === 'AUNCLIC_HN' ? /\bHN\b|hondur/i : /\bSV\b|salvador/i;
-      if (o.store_name && !esperado.test(o.store_name)) throw new Error(`El token de ${cuenta} ve la tienda «${o.store_name}»`);
+      if (o.store_name && tiendaAjena(cuenta, String(o.store_name))) throw new Error(`El token de ${cuenta} ve la tienda «${o.store_name}»`);
       if (o.es_de_testeo) continue;
-      lote.push(...(await filas(o)));
+      lote.push(...(await filas(o, cuenta)));
       pedidos++;
       if (lote.length >= 500) await guardar();
     }
     pagina++;
   } while (pagina <= paginas && pagina <= 60);
   await guardar();
-  const cruce = cruzar ? await rpc('drop_conciliar_sistema', { p_cuenta: cuenta }).catch((e) => ({ error: String(e.message ?? e) })) : null;
+  // El cruce con Drop es solo de A un clic (Joalix Colombia no usa Drop).
+  const cruce = cruzar && cuenta.startsWith('AUNCLIC_') ? await rpc('drop_conciliar_sistema', { p_cuenta: cuenta }).catch((e) => ({ error: String(e.message ?? e) })) : null;
   return { cuenta, tienda, desde, hasta, pedidos, lineas, paginas, producto: cruce?.producto ?? cruce?.error ?? null };
 }
 

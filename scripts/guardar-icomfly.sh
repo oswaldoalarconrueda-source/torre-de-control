@@ -1,12 +1,13 @@
 #!/bin/zsh
-# Agrega al .env el token de API de icomfly (empieza por ik_live_) de una tienda de A un clic, sin mostrarlo.
-#   scripts/guardar-icomfly.sh hn   → ICOMFLY_TOKEN_HN  (tienda de Honduras)
-#   scripts/guardar-icomfly.sh sv   → ICOMFLY_TOKEN_SV  (tienda de El Salvador)
+# Agrega al .env el token de API de icomfly (empieza por ik_live_) de una tienda, sin mostrarlo.
+#   scripts/guardar-icomfly.sh hn   → ICOMFLY_TOKEN_HN  (A un clic Honduras)
+#   scripts/guardar-icomfly.sh sv   → ICOMFLY_TOKEN_SV  (A un clic El Salvador)
+#   scripts/guardar-icomfly.sh co   → ICOMFLY_TOKEN_CO  (Joalix Colombia: pedidos de Shopify desde el 22-nov)
 # Se genera en icomfly, dentro de cada tienda: Configuración → Conexiones → «Conecta tu API» → Generar token.
 # Luego: node --env-file=.env scripts/push-icomfly.mjs (lo prueba contra icomfly y lo sube cifrado al Vault).
 cd "$(dirname "$0")/.." || exit 1
 p=${(L)1}
-[[ "$p" != "hn" && "$p" != "sv" ]] && { echo "Uso: scripts/guardar-icomfly.sh hn   (o sv)"; exit 1; }
+[[ "$p" != "hn" && "$p" != "sv" && "$p" != "co" ]] && { echo "Uso: scripts/guardar-icomfly.sh hn   (o sv, o co)"; exit 1; }
 var="ICOMFLY_TOKEN_${(U)p}"
 read -s "t?Token de icomfly de ${(U)p} (empieza por ik_live_; no se ve al escribir): "
 echo
