@@ -8,7 +8,6 @@ import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { FleteAlto } from "./flete-alto";
 import { FlujoAgente, type Periodo } from "./flujo-agente";
-import { RemisionesDirectas } from "./remisiones-directas";
 import type { DatosFabrica } from "./fabrica-agente";
 import { AnularOrden, CeldaCliente, CeldaHistorial, CeldaTotales, CeldaTransportadoras, ProductosOrden, centroDe, fletePropuesta, SugerenciaConvenio, type AccionReciente, type ConvenioSugerido, type ExtraOrden, type FleteOpcion, type ParametrosPropuesta } from "./orden-effi";
 
@@ -475,7 +474,14 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   // anticipado o si el cliente ya nos compró. Tienen su propio filtro y las atiende una persona.
   const esDeficiencia = (o: OrdenAuto) => tieneCondicion(o) && o.restriccion?.tipo === "deficiencia_entregas";
   const conDeficiencia = ordenes.filter(esDeficiencia);
-  const conCondicionFiltro = ordenes.filter((o) => tieneCondicion(o) && !esDeficiencia(o));
+  // Flete alto (pedido del dueño, 24-nov-2026): las órdenes a ciudades con condición «flete muy alto» van primero, en su
+  // propio filtro, para atenderlas antes que las demás condiciones.
+  const esFleteAlto = (o: OrdenAuto) => tieneCondicion(o) && o.restriccion?.tipo === "flete_alto";
+  const conFleteAlto = ordenes.filter(esFleteAlto);
+  // Guías con flete alto que esperan que una persona las apruebe o las anule (sección FleteAlto, solo Colombia): van en el
+  // mismo filtro y suman a su número.
+  const [guiasFleteAlto, setGuiasFleteAlto] = useState(0);
+  const conCondicionFiltro = ordenes.filter((o) => tieneCondicion(o) && !esDeficiencia(o) && !esFleteAlto(o));
   const pendientes = ordenes.filter((o) => o.estado === "sin_remision" && !tieneError(o) && !tieneCondicion(o));
   // Remisiones vigentes sin guía (si la guía falló, el error sale en rojo en Estado).
   const porGuia = ordenes.filter((o) => o.estado === "sin_guia");
@@ -498,6 +504,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   ] : [
     { clave: "sin_remision", titulo: "Órdenes pendientes", filas: pendientes, vacio: "Ninguna orden pendiente.", conRemision: false, conGuia: false,
       texto: "Órdenes de venta vigentes que todavía no tienen remisión. Salen de aquí apenas se remisionan (las haga el agente o una persona)." },
+    { clave: "flete_alto", titulo: "Flete alto", filas: conFleteAlto, vacio: "Ninguna orden a ciudades con flete muy alto.", conRemision: false, conGuia: false,
+      texto: "Prioridad. Arriba, las guías con flete alto que esperan que una persona las apruebe o las anule. Debajo, las órdenes a ciudades con condición «flete muy alto» de las asesoras logísticas: no se hacen solas, una persona decide si se envían." },
     { clave: "guia", titulo: "Remisiones pendientes por guía", filas: porGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
       texto: "Remisiones ya hechas que solo esperan la guía." },
     { clave: "errores", titulo: "Órdenes con errores", filas: conError, vacio: "Sin errores: todas las órdenes van bien.", conRemision: false, conGuia: false,
@@ -723,9 +731,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         <div id="filtros-agente" className="card p-3 space-y-2.5 scroll-mt-4">
           <div className="flex flex-wrap items-center gap-2">
             {secciones.map((x) => {
-              const n = x.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length;
+              const n = x.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length + (x.clave === "flete_alto" ? guiasFleteAlto : 0);
               const on = x.clave === seccionActiva.clave;
-              const rojo = x.clave === "errores" && n > 0;
+              const rojo = (x.clave === "errores" || x.clave === "flete_alto") && n > 0;
               const ambar = (x.clave === "condicion" || x.clave === "deficiencia") && n > 0;
               return (
                 <button key={x.clave} type="button" onClick={() => { setPestana(x.clave); setSubfiltro("todas"); }} aria-pressed={on}
@@ -754,6 +762,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
             aria-label="Buscar en la lista" className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-blue/60" />
         </div>
       )}
+      {/* Flete alto: arriba las guías que esperan decisión (aprobar o anular); debajo, las órdenes a ciudades con flete alto. */}
+      {!rango && cuenta === "TIENDA_CO" && (
+        <div className={seccionActiva.clave === "flete_alto" ? "" : "hidden"}>
+          <FleteAlto cuenta={cuenta} onCambio={() => router.refresh()} onPendientes={setGuiasFleteAlto} />
+        </div>
+      )}
+
       {[seccionActiva].map((s0) => ({ ...s0, filas: s0.filas.filter((o) => coincideBusqueda(o) && (s0.clave !== "sin_remision" || (subfiltros.find((f) => f.clave === subfiltro) ?? subfiltros[0]).cumple(o))) })).map((s) => (
       <Fragment key={s.clave}>
       <div className="flex flex-wrap items-baseline gap-2 pt-2">
@@ -1019,10 +1034,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
 
       {huella}
 
-      {/* Remisiones que llegan sin orden de venta (Lucid) y solo esperan la guía: no salen en las listas de órdenes. */}
-      <RemisionesDirectas cuenta={cuenta} zona={zona} rango={rango} />
+      {/* «Remisiones directas → guía» se quitó el 24-nov-2026 (pedido del dueño): si la remisión ya tiene guía, ya pasó. */}
 
-      {!rango && cuenta === "TIENDA_CO" && <FleteAlto cuenta={cuenta} onCambio={() => router.refresh()} />}
 
       {!rango && conAbono.length > 0 && (
         <div className="card border border-amber/50 p-4" style={{ background: "linear-gradient(90deg, rgb(245 166 35 / 0.12), transparent)" }}>
@@ -1040,6 +1053,12 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
           <div className="font-semibold text-red">📍 {entero(conCondicion.length)} {conCondicion.length === 1 ? "pedido va" : "pedidos van"} a una ciudad con condición de envío</div>
           <div className="text-xs text-muted mt-0.5">Recordatorio de las asesoras logísticas: revisar con el cliente antes de despachar. Estas no se crean solas.</div>
           <div className="mt-2 flex flex-wrap gap-2">
+            {conFleteAlto.length + guiasFleteAlto > 0 && (
+              <button type="button" onClick={() => irAFiltro("flete_alto")}
+                className="rounded-lg bg-red px-3 py-1.5 text-xs font-semibold text-white hover:bg-red/85">
+                💸 Flete alto · {entero(conFleteAlto.length + guiasFleteAlto)} →
+              </button>
+            )}
             {conCondicionFiltro.length > 0 && (
               <button type="button" onClick={() => irAFiltro("condicion")}
                 className="rounded-lg border border-red/50 px-3 py-1.5 text-xs font-semibold text-red hover:bg-red/10">

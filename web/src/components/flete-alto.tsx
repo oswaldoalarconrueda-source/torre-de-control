@@ -18,7 +18,7 @@ const cuando = (iso: string | null) => (iso ? new Date(iso).toLocaleString("es-C
 const titulo = (a: Alerta) => `${a.transportadora ?? "—"} - Centro costos ${a.centro ?? "—"}`;
 const destino = (a: Alerta) => `${a.ciudad ?? "—"}${a.provincia ? `, ${a.provincia}` : ""}`;
 
-export function FleteAlto({ cuenta, onCambio }: { cuenta: string; onCambio: () => void }) {
+export function FleteAlto({ cuenta, onCambio, onPendientes }: { cuenta: string; onCambio: () => void; onPendientes?: (n: number) => void }) {
   const [datos, setDatos] = useState<Datos | null>(null);
   const [confirmar, setConfirmar] = useState<string | null>(null);
   const [ocupada, setOcupada] = useState<string | null>(null);
@@ -28,6 +28,8 @@ export function FleteAlto({ cuenta, onCambio }: { cuenta: string; onCambio: () =
     const { data } = await createClient().rpc("auto_fletes_lista", { p_cuenta: cuenta });
     if (data) setDatos(data as Datos);
   }, [cuenta]);
+  // ValerIA muestra cuántas guías esperan decisión en su filtro «Flete alto» (24-nov-2026).
+  useEffect(() => { if (datos) onPendientes?.(datos.pendientes.length); }, [datos, onPendientes]);
   useEffect(() => {
     const inicio = setTimeout(cargar, 0);
     const t = setInterval(cargar, 60_000);
