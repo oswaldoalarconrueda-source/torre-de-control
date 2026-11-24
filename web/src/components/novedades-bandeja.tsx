@@ -57,7 +57,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
   const [borr, setBorr] = useState<Record<number, Borrador>>({});
   const [aviso, setAviso] = useState<Record<number, string>>({});
   const [ocupada, setOcupada] = useState<Record<number, boolean>>({});
-  const [filtro, setFiltro] = useState({ estado: demo ? "todas" : "pendientes", transp: "", novedad: "", buscar: "", mias: false });
+  const [filtro, setFiltro] = useState({ estado: demo ? "todas" : "pendientes", transp: "", novedad: "", buscar: "", mias: false, quien: "" });
   const [ahora, setAhora] = useState(() => Date.now());
   const [copiada, setCopiada] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
@@ -100,6 +100,14 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
   const transportadoras = [...new Set(filas.map((f) => f.transportadora ?? "—"))].sort();
   const tipos = [...new Set(filas.map((f) => f.novedad ?? "—"))].sort();
   const q = filtro.buscar.trim().toLowerCase();
+  // «Gestiones de» (pedido del dueño, 24-nov-2026, para la encargada): las novedades que esa persona llamó, solucionó o dejó
+  // en seguimiento en los días del calendario. Solo para quien ve el equipo.
+  const diaDe = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date(iso));
+  const enRango = (iso: string) => { const d = diaDe(iso); return d >= desde && d <= hasta; };
+  const gestiono = (f: FilaNovedad, quien: string) =>
+    Object.values(f.llamadas).some((l) => l.u === quien && enRango(l.en)) || (f.envio?.usuario === quien && enRango(f.envio.en))
+    || (f.seguimiento?.u === quien && enRango(f.seguimiento.en));
+  const equipo = verEquipo ? [...(med?.asesoras ?? [])].sort((a, z) => a.nombre.localeCompare(z.nombre)) : [];
   // Seguimiento que ya toca (su día es hoy o ya pasó) y la novedad sigue abierta en Effi.
   const toca = (f: FilaNovedad) => (f.seguimiento && f.est_novedad === 1 && f.seguimiento.fecha <= hoy ? f.seguimiento.fecha : null);
   const porSeguir = filas.filter(toca).length;
@@ -116,6 +124,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
     if (filtro.transp && (f.transportadora ?? "—") !== filtro.transp) return false;
     if (filtro.novedad && (f.novedad ?? "—") !== filtro.novedad) return false;
     if (filtro.mias && !Object.values(f.llamadas).some((l) => l.u === email) && f.envio?.usuario !== email) return false;
+    if (filtro.quien && !gestiono(f, filtro.quien)) return false;
     if (q && ![f.guia, f.telefono, f.cliente].some((x) => (x ?? "").toLowerCase().includes(q))) return false;
     return true;
   // Los seguimientos que ya tocan van siempre arriba (el más atrasado primero); el resto sigue en su orden.
@@ -221,6 +230,15 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
           <option value="">Todas las novedades</option>
           {tipos.map((t) => <option key={t} value={t} className="bg-bg">{t}</option>)}
         </select>
+        {verEquipo && (
+          // Al escoger a alguien se ven todas sus gestiones del periodo (también las ya enviadas), no solo las pendientes.
+          <select value={filtro.quien} onChange={(e) => setFiltro((x) => ({ ...x, quien: e.target.value, estado: e.target.value ? "todas" : x.estado }))}
+            title="Las novedades que esa persona llamó, solucionó o dejó en seguimiento en los días del calendario"
+            className={`${sel} h-8 max-w-[14rem] max-md:h-10 max-md:w-full max-md:max-w-none ${filtro.quien ? "border-blue/60 bg-blue/15" : ""}`}>
+            <option value="">Gestiones de: todo el equipo</option>
+            {equipo.map((a) => <option key={a.email} value={a.email} className="bg-bg">{nombrePropio(a.nombre)}</option>)}
+          </select>
+        )}
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={filtro.mias} onChange={(e) => setFiltro((x) => ({ ...x, mias: e.target.checked }))} /> Solo las mías
         </label>
@@ -421,7 +439,9 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
             </thead>
             <tbody>
               {asesoras.map((a) => (
-                <tr key={a.email} className="border-b border-line/60">
+                <tr key={a.email} className={`border-b border-line/60 ${verEquipo ? "cursor-pointer hover:bg-tinte/[0.03]" : ""} ${filtro.quien === a.email ? "bg-blue/10" : ""}`}
+                  onClick={verEquipo ? () => setFiltro((x) => (x.quien === a.email ? { ...x, quien: "" } : { ...x, quien: a.email, estado: "todas" })) : undefined}
+                  title={verEquipo ? "Ver arriba las novedades que gestionó en estos días" : undefined}>
                   <td className="px-3 py-2 font-semibold">{nombrePropio(a.nombre)}</td>
                   <td className="px-3 py-2 num">{entero(a.llamadas)}</td>
                   <td className="px-3 py-2 num">{entero(a.contactados)} <span className="text-muted text-xs">{a.llamadas ? `${Math.round((a.contactados / a.llamadas) * 100)}%` : ""}</span></td>

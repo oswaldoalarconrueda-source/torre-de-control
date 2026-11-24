@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient, exigirModulo } from "@/lib/supabase/server";
+import { veEquipo } from "@/lib/modulos";
 import { hoyBogota, leerFiltros, rpcArgs } from "@/lib/filtros";
 import { enDemo } from "@/lib/demo-server";
 import { entero, pct } from "@/lib/formato";
@@ -64,7 +65,7 @@ export default async function NovedadesPage({ searchParams }: PageProps<"/noveda
         {(b.error || m.error) && <p className="text-sm text-red mb-4">{b.error?.message ?? m.error?.message}</p>}
         <NovedadesBandeja key={`${cuenta}|${f.desde}|${f.hasta}`} cuenta={cuenta} desde={f.desde} hasta={f.hasta}
           filas={(b.data ?? []) as FilaNovedad[]} soluciones={(s.data ?? []) as Solucion[]} medidores={(m.data ?? null) as Medidores | null}
-          verEquipo={u.rol === "owner" || u.rol === "socio"} email={u.email} demo={demo} />
+          verEquipo={veEquipo(u)} email={u.email} demo={demo} />
       </>
     );
   }

@@ -1,4 +1,5 @@
 import { createClient, exigirModulo } from "@/lib/supabase/server";
+import { veEquipo } from "@/lib/modulos";
 import { leerFiltros } from "@/lib/filtros";
 import { infoCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
@@ -12,7 +13,9 @@ import { CuadreHoy, CuadreTablas, QuienHizoQue, ResumenOficina, type Cuadre, typ
 // el cuadre diario, el resultado por día de llegada y la estadística de llamadas.
 export default async function OficinaPage({ searchParams }: PageProps<"/oficina">) {
   const u = await exigirModulo("oficina");
-  const esDueno = u.rol === "owner";
+  // Quién hizo qué (24-nov-2026): el dueño, los socios y la encargada con «Gestiones del equipo» ven a todos; cada
+  // empleada ve solo sus propias gestiones.
+  const equipo = veEquipo(u);
   const demo = await enDemo(); // la demostración quedó congelada el 17-nov: sin el aviso del 20-nov
   const f = leerFiltros(await searchParams);
   const cuenta = f.cuentas?.[0] ?? "TIENDA_CO";
@@ -28,7 +31,7 @@ export default async function OficinaPage({ searchParams }: PageProps<"/oficina"
     supabase.rpc("oficina_lista", { p_cuenta: cuenta }),
     supabase.rpc("oficina_estadisticas", { p_cuenta: cuenta, ...rango }),
     supabase.rpc("oficina_cuadre", { p_cuenta: cuenta, ...rango }),
-    esDueno ? supabase.rpc("oficina_por_usuario", { p_cuenta: cuenta, ...rango }) : Promise.resolve({ data: null }),
+    supabase.rpc("oficina_por_usuario", { p_cuenta: cuenta, ...rango }),
     supabase.rpc("oficina_efectividad", { p_cuenta: cuenta }),
   ]);
   const pais = infoCuenta(cuenta);
@@ -45,9 +48,10 @@ export default async function OficinaPage({ searchParams }: PageProps<"/oficina"
       {/* "Hoy en la oficina" solo cuando el rango llega hasta hoy. */}
       {cuadre && conHoy && <CuadreHoy c={cuadre as Cuadre} />}
       {cuadre && <ResumenOficina c={cuadre as Cuadre} periodo={periodo} />}
-      <CrmOficina key={cuenta} cuenta={cuenta} guias={(lista ?? []) as GuiaOficina[]} esDueno={esDueno}
+      <CrmOficina key={cuenta} cuenta={cuenta} guias={(lista ?? []) as GuiaOficina[]} verEquipo={equipo}
+        desde={f.desde} hasta={f.hasta} personas={equipo ? (porUsuario as PorUsuario[] | null) ?? [] : undefined}
         ingresaronHoy={conHoy ? (cuadre as Cuadre | null)?.cuadre[0]?.llegaron : undefined} efectividad={efectividad as Efectividad | null} />
-      {esDueno && porUsuario && <div className="mt-6"><QuienHizoQue filas={porUsuario as PorUsuario[]} periodo={periodo} /></div>}
+      {porUsuario && <div className="mt-6"><QuienHizoQue filas={porUsuario as PorUsuario[]} periodo={periodo} equipo={equipo} /></div>}
       {cuadre && <CuadreTablas c={cuadre as Cuadre} />}
       {est && <EstadisticasOficina key={`est-${cuenta}-${f.desde}-${f.hasta}`} e={est as Estadisticas} cuenta={cuenta} />}
     </>

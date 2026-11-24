@@ -90,11 +90,13 @@ export type PorUsuario = {
   email: string; nombre: string; contactos: number; contactos_hoy: number; contactados: number; no_contesta: number; no_aplica: number;
   guias: number; gestiones: number; gestiones_hoy: number;
 };
-// Solo el dueño: quién marcó los contactos y las observaciones (gestiones), para repartir el trabajo y medirlo.
-export function QuienHizoQue({ filas, periodo }: { filas: PorUsuario[]; periodo: string }) {
+// Quién marcó los contactos y las observaciones (gestiones), para repartir el trabajo y medirlo. El dueño, los socios y la
+// encargada con «Gestiones del equipo» ven a todos; las demás empleadas solo su fila (lo filtra oficina_por_usuario).
+export function QuienHizoQue({ filas, periodo, equipo = true }: { filas: PorUsuario[]; periodo: string; equipo?: boolean }) {
   const tot = filas.reduce((a, f) => ({ contactos: a.contactos + f.contactos, gestiones: a.gestiones + f.gestiones }), { contactos: 0, gestiones: 0 });
   return (
-    <Panel titulo="👑 Quién hizo qué" detalle={`Solo lo ves tú · ${periodo}: ${entero(tot.contactos)} contactos y ${entero(tot.gestiones)} gestiones`}>
+    <Panel titulo={equipo ? "👑 Quién hizo qué" : "📋 Tus gestiones"}
+      detalle={`${equipo ? "Todo el equipo" : "Solo lo tuyo"} · ${periodo}: ${entero(tot.contactos)} contactos y ${entero(tot.gestiones)} gestiones`}>
       <TablaScroll>
         <thead>
           <tr>

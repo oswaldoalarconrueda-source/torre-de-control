@@ -19,6 +19,9 @@ export const MODULOS = [
   // Pedido del dueño (23-nov-2026): homologar campañas aparte de Productos, para dárselo a un empleado solo con eso.
   { id: "campanas", nombre: "Campañas sin identificar", detalle: "Decir de qué producto es cada campaña de Meta que no se reconoce sola (homologar)", rutas: ["/campanas-sin-identificar"] },
   { id: "glosario", nombre: "Glosario", detalle: "Qué significa cada cifra del Centro de Control", rutas: ["/glosario"] },
+  // Pedido del dueño (24-nov-2026): la encargada ve y filtra lo que hizo cada asesora en Novedades y Disp. en oficina. Sin
+  // esto, cada empleada ve solo sus propias gestiones. No abre pantalla propia: se usa dentro de esas dos.
+  { id: "equipo", nombre: "Gestiones del equipo", detalle: "Ver y filtrar por día lo que hizo cada asesora en Novedades y Disp. en oficina (sin esto, cada una ve solo lo suyo)", rutas: [] },
 ] as const;
 export type ModuloId = (typeof MODULOS)[number]["id"];
 // Módulos exclusivos: solo el dueño y a quien se le marquen; a los socios no les llegan solos.
@@ -37,11 +40,15 @@ export const tieneModulo = (u: Acceso, m: ModuloId) =>
   u.activo && (u.rol === "owner" || (u.rol === "socio" && !EXCLUSIVOS.has(m)) ||
     ((u.rol === "empleado" || u.rol === "proveedor") && u.modulos.includes(m)));
 
+// Ve las gestiones de todo el equipo (dueño, socios y la empleada con «Gestiones del equipo»). La base lo vuelve a revisar
+// por tienda (app_ve_equipo).
+export const veEquipo = (u: Acceso) => tieneModulo(u, "equipo");
+
 // Dueño y socios: pantallas que no se le dan a empleados ni proveedores (p. ej. 📢 Publicidad).
 export const esSocio = (u: Acceso) => u.activo && (u.rol === "owner" || u.rol === "socio");
 
 // Primera pantalla a la que el usuario sí puede entrar (para mandarlo ahí si abre una que no tiene).
 export function primeraRuta(u: Acceso) {
-  const m = MODULOS.find((x) => tieneModulo(u, x.id));
-  return m ? m.rutas[0] : "/glosario";
+  const m = MODULOS.find((x) => x.rutas.length > 0 && tieneModulo(u, x.id));
+  return (m?.rutas[0] as string | undefined) ?? "/glosario";
 }

@@ -1,4 +1,5 @@
 import { createClient, exigirModulo } from "@/lib/supabase/server";
+import { veEquipo } from "@/lib/modulos";
 import { leerFiltros } from "@/lib/filtros";
 import { infoCuenta } from "@/lib/paises";
 import { haceCuanto } from "@/lib/formato";
@@ -35,7 +36,7 @@ export default async function OficinaOthersPage({ searchParams }: PageProps<"/of
         {sinContacto > 0 && <span className="text-amber"> {sinContacto} sin teléfono: vuelve a cargar el archivo de órdenes para traer el contacto.</span>}
       </p>
       {error && <p className="text-sm text-red mb-4">{error.message}</p>}
-      <CrmOficina key={cuenta} cuenta={cuenta} guias={guias} esDueno={u.rol === "owner"} plataforma={nombre} />
+      <CrmOficina key={cuenta} cuenta={cuenta} guias={guias} verEquipo={veEquipo(u)} desde={f.desde} hasta={f.hasta} plataforma={nombre} />
     </>
   );
 }

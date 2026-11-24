@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, MessageCircle, PhoneCall, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { dinero, entero, minutosDesde, transCorta } from "@/lib/formato";
+import { dinero, entero, minutosDesde, transCorta, nombrePropio } from "@/lib/formato";
 import { CON_FECHA, OBSERVACIONES, PREFIJO_OTRO, textoObservacion, type CodigoObs } from "@/lib/oficina";
 import { infoCuenta } from "@/lib/paises";
 import { BarraHorizontal } from "./barra-horizontal";
@@ -74,8 +74,10 @@ const whatsapp = (tel: string, cuenta: string) => {
 // entregaron, y cuántas de ellas se entregaron hoy.
 export type Efectividad = { contactadas: number; entregadas: number; entregadas_hoy: number };
 
-export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efectividad, plataforma = "Effi" }: {
-  cuenta: string; guias: GuiaOficina[]; esDueno?: boolean; ingresaronHoy?: number; efectividad?: Efectividad | null;
+export function CrmOficina({ cuenta, guias, verEquipo = false, ingresaronHoy, efectividad, plataforma = "Effi", desde, hasta, personas }: {
+  cuenta: string; guias: GuiaOficina[]; ingresaronHoy?: number; efectividad?: Efectividad | null;
+  // Dueño, socios y la encargada con «Gestiones del equipo»: ven quién hizo cada contacto y filtran por persona y día.
+  verEquipo?: boolean; desde?: string; hasta?: string; personas?: { email: string; nombre: string }[];
   plataforma?: string; // de dónde salen las guías: Effi, u Others en «Disp. en oficina (Others)» (24-nov-2026)
 }) {
   const router = useRouter();
@@ -91,6 +93,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
   const dia = (iso: string | Date) => new Intl.DateTimeFormat("en-CA", { timeZone: zona }).format(new Date(iso));
   const [filtro, setFiltro] = useState<(typeof FILTROS)[number]["id"]>("todas");
   const [buscar, setBuscar] = useState("");
+  const [persona, setPersona] = useState(""); // «Gestiones de»: solo las guías que esa persona trabajó en los días del calendario
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState<string | null>(null);
   // Cambios guardados en esta sesión, para verlos al instante antes de que la página se refresque.
@@ -151,16 +154,34 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
   };
   // "Volver a llamar" (arriba de la lista inicial): solo "ya retiró" de los últimos 7 días.
   const volverALlamar = (g: GuiaOficina) => { const m = marca(g); return m?.tipo === "ya_retiro" ? m : null; };
+  // Gestiones de una persona en los días del calendario (hoy si no hay calendario): contactos marcados u observación.
+  const ini = desde ?? hoy, fin = hasta ?? hoy;
+  const gestiono = (g: GuiaOficina, em: string) => {
+    const en = (iso: string) => { const d = dia(iso); return d >= ini && d <= fin; };
+    return llamadasDe(g).some((l) => l.usuario === em && en(l.creado_en)) || (g.observacion?.usuario === em && en(g.observacion.actualizado_en));
+  };
+  // A quién se puede escoger: la gente de «Quién hizo qué» y, si no llegó, quien aparezca en las guías.
+  const gente = useMemo(() => {
+    if (!verEquipo) return [];
+    const m = new Map((personas ?? []).map((p) => [p.email, p.nombre]));
+    for (const g of guias) {
+      for (const l of g.llamadas) if (l.usuario && !m.has(l.usuario)) m.set(l.usuario, l.usuario.split("@")[0]);
+      if (g.observacion?.usuario && !m.has(g.observacion.usuario)) m.set(g.observacion.usuario, g.observacion.usuario.split("@")[0]);
+    }
+    return [...m].map(([email, nombre]) => ({ email, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [verEquipo, personas, guias]);
   const lista = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return guias.filter((g) => {
+      // Escogida una persona, se ven todas sus guías del periodo, también las de compromiso o «dijo que fue».
+      if (persona && !gestiono(g, persona)) return false;
       if (!q && quedan.has(g.guia)) return true;
       const ult = llamadasDe(g).at(-1);
       const m = marca(g);
       if (filtro === "compromiso") { if (m?.tipo !== "compromiso") return false; }
       else if (filtro === "no_fue") { if (m?.tipo !== "no_fue") return false; }
       // Las de compromiso y las de "dijo que fue y no fue" no salen en la lista inicial ni en los otros filtros (sí al buscar).
-      else if (!q && (m?.tipo === "compromiso" || m?.tipo === "no_fue")) return false;
+      else if (!q && !persona && (m?.tipo === "compromiso" || m?.tipo === "no_fue")) return false;
       if (filtro === "seguimiento" && !seguimiento(g)) return false;
       if (filtro === "volver" && !volverALlamar(g)) return false;
       if (filtro === "sin_llamar" && ult) return false;
@@ -174,7 +195,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
         || (a.m && b.m ? a.m.orden - b.m.orden : 0) || a.i - b.i)
       .map((x) => x.g);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guias, filtro, buscar, locales, obs, hoy, quedan]);
+  }, [guias, filtro, buscar, locales, obs, hoy, quedan, persona, ini, fin]);
   const marcas = guias.map((g) => marca(g));
   const fuera = (i: number) => marcas[i]?.tipo === "compromiso" || marcas[i]?.tipo === "no_fue";
   const porSeguir = guias.filter((g, i) => !fuera(i) && seguimiento(g)).length;
@@ -289,6 +310,14 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
             </button>
           );
         })}
+        {verEquipo && gente.length > 0 && (
+          <select value={persona} onChange={(e) => { setPersona(e.target.value); setMostrar(POR_PAGINA); }}
+            title={`Las guías en oficina que esa persona contactó o gestionó ${ini === fin ? (ini === hoy ? "hoy" : `el ${ini}`) : `del ${ini} al ${fin}`}`}
+            className={`h-8 rounded-full border px-3 text-xs font-semibold max-md:h-10 max-md:w-full ${persona ? "border-blue/50 bg-blue/15 text-text" : "border-line bg-transparent text-muted"}`}>
+            <option value="" className="bg-bg">Gestiones de: todo el equipo</option>
+            {gente.map((p) => <option key={p.email} value={p.email} className="bg-bg">{nombrePropio(p.nombre)}</option>)}
+          </select>
+        )}
         <label className="ml-auto flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-sm max-md:w-full">
           <Search size={14} className="text-muted" />
           <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Guía, cliente, teléfono, ciudad, producto u observación"
@@ -317,7 +346,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
               <th className="px-2 py-3">Est. global</th>
               {CONTACTOS.map((c) => <th key={c.intento} className="px-2 py-3">{c.label}</th>)}
               <th className="px-2 py-3 min-w-[14rem]">Observación</th>
-              {esDueno && <th className="px-2 py-3">Quién lo hizo</th>}
+              {verEquipo && <th className="px-2 py-3">Quién lo hizo</th>}
             </tr>
           </thead>
           <tbody className="md:divide-y md:divide-line">
@@ -411,7 +440,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                           {l ? RESULTADOS[l.resultado].label : "—"}
                         </span>
                         </div>
-                        {esDueno && l?.usuario && <div className="mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] text-muted">{quien(l.usuario)} · {hora(l.creado_en)}</div>}
+                        {verEquipo && l?.usuario && <div className="mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] text-muted">{quien(l.usuario)} · {hora(l.creado_en)}</div>}
                       </td>
                     );
                   })}
@@ -455,7 +484,7 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
                     })()}
                   </td>
                   {/* Quién hizo la observación (o, si aún no hay, el último contacto) y cuándo. */}
-                  {esDueno && (() => {
+                  {verEquipo && (() => {
                     const ultimo = ls.at(-1);
                     const u = g.observacion?.usuario ? { email: g.observacion.usuario, en: g.observacion.actualizado_en }
                       : ultimo?.usuario ? { email: ultimo.usuario, en: ultimo.creado_en } : null;
