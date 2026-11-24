@@ -27,6 +27,9 @@ export type FilaNovedad = {
   devolucion: string | null; // la guía ya va de regreso (p. ej. "Devolución en Tránsito"): igual pide solución de la empresa
   llamadas: Record<string, { r: Resultado; u: string | null; en: string }>;
   envio: { id: number; estado: "enviando" | "enviada" | "error"; mensaje: string | null; solucion: string | null; usuario: string | null; en: string } | null;
+  // La transportadora rechazó la solución enviada: Effi la devolvió a «Pendiente de solución» y vuelve a «Por solucionar»
+  // para mandar otra (pedido de una asesora, 24-nov-2026).
+  rechazada?: boolean;
 };
 export type Solucion = { cuenta: string; transportadora_efficommerce: number; id_solucion: number; nombre_solucion: string; pide_entrega: boolean; veces: number };
 type Medidor = { llegaron: number; llamadas: number; contactados: number; solucionadas: number; cambiaron: number; entregadas: number; pendientes: number; respuesta_min: number | null };
@@ -93,7 +96,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
   }, [soluciones]);
 
   const hoy = hoyLocal(cuenta);
-  const enviadaHoy = (f: FilaNovedad) => f.envio && f.envio.estado !== "error" && hoyLocal(cuenta) === new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date(f.envio.en));
+  const enviadaHoy = (f: FilaNovedad) => !f.rechazada && f.envio && f.envio.estado !== "error" && hoyLocal(cuenta) === new Intl.DateTimeFormat("en-CA", { timeZone: infoCuenta(cuenta).zona }).format(new Date(f.envio.en));
   const transportadoras = [...new Set(filas.map((f) => f.transportadora ?? "—"))].sort();
   const tipos = [...new Set(filas.map((f) => f.novedad ?? "—"))].sort();
   const q = filtro.buscar.trim().toLowerCase();
@@ -101,12 +104,12 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
   const toca = (f: FilaNovedad) => (f.seguimiento && f.est_novedad === 1 && f.seguimiento.fecha <= hoy ? f.seguimiento.fecha : null);
   const porSeguir = filas.filter(toca).length;
   // Cantidad de cada pestaña (pedido del dueño, 11-nov-2026), igual en todos los países.
-  const esPendiente = (f: FilaNovedad) => (f.est_novedad === 1 && (!f.envio || f.envio.estado === "error")) || f.envio?.estado === "enviando";
+  const esPendiente = (f: FilaNovedad) => (f.est_novedad === 1 && (!f.envio || f.envio.estado === "error" || !!f.rechazada)) || f.envio?.estado === "enviando";
   const cuantas: Record<string, number> = {
     pendientes: filas.filter(esPendiente).length, seguimiento: porSeguir, enviadas: filas.filter((f) => enviadaHoy(f)).length, todas: filas.length,
   };
   const vista = filas.filter((f) => {
-    const pendiente = f.est_novedad === 1 && (!f.envio || f.envio.estado === "error");
+    const pendiente = f.est_novedad === 1 && (!f.envio || f.envio.estado === "error" || !!f.rechazada);
     if (filtro.estado === "seguimiento" && !toca(f)) return false;
     if (filtro.estado === "pendientes" && !pendiente && f.envio?.estado !== "enviando") return false;
     if (filtro.estado === "enviadas" && !enviadaHoy(f)) return false;
@@ -180,7 +183,7 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
     });
     setOcupada((o) => ({ ...o, [f.id]: false }));
     if (error) { setAviso((a) => ({ ...a, [f.id]: error.message })); return; }
-    setFilas((xs) => xs.map((x) => x.id === f.id ? { ...x, envio: { id: Number(data), estado: "enviando", mensaje: null, solucion: s!.nombre_solucion, usuario: email, en: new Date().toISOString() } } : x));
+    setFilas((xs) => xs.map((x) => x.id === f.id ? { ...x, rechazada: false, envio: { id: Number(data), estado: "enviando", mensaje: null, solucion: s!.nombre_solucion, usuario: email, en: new Date().toISOString() } } : x));
   }
 
   const m = med?.cuentas.find((c) => c.cuenta === cuenta);
@@ -252,9 +255,10 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
               const b = borrador(f);
               const sols = catalogo.get(f.transportadora_id) ?? [];
               const s = sols.find((x) => String(x.id_solucion) === b.sol);
-              const env = f.envio;
+              // Rechazada: se trabaja como si no se hubiera enviado (se puede mandar otra solución).
+              const env = f.rechazada ? null : f.envio;
               const enviada = env && env.estado !== "error";
-              const fondo = env?.estado === "enviada" ? "bg-green/10" : env?.estado === "enviando" ? "bg-amber/10" : aviso[f.id] || env?.estado === "error" ? "bg-red/10" : "";
+              const fondo = f.rechazada ? "bg-red/10" : env?.estado === "enviada" ? "bg-green/10" : env?.estado === "enviando" ? "bg-amber/10" : aviso[f.id] || env?.estado === "error" ? "bg-red/10" : "";
               const bloqueada = !!enviada || ocupada[f.id];
               const asesora = env?.usuario ?? Object.values(f.llamadas).sort((a, z) => z.en.localeCompare(a.en))[0]?.u ?? null;
               const seg = toca(f), sigue = b.sol === SEGUIR;
@@ -286,6 +290,12 @@ export function NovedadesBandeja({ cuenta, desde, hasta, filas: inicial, solucio
                     {f.devolucion && (
                       <div className="mb-1 inline-block rounded-full bg-red/15 px-2 py-0.5 text-[10px] font-bold text-red" title={f.devolucion}>
                         ↩ En devolución
+                      </div>
+                    )}
+                    {f.rechazada && f.envio && (
+                      <div className="mb-1 inline-block rounded-full bg-red px-2 py-0.5 text-[10px] font-bold text-white"
+                        title={`Se envió «${f.envio.solucion ?? "solución"}» el ${new Date(f.envio.en).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}${f.envio.usuario ? ` (${f.envio.usuario.split("@")[0]})` : ""} y la transportadora la rechazó: Effi la devolvió a «Pendiente de solución». Envía otra solución.`}>
+                        ⛔ Solución rechazada
                       </div>
                     )}
                     <div className="font-semibold md:truncate" title={f.novedad ?? ""}>{f.novedad}</div>
