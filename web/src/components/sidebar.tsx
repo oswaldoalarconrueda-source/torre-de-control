@@ -105,9 +105,24 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
     const t = setInterval(contar, 120_000);
     return () => { vivo = false; clearInterval(t); };
   }, [path, conOficina, vista]);
-  const numero = (href: string) => (href === "/oficina" ? porGestionar.effi : href === "/oficina-others" ? porGestionar.others : 0);
-  const Contador = ({ n, activo = false }: { n: number; activo?: boolean }) => n > 0
-    ? <span title="En oficina y sin gestionar hoy (sin llamada hoy, sin compromiso de retiro pendiente)" className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 num ${activo ? "bg-bg text-text" : "bg-red text-white"}`}>{n.toLocaleString("es-CO")}</span>
+  // Campañas sin identificar desde el inicio del negocio (pedido del dueño, 24-nov-2026): número rojo al lado del submenú.
+  const [campanasSin, setCampanasSin] = useState(0);
+  const conCampanas = !demo && (tieneModulo(acceso, "campanas") || tieneModulo(acceso, "productos"));
+  useEffect(() => {
+    if (!conCampanas) return;
+    let vivo = true;
+    const contar = async () => {
+      const { data } = await createClient().rpc("prod_campanas_sin_identificar");
+      if (vivo && data != null) setCampanasSin(Number(data));
+    };
+    contar();
+    const t = setInterval(contar, 300_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [path, conCampanas, vista]);
+  const numero = (href: string) => (href === "/oficina" ? porGestionar.effi : href === "/oficina-others" ? porGestionar.others
+    : href === "/campanas-sin-identificar" ? campanasSin : 0);
+  const Contador = ({ n, activo = false, titulo = "Pendientes por gestionar" }: { n: number; activo?: boolean; titulo?: string }) => n > 0
+    ? <span title={titulo} className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 num ${activo ? "bg-bg text-text" : "bg-red text-white"}`}>{n.toLocaleString("es-CO")}</span>
     : null;
   // Con el menú abierto en celular, la pantalla de atrás no se mueve.
   useEffect(() => {
@@ -125,7 +140,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
     return !it.modulo || tieneModulo(acceso, it.modulo);
   };
 
-  const item = (it: ItemMenu) => {
+  const item = (it: ItemMenu, sangria = false) => {
     if (!visible(it)) return null;
     const activo = path === it.href || path.startsWith(`${it.href}/`);
     return (
@@ -133,7 +148,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         key={it.href}
         href={`${it.href}${qs}`}
         aria-current={activo ? "page" : undefined}
-        className={`group flex items-center gap-3 rounded-lg py-2 max-lg:py-2.5 px-3 text-sm transition-colors ${
+        className={`group flex items-center gap-3 rounded-lg py-2 max-lg:py-2.5 pr-3 text-sm transition-colors ${sangria ? "pl-8" : "pl-3"} ${
           activo ? "bg-text text-bg font-medium shadow-sm" : "text-text/80 hover:text-text hover:bg-tinte/[0.05]"
         }`}
       >
@@ -145,7 +160,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         </span>
         {it.estado === "pronto" && <span className={`text-[10px] rounded-md px-1.5 py-0.5 ${activo ? "bg-bg/20" : "bg-tinte/[0.06] text-muted"}`}>pronto</span>}
         {it.href === "/usuarios" && porAceptar > 0 && <span className="text-[10px] font-bold rounded-full bg-amber px-1.5 py-0.5 text-black">{porAceptar}</span>}
-        <Contador n={numero(it.href)} activo={activo} />
+        <Contador n={numero(it.href)} activo={activo} titulo={it.href === "/campanas-sin-identificar" ? "Campañas con gasto desde el inicio que no tienen producto" : "En oficina y sin gestionar hoy (sin llamada hoy, sin compromiso de retiro pendiente)"} />
       </Link>
     );
   };
@@ -168,7 +183,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
           {!desplegado && <Contador n={pendientes} />}
           <ChevronDown size={14} className={`shrink-0 text-muted transition-transform ${desplegado ? "rotate-180" : ""}`} aria-hidden />
         </button>
-        {desplegado && hijos.map((h) => item(h))}
+        {desplegado && hijos.map((h) => item(h, !!it.sangria))}
       </div>
     );
   };

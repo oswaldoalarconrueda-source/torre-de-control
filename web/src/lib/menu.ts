@@ -16,6 +16,7 @@ export type ItemMenu = {
   modulo?: ModuloId;
   icono?: string; // imagen en lugar del emoji (p. ej. el logo de Lucid)
   hijos?: ItemMenu[]; // grupo que se abre y se cierra (el grupo sale solo si la persona ve algún hijo)
+  sangria?: boolean; // grupo cuyas pantallas van un poco a la derecha, como submenú (Productos, pedido del dueño 24-nov-2026)
 };
 
 // Orden del menú: lo del día a día arriba (Data Experience, Logistics, ValerIA/Agente), luego lo en vivo y al final lo
@@ -55,7 +56,7 @@ export const MENU_EN_VIVO: ItemMenu[] = [
 export const MENU_PRONTO: ItemMenu[] = [
   // Productos con su submenú (pedido del dueño, 23-nov-2026): «Campañas sin identificar» es otra pantalla con su propio
   // permiso, para dársela a un empleado sin darle Productos.
-  { href: "#productos", label: "Productos", emoji: "📦", estado: "vivo", hijos: [
+  { href: "#productos", label: "Productos", emoji: "📦", estado: "vivo", sangria: true, hijos: [
     { href: "/productos", label: "Productos", emoji: "📦", estado: "vivo", modulo: "productos" },
     { href: "/campanas-sin-identificar", label: "Campañas sin identificar", emoji: "🏷️", estado: "vivo", modulo: "campanas" },
   ] },
