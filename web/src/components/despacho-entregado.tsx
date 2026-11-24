@@ -20,7 +20,7 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
   // Effi: tarifa por guía despachada (NaturalFitt GT/EC), 4x1000 (CO) o, en las demás cuentas (p. ej. Valka), el
   // fulfillment que Effi cobra directamente en el wallet. Dropi: su comisión, que se cobra en las entregadas.
   const P = d.plataformas;
-  // Nombre de la otra plataforma: «O.A.» en Joalix; en A un clic Dropi (o Smart con ese filtro).
+  // Nombre de la otra plataforma: «Others» en Joalix; en A un clic Dropi (o Smart con ese filtro).
   const OA = nombrePlataforma("Dropi", cuenta, plataforma);
   const delWallet = tarifa == null && Number(d.fulfillment_wallet ?? 0) !== 0;
   const full = tarifa != null

@@ -45,7 +45,7 @@ async function verificar(l: Lectura): Promise<{ cuenta: string; por: string } | 
   const { data } = await createClient().rpc("dropi_verificar", { p_tiendas: tiendas, p_ordenes: ordenes.slice(0, 5000), p_guias: guias.slice(0, 5000) });
   const v = (data ?? {}) as { tiendas?: Record<string, string[]>; ordenes?: Record<string, number>; guias?: Record<string, number> };
   const porTienda = [...new Set(Object.values(v.tiendas ?? {}).flat())];
-  if (porTienda.length === 1) return { cuenta: porTienda[0], por: `tienda O.A. ${Object.keys(v.tiendas ?? {}).join(", ")}` };
+  if (porTienda.length === 1) return { cuenta: porTienda[0], por: `tienda Others ${Object.keys(v.tiendas ?? {}).join(", ")}` };
   const porOrden = Object.entries(v.ordenes ?? {}).sort((a, b) => b[1] - a[1]);
   if (porOrden.length && porOrden[0][1] >= 0.5 * porOrden.reduce((s, x) => s + x[1], 0))
     return { cuenta: porOrden[0][0], por: `${nf.format(porOrden[0][1])} órdenes ya cargadas ahí` };
@@ -65,7 +65,7 @@ async function leerArchivo(f: File): Promise<Lectura> {
     return leerTabla(data);
   }
   if (/\.xlsx$/i.test(f.name)) return leerTabla((await readSheet(f)) as Celda[][]);
-  throw new Error("Solo se aceptan .xlsx (O.A.) y .csv (Meta).");
+  throw new Error("Solo se aceptan .xlsx (Others) y .csv (Meta).");
 }
 
 // tiendas: las de la sociedad que el dueño está viendo (la barra lateral); el archivo nuevo va a la de ese país.
@@ -123,7 +123,16 @@ export function Cargador({ tiendas }: { tiendas: string[] }) {
           cambiar(it.key, { avance: Math.min(1, (i + BLOQUE) / Math.max(1, l.filas.length)) });
           if (!l.filas.length) break;
         }
-        cambiar(it.key, { estado: "listo", avance: 1, resultado: `${nf.format(filas)} filas guardadas${omitidas ? ` · ${nf.format(omitidas)} sin tienda` : ""}` });
+        // Órdenes de Others: el contacto de las que siguen en curso, para «Disp. en oficina (Others)».
+        let contactos = 0;
+        if (l.tipo === "dropi_ordenes" && l.clientes?.length && it.cuenta) {
+          for (let i = 0; i < l.clientes.length; i += BLOQUE) {
+            const { data, error } = await supabase.rpc("dropi_guardar_clientes", { p_cuenta: it.cuenta, p_filas: l.clientes.slice(i, i + BLOQUE) });
+            if (error) throw new Error(`Contactos: ${error.message}`);
+            contactos += Number(data ?? 0);
+          }
+        }
+        cambiar(it.key, { estado: "listo", avance: 1, resultado: `${nf.format(filas)} filas guardadas${omitidas ? ` · ${nf.format(omitidas)} sin tienda` : ""}${contactos ? ` · ${nf.format(contactos)} contactos para llamar` : ""}` });
       } catch (e) {
         cambiar(it.key, { estado: "error", error: (e as Error).message });
       }
@@ -155,7 +164,7 @@ export function Cargador({ tiendas }: { tiendas: string[] }) {
         <FileUp className="size-7 text-blue-2" aria-hidden />
         <div className="font-semibold">Arrastra aquí los archivos o haz clic para elegirlos</div>
         <div className="text-xs text-muted max-w-xl">
-          O.A.: <span className="font-mono">ordenes_*.xlsx</span>, <span className="font-mono">ordenes_productos_*.xlsx</span> e <span className="font-mono">historial de cartera-*.xlsx</span>.
+          Others: <span className="font-mono">ordenes_*.xlsx</span>, <span className="font-mono">ordenes_productos_*.xlsx</span> e <span className="font-mono">historial de cartera-*.xlsx</span>.
           Drop + icomfly (A un clic Honduras y El Salvador): <span className="font-mono">reporte-ordenes-*.xlsx</span>, <span className="font-mono">movimientos-*.xlsx</span> y <span className="font-mono">trazabilidad_pedidos_*.xlsx</span>, los tres juntos.
           Smart Commerce (A un clic Guatemala): <span className="font-mono">Pedidos_*.xlsx</span>, el reporte de pedidos completo, y <span className="font-mono">Transacciones_*.xlsx</span>, la billetera (los dos se pueden subir acumulados).
           Meta: el CSV de cada Business Manager con país, cuenta, campaña, día y monto gastado en COP. Puedes subir varios a la vez.

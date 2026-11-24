@@ -1,15 +1,17 @@
 // Lectura de los archivos que se cargan a mano mientras no hay API: Dropi (órdenes, órdenes por producto,
 // historial de cartera) y Meta (CSV por Business Manager). Se procesa en el navegador y solo se envía lo
-// necesario: sin nombre, teléfono, correo, documento ni dirección del cliente.
+// necesario: sin nombre, teléfono, correo, documento ni dirección del cliente. Excepción (24-nov-2026): de las órdenes de Others
+// que siguen en curso se guardan nombre, teléfono, dirección y ubicación (aparte, en dropi_clientes) para poder llamarlas desde
+// «Disp. en oficina (Others)»; al cerrarse la orden, el contacto se borra.
 
 export type TipoCarga = "dropi_ordenes" | "dropi_productos" | "dropi_cartera" | "meta_bm" | "drop_ordenes" | "drop_billetera" | "icomfly_pedidos" | "smart_pedidos" | "smart_billetera";
 export type Celda = string | number | boolean | Date | null | undefined;
 export type Fila = Record<string, unknown>;
 
 export const NOMBRE_TIPO: Record<TipoCarga, string> = {
-  dropi_ordenes: "O.A. · Órdenes",
-  dropi_productos: "O.A. · Órdenes por producto",
-  dropi_cartera: "O.A. · Historial de cartera",
+  dropi_ordenes: "Others · Órdenes",
+  dropi_productos: "Others · Órdenes por producto",
+  dropi_cartera: "Others · Historial de cartera",
   meta_bm: "Meta · CSV por BM",
   drop_ordenes: "Drop · Órdenes",
   drop_billetera: "Drop · Billetera",
@@ -26,7 +28,11 @@ export type Lectura = {
   hasta: string | null;
   totales: { etiqueta: string; valor: number; moneda?: boolean }[];
   avisos: string[];
+  clientes?: ContactoOthers[]; // órdenes de Others en curso: contacto para llamarlas (dropi_guardar_clientes)
 };
+export type ContactoOthers = { orden_id: number; nombre: string | null; telefono: string | null; direccion: string | null; ubicacion: string | null; notas: string | null };
+// Estados cerrados de Others: de estas órdenes no se guarda el contacto.
+const CERRADOS_OTHERS = new Set(["ENTREGADO", "DEVOLUCION", "CANCELADO", "RECHAZADO"]);
 
 // Encabezado sin tildes, en mayúsculas y sin espacios dobles: "Descripción " → "DESCRIPCION".
 const clave = (s: unknown) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
@@ -150,6 +156,18 @@ function dropiOrdenes(filas: Record<string, Celda>[]): Lectura {
     (f) => f.id,
   );
   const sinFecha = out.filter((f) => !f.fecha).length;
+  // Contacto de las órdenes en curso, para llamarlas cuando lleguen a la oficina.
+  const clientes: ContactoOthers[] = sinDuplicados(
+    filas.filter((r) => entero(r["ID"]) !== null && !CERRADOS_OTHERS.has((texto(r["ESTATUS"]) ?? "").toUpperCase())).map((r) => ({
+      orden_id: entero(r["ID"])!,
+      nombre: texto(r["NOMBRE CLIENTE"]),
+      telefono: id(r["TELEFONO"]),
+      direccion: [texto(r["DIRECCION"]), texto(r["CIUDAD DESTINO"])].filter(Boolean).join(", ") || null,
+      ubicacion: texto(r["UBICACION DE ULTIMO MOVIMIENTO"]),
+      notas: texto(r["NOTAS"]),
+    })),
+    (f) => f.orden_id,
+  );
   // La tienda ayuda a no mezclar cuentas Dropi distintas del mismo país (cada cuenta tiene su propia cartera).
   const tiendas = new Map<string, number>();
   out.forEach((f) => tiendas.set(f.tienda ?? "sin tienda", (tiendas.get(f.tienda ?? "sin tienda") ?? 0) + 1));
@@ -165,6 +183,7 @@ function dropiOrdenes(filas: Record<string, Celda>[]): Lectura {
       ...[...tiendas].map(([t, n]) => ({ etiqueta: `Tienda ${t}`, valor: n })),
     ],
     avisos: sinFecha ? [`${sinFecha} órdenes sin fecha se omiten.`] : [],
+    clientes,
   };
 }
 
@@ -285,7 +304,7 @@ export async function leerTabla(tabla0: Celda[][]): Promise<Lectura> {
   if (tipo === "dropi_productos") return dropiProductos(filas);
   if (tipo === "dropi_cartera") return dropiCartera(filas);
   if (tipo === "meta_bm") return metaBm(filas);
-  throw new Error("No reconozco el archivo: no es de O.A. (órdenes, productos o cartera), de Drop (órdenes o billetera), de icomfly (pedidos), de Smart Commerce (pedidos) ni un CSV de Meta.");
+  throw new Error("No reconozco el archivo: no es de Others (órdenes, productos o cartera), de Drop (órdenes o billetera), de icomfly (pedidos), de Smart Commerce (pedidos) ni un CSV de Meta.");
 }
 
 // ───────────── Drop + icomfly (A un clic Honduras y El Salvador; skill "a-un-clic-honduras-el-salvador-drop") ─────────────

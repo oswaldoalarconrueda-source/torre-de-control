@@ -18,13 +18,16 @@ export type ItemMenu = {
   hijos?: ItemMenu[]; // grupo que se abre y se cierra (el grupo sale solo si la persona ve algún hijo)
 };
 
-// Orden del menú: lo del día a día arriba (Data Experience, Novedades logística, ValerIA/Agente), luego lo en vivo y al final lo
+// Orden del menú: lo del día a día arriba (Data Experience, Logistics, ValerIA/Agente), luego lo en vivo y al final lo
 // que todavía no está ("pronto"). Las de solo dueño van en "Solo para ti".
 export const MENU_JOALIX: ItemMenu[] = [
   { href: "/datos", label: "Data Experience", emoji: "🛒", estado: "vivo", modulo: "resumen" },
   { href: "/tasa-despacho", label: "Tasa de despacho", emoji: "📦", estado: "vivo", modulo: "resumen", noProveeduria: true },
-  { href: "#logistica", label: "Novedades logística", emoji: "🚚", estado: "vivo", hijos: [
-    { href: "/oficina", label: "Disponible en oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
+  // «Logistics» (pedido del dueño, 24-nov-2026; antes «Novedades logística»): se despliega al tocarlo. «Disp. en oficina» es
+  // Effi; «Disp. en oficina (Others)» son los pedidos de la otra plataforma, con su número de pendientes. Novedades es solo Effi.
+  { href: "#logistica", label: "Logistics", emoji: "🚚", estado: "vivo", hijos: [
+    { href: "/oficina", label: "Disp. en oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
+    { href: "/oficina-others", label: "Disp. en oficina (Others)", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
     { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades", noProveeduria: true },
   ] },
   // El nombre lo pone la barra lateral según la sociedad: ValerIA en Joalix, Agente en las demás.

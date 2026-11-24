@@ -14,12 +14,12 @@ import { entero, haceCuanto } from "@/lib/formato";
 // Los países que también venden por Dropi (Joalix GT y CO, A un clic GT) muestran una segunda tarjeta con la billetera de
 // Dropi, que sale del historial de cartera cargado. En la demostración no se muestran (dropi = false), para no alterarla.
 
-type Movimiento = { fecha: string; tipo: string | null; t: number | null; valor: number; guia: string | null; anulado: boolean };
+type Movimiento = { fecha: string; tipo: string | null; t: number | null; valor: number; guia: string | null; anulado: boolean; origen?: string };
 type Wallet = {
   cuenta: string; divisa: string | null; saldo: number; movimientos_total: number; desde: string | null; ultimo: string | null;
   hoy: { entradas: number; salidas: number; neto: number; movimientos: number; recaudos: number; recaudo: number };
   serie: number[]; recientes: Movimiento[];
-  origen?: "drop" | "dropi" | "smart";
+  origen?: "drop" | "dropi" | "smart" | "todas";                        // todas: suma de las billeteras del país (pedido del dueño, 24-nov-2026)
   real?: boolean;                                                       // smart: true si el saldo sale de la billetera real cargada                                          // drop: A un clic HN/SV · dropi: cartera de Dropi del país (por archivo)
   retiros?: { fecha: string; concepto: string | null; monto: number }[]; // pendientes de saber cuántos pesos entraron y a qué cuenta
 };
@@ -35,13 +35,42 @@ const plata = (v: number, cuenta: string, divisa?: string | null) =>
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(v);
 const conSigno = (v: number, cuenta: string, divisa?: string | null) => `${v >= 0 ? "+" : "−"}${plata(Math.abs(v), cuenta, divisa)}`;
+// Destello de la tarjeta «Todas»: suma lo que cambió en sus billeteras en los últimos segundos.
+const cambioSuma = (cs: ({ delta: number; en: number } | undefined)[]) => {
+  const recientes = cs.filter((c): c is { delta: number; en: number } => !!c && Date.now() - c.en < 6000);
+  return recientes.length ? { delta: recientes.reduce((a, c) => a + c.delta, 0), en: Math.max(...recientes.map((c) => c.en)) } : undefined;
+};
 // Un país puede tener dos wallets (Effi y Dropi): la clave las distingue.
 const clave = (w: { cuenta: string; origen?: string }) => `${w.cuenta}:${w.origen ?? "effi"}`;
+// Nombre corto de cada billetera para el selector y las etiquetas (pedido del dueño, 24-nov-2026: «Todo · Effi · Others»): en Joalix la de Dropi es «Others»; en A un clic, su nombre real.
+const etiqueta = (cuenta: string, origen?: string) =>
+  origen === "todas" ? "Todo" : origen === "dropi" ? (infoCuenta(cuenta).sociedad === "A un clic" ? "Dropi" : "Others")
+    : origen === "smart" ? "Smart" : origen === "drop" ? "Drop" : "Effi";
+// Suma de las billeteras de un país (misma moneda): saldo, lo de hoy, la serie de 24 horas y los movimientos cruzados por fecha.
+function sumar(ws: Wallet[]): Wallet {
+  const base = ws[0];
+  const largo = Math.max(...ws.map((w) => w.serie.length));
+  const serie = ws.every((w) => w.serie.length === largo)
+    ? Array.from({ length: largo }, (_, i) => ws.reduce((a, w) => a + w.serie[i], 0)) : base.serie;
+  const hoy = { entradas: 0, salidas: 0, neto: 0, movimientos: 0, recaudos: 0, recaudo: 0 };
+  for (const w of ws) for (const k of Object.keys(hoy) as (keyof typeof hoy)[]) hoy[k] += Number(w.hoy[k] ?? 0);
+  return {
+    cuenta: base.cuenta, divisa: base.divisa, origen: "todas", hoy, serie,
+    saldo: ws.reduce((a, w) => a + w.saldo, 0),
+    movimientos_total: ws.reduce((a, w) => a + w.movimientos_total, 0),
+    desde: ws.map((w) => w.desde).filter(Boolean).sort()[0] ?? null,
+    ultimo: ws.map((w) => w.ultimo).filter(Boolean).sort().at(-1) ?? null,
+    recientes: ws.flatMap((w) => w.recientes.map((m) => ({ ...m, origen: w.origen ?? "effi" }))).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40),
+    retiros: ws.flatMap((w) => w.retiros ?? []),
+  };
+}
 
 export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
   const [datos, setDatos] = useState<Respuesta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null); // null = todas las wallets
+  // Países con más de una billetera: qué se ve en su tarjeta (todas sumadas, o una sola). Por defecto, todas.
+  const [vista, setVista] = useState<Record<string, string>>({});
   // Cambio de saldo por cuenta desde la consulta anterior (para el destello y el "+Q 329,01").
   const [cambio, setCambio] = useState<Record<string, { delta: number; en: number }>>({});
   const previo = useRef<Record<string, number>>({});
@@ -77,13 +106,28 @@ export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
   const cuentas = (datos?.cuentas ?? []).slice()
     .sort((a, b) => ORDEN.indexOf(a.cuenta) - ORDEN.indexOf(b.cuenta) || Number(!!a.origen) - Number(!!b.origen) || Number(a.origen === "smart") - Number(b.origen === "smart"));
   const conDropi = new Set(cuentas.filter((w) => w.origen === "dropi").map((w) => w.cuenta));
-  const elegida = sel ? cuentas.find((w) => clave(w) === sel) ?? null : null;
-  // En A un clic cada billetera con su nombre (Dropi, Smart); en Joalix la de Dropi es «O.A.».
-  const nombre = (w: { cuenta: string; origen?: string }) => `${infoCuenta(w.cuenta).nombre}${w.origen === "smart" ? " · Smart" : w.origen === "dropi" ? (infoCuenta(w.cuenta).sociedad === "A un clic" ? " · Dropi" : " · O.A.") : ""}`;
+  // Una tarjeta por país. Si el país tiene varias billeteras en la misma moneda, la tarjeta trae el selector
+  // Todo / Effi / Others (o Dropi y Smart en A un clic) y muestra la suma o la billetera elegida.
+  const grupos = cuentas.reduce<Wallet[][]>((g, w) => {
+    const ultimo = g.at(-1);
+    if (ultimo && ultimo[0].cuenta === w.cuenta) ultimo.push(w); else g.push([w]);
+    return g;
+  }, []);
+  const tarjetas = grupos.map((ws) => {
+    const sumable = ws.length > 1 && ws.every((w) => (w.divisa ?? "") === (ws[0].divisa ?? ""));
+    const opciones = sumable ? ["todas", ...ws.map((w) => w.origen ?? "effi")] : [];
+    const v = vista[ws[0].cuenta] ?? "todas";
+    const w = !sumable ? ws[0] : v === "todas" ? sumar(ws) : ws.find((x) => (x.origen ?? "effi") === v) ?? sumar(ws);
+    return { w, ws, opciones, v: sumable ? (w.origen ?? "effi") : null, resto: sumable ? [] : ws.slice(1) };
+  });
+  const visibles = tarjetas.flatMap((t) => [t.w, ...t.resto]);
+  const elegida = sel ? visibles.find((w) => clave(w) === sel) ?? null : null;
+  // En A un clic cada billetera con su nombre (Dropi, Smart); en Joalix la de Dropi es «Others».
+  const nombre = (w: { cuenta: string; origen?: string }) => `${infoCuenta(w.cuenta).nombre}${w.origen && w.origen !== "effi" ? ` · ${etiqueta(w.cuenta, w.origen)}` : ""}`;
   // Todas: los recientes de cada wallet, cruzados por fecha.
   const todos = cuentas.flatMap((w) => w.recientes.map((m) => ({ ...m, cuenta: w.cuenta, origen: w.origen, divisa: w.divisa })))
     .sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40);
-  const lista = elegida ? elegida.recientes.map((m) => ({ ...m, cuenta: elegida.cuenta, origen: elegida.origen, divisa: elegida.divisa })) : todos;
+  const lista = elegida ? elegida.recientes.map((m) => ({ ...m, cuenta: elegida.cuenta, origen: m.origen ?? elegida.origen, divisa: elegida.divisa })) : todos;
 
   if (!datos) return <div className="card p-10 text-center text-sm text-muted">{error ?? "Calculando saldos…"}</div>;
 
@@ -91,11 +135,23 @@ export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
     <div className="space-y-4">
       {error && <p className="text-xs text-amber" role="status">{error}</p>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {cuentas.map((w) => (
-          <Tarjeta key={clave(w)} w={w} cambio={cambio[clave(w)]} activa={!!elegida && clave(elegida) === clave(w)}
-            marcarEffi={!w.origen && conDropi.has(w.cuenta)}
-            onClick={() => setSel((s) => (s === clave(w) ? null : clave(w)))} />
-        ))}
+        {tarjetas.flatMap((t) => [
+          <Tarjeta key={t.w.cuenta + (t.opciones.length ? ":grupo" : `:${t.w.origen ?? "effi"}`)} w={t.w}
+            cambio={t.w.origen === "todas" ? cambioSuma(t.ws.map((x) => cambio[clave(x)])) : cambio[clave(t.w)]}
+            activa={!!elegida && clave(elegida) === clave(t.w)}
+            marcarEffi={!t.opciones.length && !t.w.origen && conDropi.has(t.w.cuenta)}
+            opciones={t.opciones} vista={t.v}
+            onVista={(o) => {
+              setVista((x) => ({ ...x, [t.w.cuenta]: o }));
+              // Si los movimientos de abajo eran de esta tarjeta, siguen a la billetera que se eligió.
+              setSel((s) => (s && s.startsWith(`${t.w.cuenta}:`) ? `${t.w.cuenta}:${o}` : s));
+            }}
+            onClick={() => setSel((s) => (s === clave(t.w) ? null : clave(t.w)))} />,
+          ...t.resto.map((w) => (
+            <Tarjeta key={clave(w)} w={w} cambio={cambio[clave(w)]} activa={!!elegida && clave(elegida) === clave(w)}
+              marcarEffi={false} onClick={() => setSel((s) => (s === clave(w) ? null : clave(w)))} />
+          )),
+        ])}
       </div>
 
       {lista.length > 0 && (
@@ -115,6 +171,7 @@ export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
                 <li key={`${clave(m)}-${m.fecha}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-2 text-sm sm:flex-nowrap">
                   <span className="shrink-0 whitespace-nowrap text-[11px] font-mono text-muted sm:w-36">{hora}</span>
                   {!elegida && <span className="shrink-0 truncate text-xs sm:w-36" title={nombre(m)}>{infoCuenta(m.cuenta).bandera} {nombre(m)}</span>}
+                  {elegida?.origen === "todas" && <span className="shrink-0 rounded-full border border-line px-1.5 text-[10px] font-mono text-muted">{etiqueta(m.cuenta, m.origen)}</span>}
                   <span className="min-w-0 flex-1 truncate max-sm:order-last max-sm:basis-full">
                     {m.tipo ?? "—"}
                     {m.anulado && <span className="ml-2 rounded-full border border-line px-1.5 text-[10px] text-muted">anulado</span>}
@@ -129,13 +186,16 @@ export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
       )}
       <p className="text-[11px] text-muted">
         El saldo es la suma de todos los movimientos de la wallet desde su primer día, como lo calcula Effi: un movimiento anulado y su reversión se cancelan entre sí. Se actualiza cada minuto con Effi y esta pantalla consulta cada 15 segundos.
-        {conDropi.size > 0 && " Las tarjetas de O.A. muestran el saldo del último historial de cartera cargado: se ponen al día cada vez que se carga la cartera."}
+        {conDropi.size > 0 && " Las tarjetas de Others muestran el saldo del último historial de cartera cargado: se ponen al día cada vez que se carga la cartera."}
       </p>
     </div>
   );
 }
 
-function Tarjeta({ w, cambio, activa, marcarEffi, onClick }: { w: Wallet; cambio?: { delta: number; en: number }; activa: boolean; marcarEffi: boolean; onClick: () => void }) {
+function Tarjeta({ w, cambio, activa, marcarEffi, onClick, opciones = [], vista = null, onVista }: {
+  w: Wallet; cambio?: { delta: number; en: number }; activa: boolean; marcarEffi: boolean; onClick: () => void;
+  opciones?: string[]; vista?: string | null; onVista?: (o: string) => void;
+}) {
   const pais = infoCuenta(w.cuenta);
   const reciente = cambio && Date.now() - cambio.en < 6000;
   const color = cambio && cambio.delta >= 0 ? "var(--green)" : "var(--red)";
@@ -148,17 +208,30 @@ function Tarjeta({ w, cambio, activa, marcarEffi, onClick }: { w: Wallet; cambio
     );
   }
   return (
-    <button
-      onClick={onClick}
-      className={`card p-5 text-left transition-all ${activa ? "ring-1 ring-blue/50" : "hover:ring-1 hover:ring-line"}`}
+    <div
+      role="button" tabIndex={0} onClick={onClick}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
+      className={`card p-5 text-left cursor-pointer transition-all ${activa ? "ring-1 ring-blue/50" : "hover:ring-1 hover:ring-line"}`}
       style={reciente ? { boxShadow: `0 0 0 1px ${color}, 0 0 32px -6px ${color}` } : undefined}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-y-2">
         <span className="flex items-center gap-2 text-sm font-semibold">{pais.bandera} {pais.nombre}</span>
         <span className="flex items-center gap-1">
-          {w.origen === "drop" && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Billetera de Drop, cargada por archivo">Drop</span>}
-          {w.origen === "dropi" && <span className="rounded-full border border-blue/40 px-2 py-0.5 text-[10px] font-mono text-blue" title="Billetera de O.A.: saldo del último historial de cartera cargado">{infoCuenta(w.cuenta).sociedad === "A un clic" ? "Dropi" : "O.A."}</span>}
-          {w.origen === "smart" && <span className="rounded-full border border-green/40 px-2 py-0.5 text-[10px] font-mono text-green" title={w.real ? "Billetera real de Smart Commerce: liquidaciones del reporte de transacciones cargado" : "Billetera de Smart Commerce calculada con los pedidos cargados (provisional hasta cargar el reporte de transacciones)"}>{w.real ? "Smart" : "Smart · calculada"}</span>}
+          {opciones.length > 0 && (
+            <span className="flex rounded-full border border-line p-0.5" role="group" aria-label="Qué billetera ver">
+              {opciones.map((o) => (
+                <button key={o} type="button" aria-pressed={vista === o}
+                  onClick={(e) => { e.stopPropagation(); onVista?.(o); }}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-mono transition-colors ${vista === o ? "bg-blue/15 text-blue" : "text-muted hover:text-text"}`}>
+                  {etiqueta(w.cuenta, o)}
+                </button>
+              ))}
+            </span>
+          )}
+          {w.origen === "smart" && opciones.length > 0 && !w.real && <span className="text-[10px] font-mono text-muted" title="Billetera de Smart Commerce calculada con los pedidos cargados (provisional hasta cargar el reporte de transacciones)">calculada</span>}
+          {opciones.length === 0 && w.origen === "drop" && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Billetera de Drop, cargada por archivo">Drop</span>}
+          {opciones.length === 0 && w.origen === "dropi" && <span className="rounded-full border border-blue/40 px-2 py-0.5 text-[10px] font-mono text-blue" title="Billetera de Others: saldo del último historial de cartera cargado">{infoCuenta(w.cuenta).sociedad === "A un clic" ? "Dropi" : "Others"}</span>}
+          {opciones.length === 0 && w.origen === "smart" && <span className="rounded-full border border-green/40 px-2 py-0.5 text-[10px] font-mono text-green" title={w.real ? "Billetera real de Smart Commerce: liquidaciones del reporte de transacciones cargado" : "Billetera de Smart Commerce calculada con los pedidos cargados (provisional hasta cargar el reporte de transacciones)"}>{w.real ? "Smart" : "Smart · calculada"}</span>}
           {marcarEffi && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted" title="Wallet de Effi, al día cada minuto">Effi</span>}
           <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-mono text-muted">{w.divisa ?? pais.divisa}</span>
         </span>
@@ -190,7 +263,7 @@ function Tarjeta({ w, cambio, activa, marcarEffi, onClick }: { w: Wallet; cambio
           {w.retiros.length > 6 && <div className="mt-1 text-muted">… y {w.retiros.length - 6} más</div>}
         </div>
       )}
-    </button>
+    </div>
   );
 }
 

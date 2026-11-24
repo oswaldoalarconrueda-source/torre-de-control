@@ -20,7 +20,7 @@ const MENU_OCULTO = "centro.menu-oculto";
 
 // Íconos de línea, de un solo color (pedido del dueño, 11-nov-2026: sin emojis de colores a la izquierda del nombre).
 const ICONOS: Record<string, LucideIcon> = {
-  "/tiempo-empleados": Timer, "/alertas": Bell, "/datos": ChartNoAxesColumn, "/tasa-despacho": PackageCheck, "#logistica": Truck, "/oficina": Store, "/novedades": TriangleAlert,
+  "/tiempo-empleados": Timer, "/alertas": Bell, "/datos": ChartNoAxesColumn, "/tasa-despacho": PackageCheck, "#logistica": Truck, "/oficina": Store, "/oficina-others": Store, "/novedades": TriangleAlert,
   "/agente": Bot, "/pedidos-lucid": MessageSquareText, "/proveeduria": Factory, "/global": Globe, "/publicidad": Megaphone,
   "/sin-liquidar": Hourglass, "/agente-admin": Receipt, "/sync": RefreshCw, "/cargas": Upload, "/usuarios": UserCog,
   "/guias": Truck, "/wallet-en-vivo": Wallet, "/dinero": Coins, "/productos": Package, "/flujo-caja": Banknote,
@@ -89,6 +89,26 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   }, [path, vista, sociedades, router]);
 
   useEffect(() => setAbierto(false), [path]);
+  // Guías y pedidos en oficina que falta gestionar hoy (pedido del dueño, 24-nov-2026): el número sale al lado de
+  // «Disp. en oficina Effi» y de «Disp. en oficina (Others)» y, con Logistics cerrado, al lado de Logistics.
+  // Se revisa al cambiar de pantalla y cada 2 minutos.
+  const [porGestionar, setPorGestionar] = useState<{ effi: number; others: number }>({ effi: 0, others: 0 });
+  const conOficina = !demo && tieneModulo(acceso, "oficina");
+  useEffect(() => {
+    if (!conOficina) return;
+    let vivo = true;
+    const contar = async () => {
+      const { data } = await createClient().rpc("oficina_pendientes_menu");
+      if (vivo && data) setPorGestionar({ effi: Number((data as { effi?: number }).effi ?? 0), others: Number((data as { others?: number }).others ?? 0) });
+    };
+    contar();
+    const t = setInterval(contar, 120_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [path, conOficina, vista]);
+  const numero = (href: string) => (href === "/oficina" ? porGestionar.effi : href === "/oficina-others" ? porGestionar.others : 0);
+  const Contador = ({ n, activo = false }: { n: number; activo?: boolean }) => n > 0
+    ? <span title="En oficina y sin gestionar hoy (sin llamada hoy, sin compromiso de retiro pendiente)" className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 num ${activo ? "bg-bg text-text" : "bg-red text-white"}`}>{n.toLocaleString("es-CO")}</span>
+    : null;
   // Con el menú abierto en celular, la pantalla de atrás no se mueve.
   useEffect(() => {
     if (!abierto) return;
@@ -105,7 +125,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
     return !it.modulo || tieneModulo(acceso, it.modulo);
   };
 
-  const item = (it: ItemMenu, sub = false) => {
+  const item = (it: ItemMenu) => {
     if (!visible(it)) return null;
     const activo = path === it.href || path.startsWith(`${it.href}/`);
     return (
@@ -113,33 +133,42 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
         key={it.href}
         href={`${it.href}${qs}`}
         aria-current={activo ? "page" : undefined}
-        className={`group flex items-center gap-3 rounded-lg py-2 max-lg:py-2.5 pr-3 text-sm transition-colors ${sub ? "pl-7" : "pl-3"} ${
+        className={`group flex items-center gap-3 rounded-lg py-2 max-lg:py-2.5 px-3 text-sm transition-colors ${
           activo ? "bg-text text-bg font-medium shadow-sm" : "text-text/80 hover:text-text hover:bg-tinte/[0.05]"
         }`}
       >
         <Icono href={it.href} />
-        <span className="flex-1 truncate">{it.href === "/agente" ? agente : it.label}</span>
+        <span className="min-w-0 flex-1 leading-snug">
+          {it.href === "/agente" ? agente : it.label}
+          {/* «Effi» en letra cursiva, como en sus redes (pedido del dueño, 24-nov-2026). */}
+          {it.href === "/oficina" && !demo && <span className="ml-1 text-[17px] leading-none" style={{ fontFamily: "'Brush Script MT', 'Segoe Script', 'Snell Roundhand', cursive" }}>Effi</span>}
+        </span>
         {it.estado === "pronto" && <span className={`text-[10px] rounded-md px-1.5 py-0.5 ${activo ? "bg-bg/20" : "bg-tinte/[0.06] text-muted"}`}>pronto</span>}
         {it.href === "/usuarios" && porAceptar > 0 && <span className="text-[10px] font-bold rounded-full bg-amber px-1.5 py-0.5 text-black">{porAceptar}</span>}
+        <Contador n={numero(it.href)} activo={activo} />
       </Link>
     );
   };
 
-  // Grupo plegable (Novedades logística): abierto por defecto, como una sección con sus pantallas debajo.
+  // Grupo plegable (Logistics, Productos): se ve como cualquier otro ítem del menú y al tocarlo despliega sus pantallas,
+  // alineadas con el resto (pedido del dueño, 24-nov-2026: sin correrlas a la derecha). Cerrado, salvo que se esté en una
+  // de sus pantallas; con el grupo cerrado, el número de pendientes de sus pantallas sale al lado del grupo.
   const grupo = (it: ItemMenu) => {
     const hijos = (it.hijos ?? []).filter(visible);
     if (!hijos.length) return null;
     const dentro = hijos.some((h) => path === h.href || path.startsWith(`${h.href}/`));
-    const desplegado = grupos[it.href] ?? true; // abierto, como una sección; se puede cerrar
+    const desplegado = grupos[it.href] ?? dentro;
+    const pendientes = hijos.reduce((a, h) => a + numero(h.href), 0);
     return (
-      <div key={it.href}>
-        {/* Grupo como título de sección (NOVEDADES LOGÍSTICA) que se abre y se cierra. */}
+      <div key={it.href} className="space-y-0.5">
         <button type="button" onClick={() => setGrupos((g) => ({ ...g, [it.href]: !desplegado }))} aria-expanded={desplegado}
-          className={`${titulo} flex w-full items-center gap-1.5 rounded-md pt-2 text-left hover:text-text ${dentro ? "text-text/80" : ""}`}>
+          className={`flex w-full items-center gap-3 rounded-lg py-2 max-lg:py-2.5 px-3 text-left text-sm transition-colors hover:bg-tinte/[0.05] hover:text-text ${dentro ? "text-text font-medium" : "text-text/80"}`}>
+          <Icono href={it.href} />
           <span className="flex-1 truncate">{it.label}</span>
-          <ChevronDown size={12} className={`shrink-0 transition-transform ${desplegado ? "rotate-180" : ""}`} aria-hidden />
+          {!desplegado && <Contador n={pendientes} />}
+          <ChevronDown size={14} className={`shrink-0 text-muted transition-transform ${desplegado ? "rotate-180" : ""}`} aria-hidden />
         </button>
-        {desplegado && <div className="mt-0.5 space-y-0.5">{hijos.map((h) => item(h, true))}</div>}
+        {desplegado && hijos.map((h) => item(h))}
       </div>
     );
   };

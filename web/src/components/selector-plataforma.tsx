@@ -3,17 +3,17 @@ import type { Plataforma } from "@/lib/datos";
 
 type SP = Record<string, string | string[] | undefined>;
 const OPCIONES: { id: Plataforma; label: string; activo: string }[] = [
-  { id: "ambas", label: "Ambas", activo: "bg-gradient-to-r from-blue/30 to-amber/30 text-text" },
+  { id: "ambas", label: "Todo", activo: "bg-gradient-to-r from-blue/30 to-amber/30 text-text" },
   { id: "effi", label: "Effi", activo: "bg-blue/25 text-text" },
-  { id: "dropi", label: "O.A.", activo: "bg-amber/25 text-text" },
+  { id: "dropi", label: "Others", activo: "bg-amber/25 text-text" },
   { id: "smart", label: "Smart", activo: "bg-green/25 text-text" },
 ];
 
 export const leerPlataforma = (sp: SP): Plataforma =>
   (sp.pl === "effi" || sp.pl === "dropi" || sp.pl === "smart" ? sp.pl : "ambas");
 
-// Filtro Ambas / Effi / O.A. del Dashboard Joalix (solo en tiendas que venden por las dos plataformas). En A un clic cada
-// plataforma va con su nombre (Dropi en vez de O.A.) y, si la tienda tiene pedidos de Smart Commerce, sale también «Smart».
+// Filtro Todo / Effi / Others del Dashboard Joalix (solo en tiendas que venden por las dos plataformas). En A un clic cada
+// plataforma va con su nombre (Dropi en vez de Others) y, si la tienda tiene pedidos de Smart Commerce, sale también «Smart».
 export function SelectorPlataforma({ sp, actual, aUnClic = false, conSmart = false }: { sp: SP; actual: Plataforma; aUnClic?: boolean; conSmart?: boolean }) {
   const href = (id: Plataforma) => {
     const q = new URLSearchParams();

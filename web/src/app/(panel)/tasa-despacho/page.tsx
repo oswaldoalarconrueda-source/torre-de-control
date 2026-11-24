@@ -46,7 +46,7 @@ export default async function TasaDespachoPage({ searchParams }: PageProps<"/tas
     <>
       <Encabezado
         titulo="📦 Tasa de despacho"
-        subtitulo="Por día: las ventas que entraron a LucidBot frente a las guías que se generaron ese día (Effi y O.A.). Tasa = guías ÷ ventas. Un día puede pasar de 100 % cuando se despachan ventas de días anteriores."
+        subtitulo="Por día: las ventas que entraron a LucidBot frente a las guías que se generaron ese día (Effi y Others). Tasa = guías ÷ ventas. Un día puede pasar de 100 % cuando se despachan ventas de días anteriores."
         f={{ ...f, cuentas: [cuenta] }}
         soloCuentas={cuentas.length ? cuentas : undefined}
       />
@@ -61,7 +61,7 @@ export default async function TasaDespachoPage({ searchParams }: PageProps<"/tas
               nota={`${conVentas.length} días con ventas cargadas`} />
             <Kpi etiqueta="Ventas LucidBot" valor={entero(t.ventas)} nota="Las que se cargan en Pedidos plataformas" />
             <Kpi etiqueta="Guías generadas" valor={entero(t.guias)}
-              nota={t.dropi ? `${entero(t.guias - t.dropi)} Effi · ${entero(t.dropi)} O.A.` : "Effi, sin anuladas"} />
+              nota={t.dropi ? `${entero(t.guias - t.dropi)} Effi · ${entero(t.dropi)} Others` : "Effi, sin anuladas"} />
           </div>
 
           <Panel titulo="Ventas vs. guías por día" className="mb-3"

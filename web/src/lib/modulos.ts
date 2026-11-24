@@ -4,7 +4,7 @@
 export const MODULOS = [
   { id: "resumen", nombre: "Data Experience", detalle: "Ventas, despachos, PyG y utilidad", rutas: ["/datos", "/tasa-despacho"] },
   { id: "global", nombre: "Global", detalle: "Todos los países juntos", rutas: ["/global"] },
-  { id: "oficina", nombre: "Disponible en oficina", detalle: "CRM para llamar a los clientes", rutas: ["/oficina"] },
+  { id: "oficina", nombre: "Disponible en oficina", detalle: "CRM para llamar a los clientes (Effi y Others)", rutas: ["/oficina", "/oficina-others"] },
   { id: "guias", nombre: "Guías y En vivo", detalle: "Transportadoras, ciudades y la operación en vivo", rutas: ["/guias", "/en-vivo"] },
   { id: "novedades", nombre: "Novedades", detalle: "Novedades de las guías", rutas: ["/novedades"] },
   { id: "dinero", nombre: "Dinero", detalle: "Wallet y PyG, Wallet en vivo y guías sin liquidar", rutas: ["/dinero", "/wallet-en-vivo", "/sin-liquidar"] },
@@ -13,7 +13,7 @@ export const MODULOS = [
   // Lo llenan el dueño, los socios y la empleada que tenga el módulo marcado.
   { id: "pedidos_lucid", nombre: "Pedidos plataformas", detalle: "Llenar cada día los pedidos que entran a LucidSales por país (los socios también lo llenan)", rutas: ["/pedidos-lucid"] },
   // Exclusivo: solo a quien se le marque (p. ej. la encargada que sube cada mañana la cartera de Dropi y la billetera de Drop).
-  { id: "cargas", nombre: "Cargar archivos", detalle: "Subir los Excel de cartera y órdenes (O.A., Drop, icomfly) de sus tiendas", rutas: ["/cargas"], exclusivo: true },
+  { id: "cargas", nombre: "Cargar archivos", detalle: "Subir los Excel de cartera y órdenes (Others, Drop, icomfly) de sus tiendas", rutas: ["/cargas"], exclusivo: true },
   // Pedido del dueño (21-nov-2026): Productos, Utilidad y Glosario ya no vienen con Data Experience; cada uno se da aparte.
   { id: "productos", nombre: "Productos y utilidad", detalle: "Ventas por producto, homologar campañas y la utilidad (también necesita Data Experience para ver los datos)", rutas: ["/productos", "/utilidad"] },
   // Pedido del dueño (23-nov-2026): homologar campañas aparte de Productos, para dárselo a un empleado solo con eso.

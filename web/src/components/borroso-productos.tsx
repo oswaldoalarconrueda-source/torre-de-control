@@ -7,8 +7,8 @@ import { useEffect } from "react";
 // lo que aparece después (tablas que se recargan, filtros, gráficas). Para agregar un producto nuevo, sumarlo a la lista.
 const PRODUCTOS = /(DREN|LINFAT|AGUAJE|BERBERIN|MAYAVERRA|ZOO+NE|OFTALMIEL|CLOROFIL|MULLEIN|GORDOLOBO|PRIVADO (ALI|SN)|BREATY|STONE DISOLVER|CANDELA CREAM|ROMPECALCULO|NIPPORI|DEBLOAT|CURCUMA|FUNRICH|VITALDROP|AMUA|BEEVANA|PIERDPESO|ERODUS)/;
 // La otra plataforma tampoco se nombra (17-nov): sus cifras van sumadas, pero los textos que la mencionan se limpian.
-// Desde el 20-nov la otra plataforma se llama «O.A.» en pantalla (antes «Otra P»): la demostración esconde los dos nombres.
-const OA = "(?:Otra P|O\\.A\\.)";
+// Desde el 20-nov la otra plataforma se llamó «O.A.» (antes «Otra P») y desde el 24-nov «Others»: la demostración esconde los tres.
+const OA = "(?:Otra P|O\\.A\\.|Others)";
 const PLATAFORMA = new RegExp(`${OA}|dropi`, "i");
 const sinPlataforma = (t: string) => t
   .replace(new RegExp(`Effi\\s+[\\d.,]+\\s*·\\s*${OA}\\s+[\\d.,]+`, "gi"), "")
@@ -26,11 +26,11 @@ function borrar(raiz: Node) {
     const el = n.parentElement;
     // Nunca dentro de scripts ni estilos: ahí viajan los datos de la página y cambiarlos la rompe.
     if (!el || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(el.tagName)) continue;
-    // Etiqueta de plataforma "Ambas" (estado de resultados): también se esconde.
-    if (/^\s*ambas\s*$/i.test(n.textContent ?? "") && el.tagName === "SPAN") { el.style.display = "none"; continue; }
+    // Etiqueta de plataforma "Ambas" o "Todo" (estado de resultados): también se esconde.
+    if (/^\s*(ambas|todo)\s*$/i.test(n.textContent ?? "") && el.tagName === "SPAN") { el.style.display = "none"; continue; }
     if (el && PLATAFORMA.test(n.textContent ?? "")) {
       // Etiqueta suelta ("Otra P"): se esconde; frase: se reescribe sin nombrarla.
-      if (/^\s*(otra p|o\.a\.|dropi)\s*$/i.test(n.textContent ?? "")) el.style.display = "none";
+      if (/^\s*(otra p|o\.a\.|others|dropi)\s*$/i.test(n.textContent ?? "")) el.style.display = "none";
       else n.textContent = sinPlataforma(n.textContent ?? "");
     }
     if (!el || el.dataset.borroso || !PRODUCTOS.test(normal(n.textContent ?? ""))) continue;

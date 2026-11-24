@@ -48,7 +48,7 @@ export default async function CargasPage() {
               {filasEstado.map((e) => (
                 <tr key={`${e.cuenta}-${e.fuente}`}>
                   <td>{nombreConSociedad(e.cuenta)}</td>
-                  <td>{/^(Órdenes|Historial de cartera)/.test(e.fuente) ? `O.A. · ${e.fuente}` : e.fuente}</td>
+                  <td>{/^(Órdenes|Historial de cartera)/.test(e.fuente) ? `Others · ${e.fuente}` : e.fuente}</td>
                   <td className="text-right num">{entero(e.filas)}</td>
                   <td className="text-muted font-mono text-xs">{e.desde ?? "—"}</td>
                   <td className="font-mono text-xs">{e.hasta ?? "—"}</td>

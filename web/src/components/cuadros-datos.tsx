@@ -74,7 +74,7 @@ function Inconsistencias({ p, $, nom }: { p: NonNullable<Awaited<ReturnType<type
   const total = p.reduce((a, i) => a + esperado(i), 0);
   return (
     <Recuadro titulo="Inconsistencias pendientes de pago"
-      ayuda="Guías entregadas sin recaudo en el wallet de Effi y órdenes entregadas sin ganancia en la cartera de O.A., de cualquier fecha hasta el fin del periodo. Se reclaman sin esperar días de rezago. El costo es el real cobrado o, si no lo hay, el promedio del producto.">
+      ayuda="Guías entregadas sin recaudo en el wallet de Effi y órdenes entregadas sin ganancia en la cartera de Others, de cualquier fecha hasta el fin del periodo. Se reclaman sin esperar días de rezago. El costo es el real cobrado o, si no lo hay, el promedio del producto.">
       {p.length ? (
         <table className="w-full border-separate border-spacing-y-1.5 text-sm">
           <thead>
@@ -184,7 +184,7 @@ function Gastos({ titulo, lineas, meses, $, totalLabel, nomina }: {
 
   return (
     <Recuadro titulo={titulo}
-      ayuda="Se cargan a mano o por Excel: estos gastos se pagan por fuera de Effi y O.A.. Se toman los meses completos que toca el calendario (no se prorratean por días). La nómina va por quincena: 1–15 y 16–fin de mes.">
+      ayuda="Se cargan a mano o por Excel: estos gastos se pagan por fuera de Effi y Others. Se toman los meses completos que toca el calendario (no se prorratean por días). La nómina va por quincena: 1–15 y 16–fin de mes.">
       {lineas.length ? (
         <table className="w-full border-separate border-spacing-y-1 text-sm">
           <thead>

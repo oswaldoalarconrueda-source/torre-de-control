@@ -74,12 +74,13 @@ export const minutosDesde = (iso: string | null | undefined, ahora = Date.now())
   return `${d} ${d === 1 ? "día" : "días"}`;
 };
 
-// Regla del dueño (28-oct, ajustada 31-oct): en Joalix la segunda plataforma se muestra como "O.A.", nunca con su nombre real.
+// Regla del dueño (28-oct, ajustada 31-oct): en Joalix la segunda plataforma se muestra como "Others", nunca con su nombre real.
 // En A un clic cada plataforma va con su nombre (Effi, Dropi, Smart; 22-nov-2026). Con el filtro «Smart» lo que no es Effi es Smart.
 export const nombrePlataforma = (p: string, cuenta?: string, sel?: string) => {
+  if (p === "Ambas") return "Todo";              // 24-nov-2026: el dueño pidió «Todo · Effi · Others» en todo el Centro de Control
   if (p !== "Dropi") return p;
   if (sel === "smart") return "Smart";
-  return cuenta && infoCuenta(cuenta).sociedad === "A un clic" ? "Dropi" : "O.A.";
+  return cuenta && infoCuenta(cuenta).sociedad === "A un clic" ? "Dropi" : "Others";
 };
 
 // Regla del dueño (21-nov): los nombres de centro de costos siempre con inicial mayúscula y lo demás en minúscula

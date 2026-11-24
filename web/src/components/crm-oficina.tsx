@@ -74,8 +74,9 @@ const whatsapp = (tel: string, cuenta: string) => {
 // entregaron, y cuántas de ellas se entregaron hoy.
 export type Efectividad = { contactadas: number; entregadas: number; entregadas_hoy: number };
 
-export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efectividad }: {
+export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efectividad, plataforma = "Effi" }: {
   cuenta: string; guias: GuiaOficina[]; esDueno?: boolean; ingresaronHoy?: number; efectividad?: Efectividad | null;
+  plataforma?: string; // de dónde salen las guías: Effi, u Others en «Disp. en oficina (Others)» (24-nov-2026)
 }) {
   const router = useRouter();
   // Cada minuto se vuelve a pedir la lista: las guías que Effi pasó a devolución o a entregada desaparecen sin que nadie
@@ -129,9 +130,9 @@ export function CrmOficina({ cuenta, guias, esDueno = false, ingresaronHoy, efec
       const cuando = h >= 48 ? `${Math.floor(h / 24)} d` : `${Math.floor(h)} h`;
       return d > DIAS_YA_RETIRO
         ? { tipo: "no_fue", vencida: true, orden: -h, etiqueta: `🚫 Dijo que retiró · hace ${cuando}`,
-            titulo: `Marcado "ya retiró" el ${hora(desde)} y en ${DIAS_YA_RETIRO} días Effi no la mostró entregada: volver a llamar` }
+            titulo: `Marcado "ya retiró" el ${hora(desde)} y en ${DIAS_YA_RETIRO} días ${plataforma} no la mostró entregada: volver a llamar` }
         : { tipo: "ya_retiro", vencida: false, orden: -h, etiqueta: `❓ Dijo que retiró · hace ${cuando}`,
-            titulo: `Marcado "ya retiró" el ${hora(desde)}; Effi todavía no la muestra entregada` };
+            titulo: `Marcado "ya retiró" el ${hora(desde)}; ${plataforma} todavía no la muestra entregada` };
     }
     if (codigo !== "retira_fecha" || !fecha) return null;
     // Fecha imposible (año mal escrito o anterior al día en que se marcó): hay que llamar y corregirla.
