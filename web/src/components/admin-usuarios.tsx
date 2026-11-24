@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Link2, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -37,11 +37,12 @@ const bandera = (slug: string) => infoCuenta(slug)?.bandera ?? "🏳️";
 
 export function AdminUsuarios({ datos, yo }: { datos: DatosAdmin; yo: string }) {
   const router = useRouter();
-  const [link, setLink] = useState("/registro");
+  // Siempre el link de la Torre en línea (Vercel), aunque el dueño esté viendo la página en su computador (localhost):
+  // con un link de localhost nadie más puede registrarse.
+  const link = "https://torre-de-control-inky.vercel.app/registro";
   const [copiado, setCopiado] = useState(false);
   const [editando, setEditando] = useState<string | null>(null);
   const [verManual, setVerManual] = useState(false);
-  useEffect(() => setLink(`${window.location.origin}/registro`), []);
 
   const pendientes = datos.usuarios.filter((u) => u.rol === "pendiente");
   const resto = datos.usuarios.filter((u) => u.rol !== "pendiente");

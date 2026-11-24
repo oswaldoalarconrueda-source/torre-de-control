@@ -45,6 +45,9 @@ const PAIS: Record<string, { nombre: string; bandera: string; moneda: string }> 
   TIENDA_GT: { nombre: 'Guatemala', bandera: '🇬🇹', moneda: 'GTQ' },
   TIENDA_CR: { nombre: 'Costa Rica', bandera: '🇨🇷', moneda: 'CRC' },
   VALKA_GT: { nombre: 'Valka', bandera: '🇬🇹', moneda: 'GTQ' },
+  AUNCLIC_GT: { nombre: 'Guatemala', bandera: '🇬🇹', moneda: 'GTQ' },
+  AUNCLIC_HN: { nombre: 'Honduras', bandera: '🇭🇳', moneda: 'HNL' },
+  AUNCLIC_SV: { nombre: 'El Salvador', bandera: '🇸🇻', moneda: 'USD' },
 };
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const fechaTxt = (iso: string) => `${Number(iso.slice(8, 10))} ${MESES[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
@@ -92,13 +95,17 @@ function graficas(filas: Fila[]) {
 
 // Correo "URGENTE · CPA REAL DEL DÍA" (informe_programado.tipo = 'cpa'): gasto de Meta del día ÷ pedidos de LucidSales
 // del día, por país, con los últimos 7 días y el mes para comparar. Todo en pesos (Meta cobra en COP).
-type Cpa = { cuenta: string; dia: { gasto: number; pedidos: number }; semana: { gasto: number; pedidos: number }; mes: { gasto: number; pedidos: number } };
-function htmlCpa(filas: Cpa[], dia: string) {
+// Desde el 24-nov-2026 también A un clic (Guatemala, Honduras y El Salvador, a las 8 a. m.): el gasto suma Meta + TikTok y
+// la parte de TikTok sale aparte debajo del gasto.
+type Periodo = { gasto: number; pedidos: number; tiktok?: number };
+type Cpa = { cuenta: string; dia: Periodo; semana: Periodo; mes: Periodo };
+function htmlCpa(filas: Cpa[], dia: string, titulo = '🚨 URGENTE · CPA real del día') {
+  const conTiktok = filas.some((f) => (f.dia.tiktok ?? 0) + (f.semana.tiktok ?? 0) + (f.mes.tiktok ?? 0) > 0);
   const cop = (x: number) => dinero(x, 'COP');
   const cpa = (p: { gasto: number; pedidos: number }) => (p.pedidos ? p.gasto / p.pedidos : null);
   const mesTxt = `${MESES_LARGO[Number(dia.slice(5, 7)) - 1]} (1–${Number(dia.slice(8, 10))})`;
   // Orden fijo del dueño: Colombia, Ecuador, Guatemala, Costa Rica.
-  const ORDEN = ['TIENDA_CO', 'TIENDA_EC', 'TIENDA_GT', 'TIENDA_CR'];
+  const ORDEN = ['TIENDA_CO', 'TIENDA_EC', 'TIENDA_GT', 'TIENDA_CR', 'AUNCLIC_GT', 'AUNCLIC_HN', 'AUNCLIC_SV'];
   const pos = (c: string) => (ORDEN.indexOf(c) + 1 || 99);
   const tarjetas = [...filas].sort((a, b) => pos(a.cuenta) - pos(b.cuenta)).map((f) => {
     const pa = PAIS[f.cuenta] ?? { nombre: f.cuenta, bandera: '🏳️', moneda: 'COP' };
@@ -107,16 +114,18 @@ function htmlCpa(filas: Cpa[], dia: string) {
     const color = dif == null ? '#8a96b3' : dif > 0.05 ? '#ff5470' : dif < -0.05 ? '#2fd28f' : '#ffb347';
     const flecha = dif == null ? '' : `${dif > 0 ? '▲' : '▼'} ${Math.abs(Math.round(dif * 100))}% vs. últimos 7 días`;
     // Tres filas iguales (ayer, 7 días, mes corrido): CPA · gasto · pedidos. Ayer va más grande y con el color del semáforo.
-    const fila = (titulo: string, p: { gasto: number; pedidos: number }, cpaTxt: string, grande: boolean, colorCpa: string, sub = '') => {
+    const fila = (titulo: string, p: Periodo, cpaTxt: string, grande: boolean, colorCpa: string, sub = '') => {
       const tam = grande ? '26px' : '18px';
       const celda = (etq: string, valor: string, c: string, s = '') =>
         `<td width="33%" style="padding:4px 12px 12px;vertical-align:top">
            <div style="font-size:11px;color:#8a96b3;text-transform:uppercase;letter-spacing:.06em">${etq}</div>
            <div style="font-size:${tam};font-weight:800;color:${c};margin-top:2px;white-space:nowrap">${valor}</div>${s ? `<div style="font-size:11px;color:${c === '#e8edf7' ? '#8a96b3' : c};margin-top:1px">${s}</div>` : ''}
          </td>`;
+      const tt = p.tiktok ?? 0;
+      const subGasto = conTiktok ? `Meta ${cop(p.gasto - tt)} · TikTok ${cop(tt)}` : '';
       return `
       <tr><td colspan="3" style="padding:12px 12px 4px;border-top:1px solid #1e2740;font-size:12px;font-weight:700;color:#c9d2e6">${titulo}</td></tr>
-      <tr>${celda(grande ? 'CPA real' : titulo.startsWith('Mes') ? 'CPA promedio' : 'CPA real', cpaTxt, colorCpa, sub)}${celda('Gasto Meta', cop(p.gasto), '#e8edf7')}${celda('Pedidos Lucid', p.pedidos ? n(p.pedidos) : '—', '#e8edf7')}</tr>`;
+      <tr>${celda(grande ? 'CPA real' : titulo.startsWith('Mes') ? 'CPA promedio' : 'CPA real', cpaTxt, colorCpa, sub)}${celda(conTiktok ? 'Gasto publicidad' : 'Gasto Meta', cop(p.gasto), '#e8edf7', subGasto)}${celda(conTiktok ? 'Pedidos' : 'Pedidos Lucid', p.pedidos ? n(p.pedidos) : '—', '#e8edf7')}</tr>`;
     };
     return `
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0f1526;border:1px solid #1e2740;border-radius:14px;margin:0 0 16px;border-collapse:separate">
@@ -130,8 +139,8 @@ function htmlCpa(filas: Cpa[], dia: string) {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px">
     <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%">
       <tr><td style="padding:0 4px 16px">
-        <div style="font-size:22px;font-weight:800;color:#ff5470">🚨 URGENTE · CPA real del día</div>
-        <div style="font-size:13px;color:#8a96b3;margin-top:4px">Ayer (${fechaTxt(dia)}) · gasto de Meta ÷ pedidos que entraron a LucidSales · en pesos colombianos, sin IVA de Meta</div>
+        <div style="font-size:22px;font-weight:800;color:#ff5470">${titulo}</div>
+        <div style="font-size:13px;color:#8a96b3;margin-top:4px">Ayer (${fechaTxt(dia)}) · ${conTiktok ? 'gasto de publicidad (Meta + TikTok) ÷ pedidos del día' : 'gasto de Meta ÷ pedidos que entraron a LucidSales'} · en pesos colombianos, sin IVA</div>
       </td></tr>
       <tr><td>${tarjetas || '<p style="color:#8a96b3">Sin gasto ni pedidos ayer.</p>'}</td></tr>
       <tr><td style="padding:8px 4px;font-size:12px;color:#8a96b3">
@@ -144,7 +153,7 @@ function htmlCpa(filas: Cpa[], dia: string) {
 
 // Recordatorio de las 7 a. m. (informe_programado.tipo = 'cpa_falta'): si todavía faltan los pedidos Lucid de ayer, el
 // correo de CPA no ha salido; avisa qué países faltan. Apenas se carguen, el de CPA sale solo.
-function htmlCpaFalta(faltan: string[], dia: string) {
+function htmlCpaFalta(faltan: string[], dia: string, titulo = '⏰ Faltan los pedidos Lucid de ayer') {
   const paises = faltan.map((c) => {
     const pa = PAIS[c] ?? { nombre: c, bandera: '🏳️', moneda: '' };
     return `<div style="font-size:18px;font-weight:700;color:#e8edf7;padding:6px 0">${pa.bandera} ${pa.nombre}</div>`;
@@ -153,12 +162,12 @@ function htmlCpaFalta(faltan: string[], dia: string) {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:24px 12px">
     <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%">
       <tr><td style="padding:0 4px 16px">
-        <div style="font-size:22px;font-weight:800;color:#ffb347">⏰ Faltan los pedidos Lucid de ayer</div>
+        <div style="font-size:22px;font-weight:800;color:#ffb347">${titulo}</div>
         <div style="font-size:14px;color:#c9d2e6;margin-top:8px;line-height:1.5">El correo del CPA real de ayer (${fechaTxt(dia)}) no ha salido porque faltan los pedidos de:</div>
       </td></tr>
       <tr><td style="background:#0f1526;border:1px solid #1e2740;border-radius:14px;padding:12px 16px">${paises}</td></tr>
       <tr><td style="padding:16px 4px;font-size:14px;color:#c9d2e6;line-height:1.5">
-        Llénalos en 📝 Pedidos Lucid y el correo del CPA sale solo apenas se guarden:<br>
+        Llénalos en 📝 Pedidos plataformas y el correo del CPA sale solo al minuto de quedar completos:<br>
         <a href="https://torre-de-control-inky.vercel.app/pedidos-lucid" style="color:#5aa2ff;font-weight:700">torre-de-control-inky.vercel.app/pedidos-lucid</a>
       </td></tr>
     </table>
@@ -301,18 +310,24 @@ Deno.serve(async (req) => {
       const asunto = `${prueba ? '[Prueba] ' : ''}${prog?.asunto ?? 'URGENTE · CPA REAL DEL DÍA'} · ${fechaLarga(dia)}`;
       const transporte = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: cred.user, pass: cred.pass } });
       // priority 'high' = X-Priority 1 e Importance: High (Gmail y Outlook lo marcan como importante).
-      const info = await transporte.sendMail({ from: `CPA real Joalix <${cred.user}>`, to: para.join(', '), subject: asunto, priority: 'high', html: htmlCpa(filas, dia) });
+      const soc = prog?.sociedad ?? 'Joalix AA Group';
+      const deQuien = soc === 'Joalix AA Group' ? 'Joalix' : soc;
+      const info = await transporte.sendMail({ from: `CPA real ${deQuien} <${cred.user}>`, to: para.join(', '), subject: asunto, priority: 'high',
+        html: soc === 'Joalix AA Group' ? htmlCpa(filas, dia) : htmlCpa(filas, dia, `📊 ${deQuien} · CPA real y publicidad del día`) });
       return json(200, { ok: true, enviados: para.length, asunto, id: info.messageId, paises: filas.length });
     }
     if ((prog?.tipo ?? url.searchParams.get('tipo')) === 'cpa_falta') {
       const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date(Date.now() - 86_400_000));
       let faltan = (await rpc('informe_cpa_faltan', { p_dia: dia, p_sociedad: prog?.sociedad ?? 'Joalix AA Group' })) as string[];
       // En prueba, si no falta nada, se ve con un ejemplo para revisar cómo llega.
-      if (prueba && !faltan?.length) faltan = ['TIENDA_CO', 'TIENDA_EC', 'TIENDA_GT'];
+      if (prueba && !faltan?.length) faltan = prog?.sociedad === 'A un clic' ? ['AUNCLIC_GT', 'AUNCLIC_HN'] : ['TIENDA_CO', 'TIENDA_EC', 'TIENDA_GT'];
       if (!faltan?.length) return json(200, { ok: true, enviados: 0, mensaje: 'Ya están todos los pedidos de ayer' });
       const asunto = `${prueba ? '[Prueba] ' : ''}${prog?.asunto ?? '⏰ Faltan los pedidos Lucid de ayer'} · ${faltan.map((c) => PAIS[c]?.nombre ?? c).join(', ')}`;
       const transporte = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: cred.user, pass: cred.pass } });
-      const info = await transporte.sendMail({ from: `CPA real Joalix <${cred.user}>`, to: para.join(', '), subject: asunto, priority: 'high', html: htmlCpaFalta(faltan, dia) });
+      const socF = prog?.sociedad ?? 'Joalix AA Group';
+      const deQuienF = socF === 'Joalix AA Group' ? 'Joalix' : socF;
+      const info = await transporte.sendMail({ from: `CPA real ${deQuienF} <${cred.user}>`, to: para.join(', '), subject: asunto, priority: 'high',
+        html: socF === 'Joalix AA Group' ? htmlCpaFalta(faltan, dia) : htmlCpaFalta(faltan, dia, `⏰ ${deQuienF} · Aún no están las ventas de ayer`) });
       return json(200, { ok: true, enviados: para.length, asunto, id: info.messageId, faltan });
     }
     const todas = (await rpc('informe_diario', { p_dias_atras: diasAtras })) as Fila[];
