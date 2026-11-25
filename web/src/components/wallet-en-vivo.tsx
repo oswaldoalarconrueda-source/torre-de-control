@@ -143,8 +143,9 @@ export function WalletEnVivo({ dropi = true }: { dropi?: boolean }) {
             opciones={t.opciones} vista={t.v}
             onVista={(o) => {
               setVista((x) => ({ ...x, [t.w.cuenta]: o }));
-              // Si los movimientos de abajo eran de esta tarjeta, siguen a la billetera que se eligió.
-              setSel((s) => (s && s.startsWith(`${t.w.cuenta}:`) ? `${t.w.cuenta}:${o}` : s));
+              // Los movimientos de abajo siguen al selector (pedido del dueño, 25-nov-2026): Effi u Others muestran solo los de
+              // esa billetera del país; Todo vuelve a los de todas las wallets.
+              setSel(o === "todas" ? null : `${t.w.cuenta}:${o}`);
             }}
             onClick={() => setSel((s) => (s === clave(t.w) ? null : clave(t.w)))} />,
           ...t.resto.map((w) => (
