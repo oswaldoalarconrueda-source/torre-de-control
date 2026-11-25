@@ -45,7 +45,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
     ])
     : [{ data: null }, { count: 0 }, { data: null }];
   // ValerIA si ve alguna tienda de Joalix; en las demás sociedades, Agente.
-  const agente = (cuentas ?? []).some((c) => nombreAgente(c.slug as string) === "ValerIA") ? "ValerIA" : "Agente";
+  const agente = nombreAgente((cuentas ?? [])[0]?.slug as string ?? "");
   const opciones = esOwner ? (lista ?? []).map((x) => x.nombre as string) : null;
 
   return (

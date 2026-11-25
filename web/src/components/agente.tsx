@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Clock, Fingerprint, Pause, Play, Truck } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, Fingerprint, Pause, Play, Search, Truck, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
@@ -63,7 +63,7 @@ type Recomendacion = {
   numeros: { nivel: string | null; recomendada: number | null; opciones: { id: number; guias?: number; devol: number; entrega?: number; flete?: number | null }[] };
 };
 const CO_HABILITADAS = [1, 4, 6, 10];
-const quienCrea = (cuenta: string) => (nombreAgente(cuenta) === "ValerIA" ? "ValerIA" : "el agente");
+const quienCrea = (_cuenta: string) => "el agente";
 // Transportadora con la que Effi creó la guía: "ENVÍA EFFI | CON RECAUDO | FLETE CRÉDITO" → "ENVÍA".
 const transportadoraDeGuia = (o: { plan: Plan | null }) =>
   String((o.plan?.resultado as { guia?: { nombre_transportadora?: string } } | undefined)?.guia?.nombre_transportadora ?? "").split("|")[0].replace(" EFFI", "").trim();
@@ -138,6 +138,18 @@ const duracion = (min: number) => (min < 60 ? `${Math.round(min)} min` : min < 1
 // rango: días del calendario (hora local del país); sin rango es hoy, en vivo. Con rango la pantalla es el historial
 // de esos días: el resumen del agente, sus errores y todas las órdenes del periodo, sin los controles de operación.
 // huella: la lista "Huella del cliente" de las guías de hoy (Guatemala), debajo del Agente en vivo.
+// Ícono y color de cada pestaña (25-nov-2026).
+const ESTILO_PESTANA: Record<string, { icono: string; color: string }> = {
+  sin_remision: { icono: "📦", color: "var(--blue-2)" },
+  flete_alto: { icono: "💸", color: "var(--red)" },
+  guia: { icono: "🚚", color: "var(--blue)" },
+  errores: { icono: "⚠️", color: "var(--red)" },
+  condicion: { icono: "📍", color: "var(--amber)" },
+  deficiencia: { icono: "📉", color: "var(--amber)" },
+  direccion: { icono: "✏️", color: "var(--naranja)" },
+  periodo: { icono: "📅", color: "var(--blue-2)" },
+};
+
 export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null, huella = null, extra = {}, acciones = {}, propuesta = {}, convenios = {} }: {
   cuenta: string; datos: DatosAuto; transportes?: Transportes; fabrica?: DatosFabrica | null; rango?: Periodo | null; huella?: ReactNode;
   extra?: Record<string, ExtraOrden>; acciones?: Record<string, AccionReciente>; propuesta?: Record<string, ParametrosPropuesta>; convenios?: Record<string, ConvenioSugerido>;
@@ -407,7 +419,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       await new Promise((r) => setTimeout(r, 2500));
       const { data } = await supabase.rpc("auto_estado_orden", ids);
       const d = data as { plan_estado?: string | null; plan_motivo?: string | null; plan_en?: string | null; con_remision?: boolean } | null;
-      if (d?.plan_estado && d.plan_en !== o.plan_en) {
+      // Se compara la hora (la base y la lista la escriben en formatos distintos).
+      if (d?.plan_estado && Date.parse(d.plan_en ?? "") !== Date.parse(o.plan_en ?? "")) {
         setPreparando(null);
         if (d.plan_estado === "lista" || d.plan_estado === "error" || (d.plan_estado === "revision" && d.con_remision)) setAbrirAlLlegar(clave);
         else setError(`La orden ${o.id} no se puede crear todavía: ${d.plan_motivo ?? "la debe revisar una persona"}`);
@@ -416,7 +429,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       }
     }
     setPreparando(null);
-    setError(`La orden ${o.id} todavía no quedó preparada: ValerIA la prepara en su próxima vuelta (cada 2 minutos).`);
+    setError(`La orden ${o.id} todavía no quedó preparada: el agente la prepara en su próxima vuelta (cada 2 minutos).`);
   }
   // Cuando la lista ya trae el plan de la orden que se acaba de preparar, se abre su panel de Ejecutar. Si quedó en error sin
   // nada que crear (por ejemplo, sin convenio), se dice por qué en vez de no hacer nada (orden 31775, 25-nov-2026).
@@ -474,9 +487,10 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     !!o.plan_motivo?.startsWith("Sin convenio");
   const tieneError = (o: OrdenAuto) => sinConvenioRemision(o) || (o.id_remision == null && o.estado !== "completa" && o.estado !== "anulada" && o.estado !== "resuelta" &&
     !pendienteResuelto(o) && (o.plan_estado === "error" || (o.plan_estado === "revision" && !esAbono(o))));
-  const errorDe = (o: OrdenAuto) => remisionAnulada(o)
+  // Los mensajes que vienen del agente todavía dicen «ValerIA» (nombre de antes del 25-nov-2026): aquí se muestra «el agente».
+  const errorDe = (o: OrdenAuto) => (remisionAnulada(o)
     ? o.motivos.find((m) => m.startsWith("La remisión está anulada")) ?? "La remisión está anulada"
-    : o.plan_motivo ?? (o.motivos.length ? o.motivos.join(" · ") : "Requiere revisión");
+    : o.plan_motivo ?? (o.motivos.length ? o.motivos.join(" · ") : "Requiere revisión")).replace(/ValerIA/g, "el agente");
   // Orden con condición = la ciudad tiene una condición de las asesoras (Ecuador: trato especial en La Concordia, Buena Fe
   // y Taisha; Colombia: anticipado, sin cobertura…) y por eso se hace a mano. Va en su propio filtro para que la persona
   // encargada sepa que las debe atender (pedido del dueño, 11-nov-2026); no se cuenta en pendientes ni en errores.
@@ -517,7 +531,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     { clave: "sin_remision", titulo: "Órdenes pendientes", filas: pendientes, vacio: "Ninguna orden pendiente.", conRemision: false, conGuia: false,
       texto: "Órdenes de venta vigentes que todavía no tienen remisión. Salen de aquí apenas se remisionan (las haga el agente o una persona)." },
     { clave: "flete_alto", titulo: "Flete alto", filas: conFleteAlto, vacio: "Ninguna orden a ciudades con flete muy alto.", conRemision: false, conGuia: false,
-      texto: "Prioridad. Arriba, las guías con flete alto que esperan que una persona las apruebe o las anule. Debajo, las órdenes a ciudades con condición «flete muy alto» de las asesoras logísticas: no se hacen solas, una persona decide si se envían." },
+      texto: "Órdenes a ciudades con flete muy alto: no se hacen solas, una persona decide con «Ejecutar» si se envían. Debajo, las guías con flete alto que esperan aprobar o anular." },
     { clave: "guia", titulo: "Remisiones pendientes por guía", filas: porGuia, vacio: "Ninguna remisión esperando guía.", conRemision: true, conGuia: false,
       texto: "Remisiones ya hechas que solo esperan la guía." },
     { clave: "errores", titulo: "Órdenes con errores", filas: conError, vacio: "Sin errores: todas las órdenes van bien.", conRemision: false, conGuia: false,
@@ -529,20 +543,28 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     { clave: "direccion", titulo: "Modificar dirección", filas: conCambioDireccion, vacio: "Ninguna orden para modificar dirección.", conRemision: false, conGuia: false,
       texto: "Órdenes enviadas a corregir la dirección: «Modificar dirección» la cambia en la orden de Effi y el agente rehace la remisión con la nueva. Salen de aquí al cambiarla." },
   ];
-  const [pestana, setPestana] = useState<string>("sin_remision");
+  const [pestana, setPestana] = useState<string>("");
   // Los avisos de abajo (abono, condición de envío) llevan a su filtro: ahí cada orden sale como llega de Effi.
   const irAFiltro = (clave: string, sub = "todas") => {
     setPestana(clave); setSubfiltro(sub);
     document.getElementById("filtros-agente")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const [busqueda, setBusqueda] = useState("");
-  const seccionActiva = secciones.find((x) => x.clave === pestana) ?? secciones[0];
   const normal = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const coincideBusqueda = (o: OrdenAuto) => {
     const q = normal(busqueda.trim());
     if (!q) return true;
     return [o.id, o.cliente, o.documento, o.telefono, o.ciudad, o.provincia, o.direccion, o.pedido].some((v) => normal(v).includes(q));
   };
+  // Pestañas por prioridad (pedido del dueño, 25-nov-2026): la que tiene más órdenes va primero y las que están en 0 no se
+  // muestran. Buscando, cada pestaña cuenta solo lo que coincide (así se ve dónde está lo buscado).
+  const cuantas = (x: (typeof secciones)[number]) => x.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`) && coincideBusqueda(o)).length
+    + (x.clave === "flete_alto" && !busqueda.trim() ? guiasFleteAlto : 0);
+  const conteos = new Map(secciones.map((x) => [x.clave, cuantas(x)]));
+  const visibles = secciones.length > 1
+    ? secciones.filter((x) => (conteos.get(x.clave) ?? 0) > 0).sort((a, b) => (conteos.get(b.clave) ?? 0) - (conteos.get(a.clave) ?? 0))
+    : secciones;
+  const seccionActiva = visibles.find((x) => x.clave === pestana) ?? visibles[0] ?? secciones[0];
   const soloHora = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, hour: "numeric", minute: "2-digit" }).format(new Date(iso));
   const fechaCorta = (iso: string) => new Intl.DateTimeFormat("es-CO", { timeZone: zona, day: "numeric", month: "short" }).format(new Date(iso)).replace(".", "").replace(" de ", " ");
   // Transportadoras a la vista: todas las que usa el país. Colombia: % de la matriz de entrega del plan; los demás países
@@ -750,47 +772,69 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       {/* Filtros principales, cada uno con su conteo; Órdenes pendientes trae sus sub-filtros. Buscador por orden, cliente,
           identificación, teléfono o ciudad. */}
       {secciones.length > 1 && (
-        <div id="filtros-agente" className="card p-3 space-y-2.5 scroll-mt-4">
-          <div className="flex flex-wrap items-center gap-2">
-            {secciones.map((x) => {
-              const n = x.filas.filter((o) => !ocultas.has(`${o.sucursal}-${o.id}`)).length + (x.clave === "flete_alto" ? guiasFleteAlto : 0);
-              const on = x.clave === seccionActiva.clave;
-              const rojo = (x.clave === "errores" || x.clave === "flete_alto") && n > 0;
-              const ambar = (x.clave === "condicion" || x.clave === "deficiencia") && n > 0;
-              return (
-                <button key={x.clave} type="button" onClick={() => { setPestana(x.clave); setSubfiltro("todas"); }} aria-pressed={on}
-                  className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${on ? "border-text bg-text text-bg" : rojo ? "border-red/50 text-red hover:bg-red/10" : ambar ? "border-amber/60 text-amber hover:bg-amber/10" : "border-line text-muted hover:text-text"}`}>
-                  {x.titulo} · {entero(n)}
-                </button>
-              );
-            })}
+        <div id="filtros-agente" className="card p-3 sm:p-4 space-y-3 scroll-mt-4">
+          {/* Buscador con lupa: busca en todas las pestañas. */}
+          <div>
+            <label className="flex items-center gap-2 rounded-full border border-line bg-bg px-4 py-2.5 focus-within:border-blue/60">
+              <Search size={16} className="shrink-0 text-muted" aria-hidden />
+              <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar órdenes"
+                placeholder="Buscar por número de orden, cliente, cédula, teléfono o ciudad"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" />
+              {busqueda && (
+                <button type="button" onClick={() => setBusqueda("")} aria-label="Borrar la búsqueda" className="rounded-full p-0.5 text-muted hover:text-text"><X size={14} /></button>
+              )}
+            </label>
+            <p className="mt-1 px-4 text-[11px] text-muted">
+              {busqueda.trim()
+                ? visibles.length ? "Solo quedan las pestañas donde está lo que buscas." : "No hay órdenes que coincidan con la búsqueda."
+                : "Ejemplos: 31775 · Ana · 3001234567 · Leticia. Busca en todas las pestañas."}
+            </p>
           </div>
-          {seccionActiva.clave === "sin_remision" && (
+          {visibles.length > 0 ? (
+            <>
+              <div className="flex items-center gap-2 px-1 text-[11px] uppercase tracking-wider text-muted">
+                <span>Por prioridad</span><span className="normal-case tracking-normal">· primero lo que tiene más órdenes</span>
+              </div>
+              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:flex-wrap">
+                {visibles.map((x) => {
+                  const n = conteos.get(x.clave) ?? 0, on = x.clave === seccionActiva.clave;
+                  const e = ESTILO_PESTANA[x.clave] ?? { icono: "📋", color: "var(--blue-2)" };
+                  return (
+                    <button key={x.clave} type="button" onClick={() => { setPestana(x.clave); setSubfiltro("todas"); }} aria-pressed={on}
+                      className={`inline-flex shrink-0 items-center gap-2 rounded-full border py-1.5 pl-3 pr-1.5 text-sm font-semibold transition-all ${on ? "-translate-y-px text-text" : "text-muted hover:-translate-y-px hover:text-text"}`}
+                      style={on
+                        ? { borderColor: e.color, background: `color-mix(in srgb, ${e.color} 16%, transparent)`, boxShadow: `0 8px 20px -10px ${e.color}` }
+                        : { borderColor: `color-mix(in srgb, ${e.color} 35%, transparent)` }}>
+                      <span aria-hidden>{e.icono}</span>
+                      <span className="whitespace-nowrap">{x.titulo}</span>
+                      <span className="num min-w-[1.9rem] rounded-full px-2 py-0.5 text-center text-xs font-bold text-black" style={{ background: e.color }}>{entero(n)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : !busqueda.trim() && (
+            <p className="px-1 text-sm text-green">✓ Todo al día: no hay órdenes pendientes, con errores ni por revisar.</p>
+          )}
+          {seccionActiva.clave === "sin_remision" && visibles.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
               <span className="text-[11px] uppercase tracking-wider text-muted">Filtrar:</span>
               {subfiltros.map((f) => {
-                const n = seccionActiva.filas.filter(f.cumple).length;
+                const n = seccionActiva.filas.filter((o) => f.cumple(o) && coincideBusqueda(o)).length;
                 const on = f.clave === subfiltro;
+                // Solo los que tienen órdenes (y «Todas»).
+                if (!n && f.clave !== "todas" && !on) return null;
                 return (
                   <button key={f.clave} type="button" onClick={() => setSubfiltro(f.clave)} aria-pressed={on}
-                    className={`rounded-md border px-3 py-1 text-xs font-semibold ${on ? "border-blue-2 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${on ? "border-blue-2 bg-blue/15 text-text" : "border-line text-muted hover:text-text"}`}>
                     {f.titulo} · {entero(n)}
                   </button>
                 );
               })}
             </div>
           )}
-          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar orden, cliente, identificación, teléfono o ciudad"
-            aria-label="Buscar en la lista" className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-blue/60" />
         </div>
       )}
-      {/* Flete alto: arriba las guías que esperan decisión (aprobar o anular); debajo, las órdenes a ciudades con flete alto. */}
-      {!rango && cuenta === "TIENDA_CO" && (
-        <div className={seccionActiva.clave === "flete_alto" ? "" : "hidden"}>
-          <FleteAlto cuenta={cuenta} onCambio={() => router.refresh()} onPendientes={setGuiasFleteAlto} />
-        </div>
-      )}
-
       {[seccionActiva].map((s0) => ({ ...s0, filas: s0.filas.filter((o) => coincideBusqueda(o) && (s0.clave !== "sin_remision" || (subfiltros.find((f) => f.clave === subfiltro) ?? subfiltros[0]).cumple(o))) })).map((s) => (
       <Fragment key={s.clave}>
       <div className="flex flex-wrap items-baseline gap-2 pt-2">
@@ -992,7 +1036,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                           <button
                             onClick={() => setConvenioPara(o)}
                             disabled={preparando === clave}
-                            title="Llegó sin convenio de dropshipping: escoge el convenio y ValerIA la prepara"
+                            title="Llegó sin convenio de dropshipping: escoge el convenio y el agente la prepara"
                             className="inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-3 py-1 text-xs font-semibold text-green hover:bg-green/20 disabled:opacity-60"
                           >
                             <Play size={12} /> {preparando === clave ? "Preparando…" : "Ejecutar"}
@@ -1001,7 +1045,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                           <button
                             onClick={() => prepararYEjecutar(o)}
                             disabled={preparando === clave}
-                            title="ValerIA todavía no la prepara: la prepara ya y abre el panel para crearla"
+                            title="El agente todavía no la prepara: la prepara ya y abre el panel para crearla"
                             className="inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-3 py-1 text-xs font-semibold text-green hover:bg-green/20 disabled:opacity-60"
                           >
                             <Play size={12} /> {preparando === clave ? "Preparando…" : "Ejecutar"}
@@ -1062,6 +1106,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       </div>
       </Fragment>
       ))}
+      {/* Flete alto (25-nov-2026): primero las órdenes para ejecutar (arriba) y debajo las guías con flete alto que esperan
+          que una persona las apruebe o las anule. */}
+      {!rango && cuenta === "TIENDA_CO" && (
+        <div className={seccionActiva.clave === "flete_alto" ? "" : "hidden"}>
+          <FleteAlto cuenta={cuenta} onCambio={() => router.refresh()} onPendientes={setGuiasFleteAlto} />
+        </div>
+      )}
 
 
       {huella}
@@ -1125,7 +1176,18 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       </div>
       )}
 
-      {error && <p className="text-sm text-red">{error}</p>}
+      {/* Errores a la vista (25-nov-2026): antes salían al final de la página y parecía que «Ejecutar» no hacía nada. */}
+      {error && (
+        <div role="alert" className="fixed inset-x-4 bottom-20 z-[90] mx-auto flex max-w-xl items-start gap-3 rounded-2xl border border-red/60 bg-panel p-4 shadow-2xl"
+          style={{ boxShadow: "0 12px 40px -12px var(--red)" }}>
+          <span className="text-xl" aria-hidden>⚠️</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-red">No se pudo ejecutar</div>
+            <div className="mt-0.5 text-sm">{error.replace(/ValerIA/g, "el agente")}</div>
+          </div>
+          <button type="button" onClick={() => setError(null)} aria-label="Cerrar el aviso" className="rounded-full p-1 text-muted hover:text-text"><X size={16} /></button>
+        </div>
+      )}
 
       {/* Columnas Remisión y Guía solo donde dicen algo: en "orden → remisión" siempre están vacías y empujaban "Acción"
           fuera de la pantalla; en "remisión → guía" la guía todavía no existe. */}

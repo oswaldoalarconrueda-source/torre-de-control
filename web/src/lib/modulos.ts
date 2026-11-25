@@ -8,7 +8,7 @@ export const MODULOS = [
   { id: "guias", nombre: "Guías y En vivo", detalle: "Transportadoras, ciudades y la operación en vivo", rutas: ["/guias", "/en-vivo"] },
   { id: "novedades", nombre: "Novedades", detalle: "Novedades de las guías", rutas: ["/novedades"] },
   { id: "dinero", nombre: "Dinero", detalle: "Wallet y PyG, Wallet en vivo y guías sin liquidar", rutas: ["/dinero", "/wallet-en-vivo", "/sin-liquidar"] },
-  { id: "automatizacion", nombre: "ValerIA / Agente", detalle: "Órdenes de venta y novedades del agente", rutas: ["/agente"] },
+  { id: "automatizacion", nombre: "Agente", detalle: "Órdenes de venta y novedades del agente", rutas: ["/agente"] },
   { id: "proveeduria", nombre: "Proveeduría", detalle: "Tablero de Distrilatam: ventas a las tiendas, inventario, compras y cartera", rutas: ["/proveeduria"] },
   // Lo llenan el dueño, los socios y la empleada que tenga el módulo marcado.
   { id: "pedidos_lucid", nombre: "Pedidos plataformas", detalle: "Llenar cada día los pedidos que entran a LucidSales por país (los socios también lo llenan)", rutas: ["/pedidos-lucid"] },

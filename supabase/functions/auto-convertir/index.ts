@@ -37,7 +37,13 @@ const EFFI_API = 'https://effi.com.co/api';
 const MIN_GAP_MS = 150;
 const DAY_MS = 86_400_000;
 const REGLAS_HORAS = 6;
-const MAX_ORDENES = 15;
+const MAX_ORDENES = 15;       // órdenes ya preparadas antes que se vuelven a revisar por corrida (las nuevas van todas)
+// Pedido del dueño (25-nov-2026): cada corrida saca todo lo pendiente, no solo 15. Las órdenes nunca preparadas (y las que
+// una persona marcó, como el convenio puesto a mano) se preparan todas; si no alcanza el tiempo, la corrida siguiente
+// arranca enseguida en vez de esperar los 2 minutos.
+const PREPARAR_MAX_MS = 100_000;
+const NUEVAS_MAX = 200;
+const ENCADENAR_MAX = 10;
 // Regla del dueño (23-nov): en Joalix todo va con convenio y el remitente de la guía sale del convenio. La orden o la
 // remisión sin convenio queda en error para que la atienda una persona y nunca se le hace guía.
 const JOALIX = (cuenta: string) => cuenta.startsWith('TIENDA_');
@@ -494,11 +500,15 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
       preparadas.set(`${g.sucursal}-${g.id}`, Date.parse(g.plan_en));
     }
   }
-  const pendientes = sinRemision
+  const ordenadas = sinRemision
     .map((o, i) => ({ o, i, t: preparadas.get(`${o.sucursal}-${o.id}`) ?? 0 }))
-    .sort((a, b) => a.t - b.t || Number(a.o.id) - Number(b.o.id) || a.i - b.i)
-    .slice(0, MAX_ORDENES)
-    .map((x) => x.o);
+    .sort((a, b) => a.t - b.t || Number(a.o.id) - Number(b.o.id) || a.i - b.i);
+  // Nuevas = nunca preparadas o marcadas para preparar primero (plan_en del año 2000). Van todas; de las demás, 15.
+  const esNueva = (t: number) => t < Date.UTC(2001, 0, 1);
+  const nuevas = ordenadas.filter((x) => esNueva(x.t)).slice(0, NUEVAS_MAX);
+  const pendientes = una ? ordenadas.slice(0, MAX_ORDENES).map((x) => x.o)
+    : [...nuevas, ...ordenadas.filter((x) => !esNueva(x.t)).slice(0, MAX_ORDENES)].map((x) => x.o);
+  let quedan = ordenadas.filter((x) => esNueva(x.t)).length - nuevas.length;
   const planesGuia = una ? [] : await planearGuias(api, cuenta, reglas, memoria, await sinCoberturaTotal(cuenta), desde, hasta);
   if (!pendientes.length) {
     await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: planesGuia, p_reglas: reglasNuevas });
@@ -538,6 +548,8 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
 
   const planes: Json[] = [];
   for (const o of pendientes) {
+    // Sin tiempo: lo que falta va en la corrida siguiente, que arranca enseguida.
+    if (!una && Date.now() - inicio > PREPARAR_MAX_MS) { quedan++; continue; }
     const plan: Json = {};
     const revision = (motivo: string) => planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: plan.articulos ?? null, estado: 'revision', motivo, plan });
     if (conAbono(o.nombre_cliente)) { plan.abono = true; revision('Con abono: el agente no la toca, hacer el proceso a mano en Effi'); continue; }
@@ -657,7 +669,7 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
   }
 
   const n = await rpc('auto_guardar_plan', { p_cuenta: cuenta, p_planes: [...planes, ...planesGuia], p_reglas: reglasNuevas });
-  const salida: Json = { pendientes: pendientes.length, planes: planes.length, listas: planes.filter((p) => p.estado === 'lista').length, guardadas: n };
+  const salida: Json = { pendientes: pendientes.length, planes: planes.length, listas: planes.filter((p) => p.estado === 'lista').length, guardadas: n, quedan };
   if (una) return { preparada: true, ...salida, estado: planes[0]?.estado ?? null, motivo: planes[0]?.motivo ?? null };
   if ((cfg.modo === 'automatico' || ahora) && PAISES_REMISION.includes(cuenta)) {
     salida.creadas = [];
@@ -665,6 +677,8 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
       // Varias a la vez: todas las listas de la Torre, de la más antigua a la más nueva (no solo las preparadas en esta corrida).
       const listas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&plan_estado=eq.lista&id_remision=is.null&guia=is.null`
         + `&or=(decision.is.null,decision.neq.descartar)&select=sucursal,id&order=id.asc&limit=${Number(cfg.max_crear) || MAX_CREAR}`);
+      // Si había más listas de las que caben en una corrida, la siguiente arranca enseguida.
+      if (listas.length >= (Number(cfg.max_crear) || MAX_CREAR)) salida.quedan = Number(salida.quedan ?? 0) + 1;
       salida.creadas = await enParalelo(listas, Number(cfg.paralelo), inicio, async (p) =>
         ahora || (await sigueAutomatico(cuenta)) ? crear(cuenta, Number(p.sucursal), Number(p.id), true)
           .catch((e) => ({ creada: false, error: String(e) })) : { creada: false, motivo: 'automático pausado' });
@@ -1136,7 +1150,7 @@ Deno.serve(async (req) => {
   const soloGuias = url.searchParams.get('solo') === 'guias';
   const salto = Number(url.searchParams.get('salto') ?? 0);
   const tarea = (async () => {
-    let seguir = false;
+    let seguir = false, seguirOrdenes = false;
     try {
       if (soloGuias) {
         // Tandas de 10 (regla del dueño) con una pausa entre tandas, hasta acabar o hasta ~100 s; si quedan, se sigue
@@ -1150,7 +1164,7 @@ Deno.serve(async (req) => {
         }
       } else {
         // Si la parte de órdenes falla (p. ej. Effi pide esperar), las guías de las remisiones hechas se hacen igual.
-        try { await convertir(cuenta, ahora); }
+        try { const r = await convertir(cuenta, ahora); seguirOrdenes = Number((r as Json)?.quedan ?? 0) > 0 && salto < ENCADENAR_MAX; }
         catch (e) { await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {}); }
         try { await oficinasCO(cuenta); }
         catch (e) { await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {}); }
@@ -1161,6 +1175,12 @@ Deno.serve(async (req) => {
       await rpc('auto_error_conversion', { p_cuenta: cuenta, p_error: String(e) }).catch(() => {});
     } finally {
       await rpc('auto_soltar', { p_cuenta: cuenta }).catch(() => {});
+    }
+    // Quedaron órdenes por preparar o por crear: otra corrida enseguida (hasta 10 seguidas).
+    if (seguirOrdenes) {
+      await fetch(`${SUPABASE_URL}/functions/v1/auto-convertir?cuenta=${cuenta}${ahora ? '&ahora=1' : ''}&salto=${salto + 1}`, {
+        method: 'POST', headers: { 'x-sync-token': token, 'Content-Type': 'application/json' }, body: '{}',
+      }).catch(() => {});
     }
     if (seguir) {
       await fetch(`${SUPABASE_URL}/functions/v1/auto-convertir?cuenta=${cuenta}&ahora=1&solo=guias&salto=${salto + 1}`, {

@@ -54,7 +54,7 @@ export function ConvenioOrden({ cuenta, orden, producto, otras, onCerrar, onList
           <h2 id="convenio-orden-titulo" className="font-display text-lg font-semibold">¿Qué convenio le pongo?</h2>
           <p className="mt-1 text-xs text-muted">
             La orden <b className="text-text">{orden.id}</b> ({producto}) llegó sin convenio de dropshipping. Escoge el convenio y
-            ValerIA prepara la remisión con ese convenio y la guía con su remitente. No hace falta entrar a Effi.
+            el agente prepara la remisión con ese convenio y la guía con su remitente. No hace falta entrar a Effi.
           </p>
         </div>
         {lista == null ? (
@@ -83,7 +83,7 @@ export function ConvenioOrden({ cuenta, orden, producto, otras, onCerrar, onList
           <label className="flex cursor-pointer items-start gap-2 text-sm">
             <input type="checkbox" checked={todas} onChange={(e) => setTodas(e.target.checked)} className="mt-1 accent-[var(--green)]" />
             <span>Poner este convenio también a las otras <b>{entero(otras)}</b> órdenes de {producto} sin convenio
-              <span className="block text-[11px] text-muted">ValerIA las prepara en sus próximas vueltas (cada 2 minutos, de a 15).</span></span>
+              <span className="block text-[11px] text-muted">El agente las prepara en sus próximas vueltas (cada 2 minutos, de a 15).</span></span>
           </label>
         )}
         {error && <p className="text-sm text-red">{error}</p>}
