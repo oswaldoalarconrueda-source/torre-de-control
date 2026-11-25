@@ -1,6 +1,6 @@
 import { createClient, exigirModulo } from "@/lib/supabase/server";
 import { hoyBogota, leerFiltros, rangoActivo, rangosRapidos, sumarDias } from "@/lib/filtros";
-import { infoCuenta, nombreAgente } from "@/lib/paises";
+import { infoCuenta, nombreAgente, ordenCuenta } from "@/lib/paises";
 import { Encabezado } from "@/components/encabezado";
 import { Agente, type DatosAuto, type Transportes } from "@/components/agente";
 import { FabricaAgente, type DatosFabrica } from "@/components/fabrica-agente";
@@ -10,13 +10,20 @@ import type { AccionReciente, ConvenioSugerido, ExtraOrden, ParametrosPropuesta 
 // Primer día con órdenes en la vigilancia del agente.
 const INICIO_AGENTE = "2026-10-01";
 
-// 🤖 Agente de órdenes de venta, país por país (empieza por Guatemala). Por ahora vigila: muestra cada orden con
+// 🤖 Agente de órdenes de venta, país por país (empieza por Colombia). Por ahora vigila: muestra cada orden con
 // su remisión y su guía, y marca lo que falta o no cumple las reglas. Crear en Effi se activa más adelante.
 export default async function AgentePage({ searchParams }: PageProps<"/agente">) {
   await exigirModulo("automatizacion");
   const sp = await searchParams;
-  const f = leerFiltros({ ...sp, c: typeof sp.c === "string" ? sp.c : "TIENDA_GT" });
-  const cuenta = f.cuentas?.[0] ?? "TIENDA_GT";
+  // Banderas: solo las tiendas que tienen agente y que la persona puede ver (en A un clic, Guatemala; Honduras y El
+  // Salvador van por Drop). Sin país en el link abre Colombia de Joalix (pedido del dueño, 25-nov-2026: las asesoras
+  // trabajan ahí). Solo cambia para Joalix: quien no ve TIENDA_CO (A un clic, Valka o el dueño mirando otra sociedad)
+  // entra a la primera tienda con agente que sí ve, como antes.
+  const { data: conAgente } = await (await createClient()).from("auto_config").select("cuenta");
+  const visibles = (conAgente ?? []).map((x) => x.cuenta as string);
+  const porDefecto = visibles.includes("TIENDA_CO") ? "TIENDA_CO" : ([...visibles].sort((a, b) => ordenCuenta(a) - ordenCuenta(b))[0] ?? "TIENDA_CO");
+  const f = leerFiltros({ ...sp, c: typeof sp.c === "string" ? sp.c : porDefecto });
+  const cuenta = f.cuentas?.[0] ?? porDefecto;
   // Calendario (11-nov): sin fechas en la URL es el mes en curso, para que no quede nada pendiente de días anteriores. Un
   // rango que termina hoy (Este mes, 7 días…) es "en vivo": todo lo que sigue abierto desde ese día (hasta 31 días) más
   // las órdenes de hoy. Un rango que termina antes de hoy es historial, hasta 7 días (Colombia tiene cientos de órdenes por día).
@@ -37,12 +44,10 @@ export default async function AgentePage({ searchParams }: PageProps<"/agente">)
     etiqueta: `${nombre ? `${nombre} · ` : ""}${desde === hasta ? fecha(desde) : `${fecha(desde)} – ${fecha(hasta)}`}${desde !== desdePedido ? " (últimos 7 días del rango)" : ""}`,
   };
   const supabase = await createClient();
-  const [{ data: config }, { data, error }, { data: fabrica }, { data: conAgente }, { data: extra }, { data: acciones }, { data: propuesta }, { data: convenios }] = await Promise.all([
+  const [{ data: config }, { data, error }, { data: fabrica }, { data: extra }, { data: acciones }, { data: propuesta }, { data: convenios }] = await Promise.all([
     supabase.from("auto_config").select("cuenta,modo,transportes:reglas->transportes").eq("cuenta", cuenta).maybeSingle(),
     supabase.rpc("auto_lista", rango ? { p_cuenta: cuenta, p_dias: 3, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta, p_dias: dias, p_solo_abiertas: true }),
     supabase.rpc("auto_fabrica", rango ? { p_cuenta: cuenta, p_desde: desde, p_hasta: hasta } : { p_cuenta: cuenta }),
-    // Banderas: solo las tiendas que tienen agente (en A un clic, Guatemala; Honduras y El Salvador van por Drop).
-    supabase.from("auto_config").select("cuenta"),
     // Lista "estilo Effi": historial del cliente y transportadoras de la ciudad de las órdenes abiertas, y los cambios en curso.
     rango ? Promise.resolve({ data: null }) : supabase.rpc("auto_ordenes_extra", { p_cuenta: cuenta, p_dias: dias }),
     supabase.rpc("auto_acciones_recientes", { p_cuenta: cuenta }),
