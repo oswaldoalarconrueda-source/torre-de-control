@@ -406,7 +406,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   const sinPreparar = (o: OrdenAuto) => porOrden && !rango && creaRemision && o.estado === "sin_remision" && o.id_remision == null &&
     !(o.plan as { abono?: boolean } | null)?.abono && ((!o.plan_estado && !o.plan) || ((o.plan_estado === "revision" || o.plan_estado === "error") && !o.plan?.remision));
   const [preparando, setPreparando] = useState<string | null>(null);
-  const [abrirAlLlegar, setAbrirAlLlegar] = useState<string | null>(null);
+  // Orden recién preparada y la hora de su plan nuevo: se espera a que la lista traiga ese plan (no el viejo).
+  const [abrirAlLlegar, setAbrirAlLlegar] = useState<{ clave: string; en: string | null } | null>(null);
   async function prepararYEjecutar(o: OrdenAuto) {
     const clave = `${o.sucursal}-${o.id}`;
     const ids = { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id };
@@ -422,7 +423,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       // Se compara la hora (la base y la lista la escriben en formatos distintos).
       if (d?.plan_estado && Date.parse(d.plan_en ?? "") !== Date.parse(o.plan_en ?? "")) {
         setPreparando(null);
-        if (d.plan_estado === "lista" || d.plan_estado === "error" || (d.plan_estado === "revision" && d.con_remision)) setAbrirAlLlegar(clave);
+        if (d.plan_estado === "lista" || d.plan_estado === "error" || (d.plan_estado === "revision" && d.con_remision)) setAbrirAlLlegar({ clave, en: d.plan_en ?? null });
         else setError(`La orden ${o.id} no se puede crear todavía: ${d.plan_motivo ?? "la debe revisar una persona"}`);
         router.refresh();
         return;
@@ -435,8 +436,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   // nada que crear (por ejemplo, sin convenio), se dice por qué en vez de no hacer nada (orden 31775, 25-nov-2026).
   useEffect(() => {
     if (!abrirAlLlegar) return;
-    const o = ordenes.find((x) => `${x.sucursal}-${x.id}` === abrirAlLlegar);
-    if (!o) return;
+    const o = ordenes.find((x) => `${x.sucursal}-${x.id}` === abrirAlLlegar.clave);
+    // Mientras la lista siga con el plan viejo no se decide nada (orden 31903, 25-nov-2026: salía el aviso de antes).
+    if (!o || (abrirAlLlegar.en && Date.parse(o.plan_en ?? "") < Date.parse(abrirAlLlegar.en))) return;
     setAbrirAlLlegar(null);
     if (puedeEjecutar(o)) abrirEjecutar(o);
     else if (sinConvenioOrden(o)) setConvenioPara(o);
