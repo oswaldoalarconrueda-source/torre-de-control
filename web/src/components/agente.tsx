@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { dinero, entero, haceCuanto } from "@/lib/formato";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { FleteAlto } from "./flete-alto";
+import { ConvenioOrden } from "./convenio-orden";
 import { FlujoAgente, type Periodo } from "./flujo-agente";
 import type { DatosFabrica } from "./fabrica-agente";
 import { AnularOrden, CeldaCliente, CeldaHistorial, CeldaTotales, CeldaTransportadoras, ProductosOrden, centroDe, fletePropuesta, SugerenciaConvenio, type AccionReciente, type ConvenioSugerido, type ExtraOrden, type FleteOpcion, type ParametrosPropuesta } from "./orden-effi";
@@ -144,6 +145,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   const router = useRouter();
   const [confirmarModo, setConfirmarModo] = useState(false);
   const [confirmarOrden, setConfirmarOrden] = useState<string | null>(null);
+  // Orden sin convenio de dropshipping: «Ejecutar» abre la ventana para escoger el convenio (25-nov-2026).
+  const [convenioPara, setConvenioPara] = useState<OrdenAuto | null>(null);
   // Lo que el dueño escoge al pulsar "Ejecutar" en una orden: qué paso hacer y por qué transportadora.
   const [eleccion, setEleccion] = useState<{ paso: Paso; transportadora: number | null }>({ paso: "ambas", transportadora: null });
   const [trayectos, setTrayectos] = useState<(Trayectos & { clave: string }) | null>(null);
@@ -415,12 +418,21 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     setPreparando(null);
     setError(`La orden ${o.id} todavía no quedó preparada: ValerIA la prepara en su próxima vuelta (cada 2 minutos).`);
   }
-  // Cuando la lista ya trae el plan de la orden que se acaba de preparar, se abre su panel de Ejecutar.
+  // Cuando la lista ya trae el plan de la orden que se acaba de preparar, se abre su panel de Ejecutar. Si quedó en error sin
+  // nada que crear (por ejemplo, sin convenio), se dice por qué en vez de no hacer nada (orden 31775, 25-nov-2026).
   useEffect(() => {
     if (!abrirAlLlegar) return;
     const o = ordenes.find((x) => `${x.sucursal}-${x.id}` === abrirAlLlegar);
-    if (o && puedeEjecutar(o)) { setAbrirAlLlegar(null); abrirEjecutar(o); }
+    if (!o) return;
+    setAbrirAlLlegar(null);
+    if (puedeEjecutar(o)) abrirEjecutar(o);
+    else if (sinConvenioOrden(o)) setConvenioPara(o);
+    else setError(`La orden ${o.id} no se puede crear todavía: ${o.plan_motivo ?? "la debe revisar una persona"}`);
   }, [ordenes, abrirAlLlegar]); // eslint-disable-line react-hooks/exhaustive-deps
+  // La orden llegó sin convenio de dropshipping (y todavía no se le escogió uno): se escoge en la ventana.
+  const sinConvenioOrden = (o: OrdenAuto) => porOrden && !rango && o.id_remision == null && o.estado === "sin_remision" &&
+    !!o.plan_motivo?.startsWith("Sin convenio de dropshipping: la orden");
+  const productosDe = (o: OrdenAuto) => (o.articulos ?? []).map((a) => a.id).sort().join(",");
   async function ejecutar(o: OrdenAuto) {
     const clave = `${o.sucursal}-${o.id}`;
     setConfirmarOrden(null);
@@ -579,6 +591,16 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
 
   return (
     <div className="space-y-4">
+      {convenioPara && (() => {
+        const o = convenioPara, mismos = productosDe(o);
+        const otras = ordenes.filter((x) => sinConvenioOrden(x) && productosDe(x) === mismos && !(x.sucursal === o.sucursal && x.id === o.id)).length;
+        return (
+          <ConvenioOrden cuenta={cuenta} orden={{ sucursal: o.sucursal, id: o.id }} otras={otras}
+            producto={(o.articulos ?? []).map((a) => a.nombre).join(" + ") || "sin producto"}
+            onCerrar={() => setConvenioPara(null)}
+            onListo={() => { setConvenioPara(null); prepararYEjecutar(o); }} />
+        );
+      })()}
       {/* Modo: Automático (la Torre crea sola remisión y guía, solo Guatemala) o Manual (crea cuando el dueño pulsa
           "Ejecutar ahora" o "Ejecutar" en una orden). */}
       {cfg && !rango && (
@@ -821,6 +843,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                     <CeldaCliente o={o} cuenta={cuenta} accion={acciones[clave]} onCambio={() => router.refresh()}
                       modo={rango || o.id_remision != null || o.estado === "anulada" || o.estado === "completa" ? "ninguno" : s.clave === "direccion" ? "editar" : "enviar"}
                       onEjecutar={puedeEjecutar(o) && !creando(o) ? () => abrirEjecutar(o)
+                        : sinConvenioOrden(o) ? () => setConvenioPara(o)
                         : sinPreparar(o) && preparando !== clave ? () => prepararYEjecutar(o) : null} />
                     <div className="text-xs">
                       {o.restriccion && (
@@ -964,6 +987,15 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                             className="inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-3 py-1 text-xs font-semibold text-green hover:bg-green/20 disabled:opacity-60"
                           >
                             <Play size={12} /> {creando(o) ? "Creando…" : "Ejecutar"}
+                          </button>
+                        ) : sinConvenioOrden(o) ? (
+                          <button
+                            onClick={() => setConvenioPara(o)}
+                            disabled={preparando === clave}
+                            title="Llegó sin convenio de dropshipping: escoge el convenio y ValerIA la prepara"
+                            className="inline-flex items-center gap-1 rounded-full border border-green/50 bg-green/10 px-3 py-1 text-xs font-semibold text-green hover:bg-green/20 disabled:opacity-60"
+                          >
+                            <Play size={12} /> {preparando === clave ? "Preparando…" : "Ejecutar"}
                           </button>
                         ) : sinPreparar(o) ? (
                           <button

@@ -13,6 +13,7 @@
 //
 // Reglas (Guatemala, pedidas por el dueño):
 // - Remisión desde la orden (action 3) con el convenio de dropshipping que trae la orden, sin cambiarlo.
+//   Si la orden no lo trae, el que una persona escogió en el Centro de Control (auto_convenio_manual, 25-nov-2026).
 // - Cliente con * al inicio del nombre (pedido recuperado de LucidBot) → centro de costos Recuperado.
 // - Cliente con + al inicio del nombre (regla del dueño, 5-nov) → centro de costos Sin confirmar. Si el país no lo tiene, una
 //   persona revisa la orden: no se crea por otro centro.
@@ -512,6 +513,9 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
   const guardadas: Json[] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&id=in.(${pendientes.map((o) => o.id).join(',')})&select=sucursal,id,articulos,plan_motivo`);
   const historial: { total: string; contenido: string; n: number }[] = await rpc('auto_historial_contenido', { p_cuenta: cuenta });
   const [centros] = await tabla(`auto_config?cuenta=eq.${cuenta}&select=centro_normal,centro_recuperado,centro_sin_confirmar`);
+  // Convenio escogido en el Centro de Control para órdenes que llegan sin convenio (25-nov-2026, auto_poner_convenio).
+  const manuales = new Map<string, string>((await tabla(`auto_convenio_manual?cuenta=eq.${cuenta}&id=in.(${pendientes.map((o) => o.id).join(',')})&select=sucursal,id,convenio`))
+    .map((m: Json) => [`${m.sucursal}-${m.id}`, String(m.convenio)]));
   // Detalle de las órdenes pendientes (api/detalle_orden_v: artículo, cantidad y precio de cada concepto, 29-oct): la
   // cantidad sale de la orden y ya no se adivina con las guías anteriores (un producto nuevo quedaba "sin antecedentes").
   // La fila no trae la sucursal: la orden se reconoce por id y fecha. Si la llave no tiene permiso de reportes, sigue
@@ -578,7 +582,7 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
     if (!det.length) { revision('No se pudo identificar el producto de la orden'); continue; }
 
     // 2. Convenio (el que trae la orden) y centro de costos.
-    const convenio = String(o.observacion ?? '').match(/Dropshipping:\s*([A-Za-z0-9]+)/)?.[1];
+    const convenio = String(o.observacion ?? '').match(/Dropshipping:\s*([A-Za-z0-9]+)/)?.[1] ?? manuales.get(`${o.sucursal}-${o.id}`);
     if (!convenio) {
       if (JOALIX(cuenta)) planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: plan.articulos ?? null, estado: 'error', motivo: SIN_CONVENIO_ORDEN, plan });
       else revision('La orden no trae convenio de dropshipping');
