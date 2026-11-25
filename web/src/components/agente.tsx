@@ -222,6 +222,12 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   const vaSola = (o: OrdenAuto) => cuenta === "TIENDA_CO" && o.plan_estado === "lista" && o.decision !== "descartar" && cumpleCondicion(o) && (
     (o.estado === "sin_remision" && (oficinaCO(o.plan?.remision?.direccion_cliente) !== null || !!coincide(o))) ||
     (o.estado === "sin_guia" && !!o.plan?.remision_existente && (oficinaDeOrden(o) !== null || !!coincide(o))));
+  // 🤖 Agentizado (pedido del dueño, 25-nov-2026): el agente la va a crear solo en su próxima vuelta (modo automático, lista
+  // y sin condición de ciudad que lo frene). En vez de «Ejecutar» sale la marca, para que nadie la haga a mano a la vez;
+  // queda un enlace chico «Hacerla yo» por si una persona la necesita ya.
+  const agentizado = (o: OrdenAuto) => !rango && modo === "automatico" && o.plan_estado === "lista" && o.decision !== "descartar" &&
+    o.id_remision == null && o.estado === "sin_remision" && !!o.plan?.remision && cumpleCondicion(o) && !(o.plan as { abono?: boolean } | null)?.abono;
+  const [hacerYo, setHacerYo] = useState<Set<string>>(new Set());
   // Las de remisión → guía que van solas siguen en su lista (con el aviso) hasta que el agente haga la guía.
   const paraCrear = (o: OrdenAuto) =>
     o.plan_estado === "lista" && (o.estado === "sin_remision" || o.estado === "sin_guia") && o.decision !== "descartar" && !(vaSola(o) && o.estado === "sin_remision");
@@ -409,6 +415,9 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   const [preparando, setPreparando] = useState<string | null>(null);
   // Orden recién preparada y la hora de su plan nuevo: se espera a que la lista traiga ese plan (no el viejo).
   const [abrirAlLlegar, setAbrirAlLlegar] = useState<{ clave: string; en: string | null } | null>(null);
+  // Hora del plan para comparar: sin plan = 0 (una orden recién llegada no tiene hora y la comparación daba «cambió» de una
+  // vez: salía «falta un dato en Effi» mientras la orden todavía se preparaba, orden 31948, 25-nov-2026).
+  const horaPlan = (x?: string | null) => (x ? Date.parse(x) || 0 : 0);
   async function prepararYEjecutar(o: OrdenAuto) {
     const clave = `${o.sucursal}-${o.id}`;
     const ids = { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id };
@@ -429,7 +438,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
         return;
       }
       // Se compara la hora (la base y la lista la escriben en formatos distintos).
-      if (d?.plan_estado && Date.parse(d.plan_en ?? "") !== Date.parse(o.plan_en ?? "")) {
+      if (d?.plan_estado && horaPlan(d.plan_en) > horaPlan(o.plan_en)) {
         setPreparando(null);
         if (d.plan_estado === "lista" || d.plan_estado === "error" || (d.plan_estado === "revision" && d.con_remision)) setAbrirAlLlegar({ clave, en: d.plan_en ?? null });
         else setError(`La orden ${o.id} no se puede crear: ${d.plan_motivo ?? "falta un dato en Effi para armar la remisión"}`);
@@ -446,7 +455,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     if (!abrirAlLlegar) return;
     const o = ordenes.find((x) => `${x.sucursal}-${x.id}` === abrirAlLlegar.clave);
     // Mientras la lista siga con el plan viejo no se decide nada (orden 31903, 25-nov-2026: salía el aviso de antes).
-    if (!o || (abrirAlLlegar.en && Date.parse(o.plan_en ?? "") < Date.parse(abrirAlLlegar.en))) return;
+    if (!o || horaPlan(o.plan_en) < horaPlan(abrirAlLlegar.en)) return;
     setAbrirAlLlegar(null);
     if (puedeEjecutar(o)) abrirEjecutar(o);
     else if (sinConvenioOrden(o)) setConvenioPara(o);
@@ -897,7 +906,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                   <td className="px-3 py-2 align-top">
                     <CeldaCliente o={o} cuenta={cuenta} accion={acciones[clave]} onCambio={() => router.refresh()}
                       modo={rango || o.id_remision != null || o.estado === "anulada" || o.estado === "completa" ? "ninguno" : s.clave === "direccion" ? "editar" : "enviar"}
-                      onEjecutar={puedeEjecutar(o) && !creando(o) ? () => abrirEjecutar(o)
+                      onEjecutar={agentizado(o) && !hacerYo.has(clave) ? null : puedeEjecutar(o) && !creando(o) ? () => abrirEjecutar(o)
                         : sinConvenioOrden(o) ? () => setConvenioPara(o)
                         : sinPreparar(o) && preparando !== clave ? () => prepararYEjecutar(o) : null} />
                     <div className="text-xs">
@@ -1033,6 +1042,16 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
                                 className="rounded-full bg-green px-3 py-1 text-xs font-bold text-black">Sí, crear</button>
                               <button onClick={() => setConfirmarOrden(null)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted hover:text-text">No</button>
                             </div>
+                          </div>
+                        ) : agentizado(o) && !creando(o) && !hacerYo.has(clave) ? (
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-blue/50 bg-blue/10 px-3 py-1 text-xs font-semibold text-blue-2"
+                              title="El agente la crea solo (remisión y guía) en su próxima vuelta: no hay que ejecutarla">
+                              🤖 Agentizado
+                            </span>
+                            <span className="text-[10px] text-muted">{sig ? `sale ${sig.en <= 1 ? "en 1 min" : `en ${sig.en} min`}` : "sale en la próxima vuelta"}</span>
+                            <button type="button" onClick={() => { setHacerYo((x) => new Set(x).add(clave)); abrirEjecutar(o); }}
+                              className="text-[10px] text-muted underline hover:text-text">Hacerla yo</button>
                           </div>
                         ) : puedeEjecutar(o) ? (
                           <button

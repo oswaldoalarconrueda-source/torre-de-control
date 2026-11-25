@@ -528,6 +528,9 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
   // Convenio escogido en el Centro de Control para órdenes que llegan sin convenio (25-nov-2026, auto_poner_convenio).
   const manuales = new Map<string, string>((await tabla(`auto_convenio_manual?cuenta=eq.${cuenta}&id=in.(${pendientes.map((o) => o.id).join(',')})&select=sucursal,id,convenio`))
     .map((m: Json) => [`${m.sucursal}-${m.id}`, String(m.convenio)]));
+  // Convenio de siempre de cada producto (≥95 % de sus remisiones en 30 días): para la orden que llega sin convenio
+  // (25-nov-2026, auto_convenio_por_producto).
+  const porProducto = ((await rpc('auto_convenio_por_producto', { p_cuenta: cuenta }).catch(() => null)) ?? {}) as Record<string, { convenio: string; nombre: string | null }>;
   // Detalle de las órdenes pendientes (api/detalle_orden_v: artículo, cantidad y precio de cada concepto, 29-oct): la
   // cantidad sale de la orden y ya no se adivina con las guías anteriores (un producto nuevo quedaba "sin antecedentes").
   // La fila no trae la sucursal: la orden se reconoce por id y fecha. Si la llave no tiene permiso de reportes, sigue
@@ -596,7 +599,14 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
     if (!det.length) { revision('No se pudo identificar el producto de la orden'); continue; }
 
     // 2. Convenio (el que trae la orden) y centro de costos.
-    const convenio = String(o.observacion ?? '').match(/Dropshipping:\s*([A-Za-z0-9]+)/)?.[1] ?? manuales.get(`${o.sucursal}-${o.id}`);
+    // Orden de prioridad: el de la orden, el que escogió una persona, y si no, el de siempre del producto (todos los
+    // productos de la orden con el mismo convenio).
+    const deLaOrdenConv = String(o.observacion ?? '').match(/Dropshipping:\s*([A-Za-z0-9]+)/)?.[1];
+    const manual = manuales.get(`${o.sucursal}-${o.id}`);
+    const delProducto = det.map((a) => porProducto[String(a.id)]?.convenio);
+    const porSuProducto = !deLaOrdenConv && !manual && delProducto.length && delProducto.every((c) => c && c === delProducto[0]) ? delProducto[0] : undefined;
+    const convenio = deLaOrdenConv ?? manual ?? porSuProducto;
+    if (convenio) plan.convenio_origen = deLaOrdenConv ? 'orden' : manual ? 'persona' : 'producto';
     if (!convenio) {
       if (JOALIX(cuenta)) planes.push({ sucursal: Number(o.sucursal), id: Number(o.id), articulos: plan.articulos ?? null, estado: 'error', motivo: SIN_CONVENIO_ORDEN, plan });
       else revision('La orden no trae convenio de dropshipping');
@@ -663,7 +673,7 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
     };
     plan.resumen = {
       producto: conceptos.length > 1 ? conceptos.map((c) => `${c.cantidad} × ${c.nombre}`).join(' + ') : conceptos[0].nombre,
-      cantidad, precio, total, convenio, recuperado, sin_confirmar: sinConfirmar, centro, varios: conceptos.length > 1, fuente: deLaOrden ? 'orden' : 'guias',
+      cantidad, precio, total, convenio, convenio_origen: plan.convenio_origen ?? null, recuperado, sin_confirmar: sinConfirmar, centro, varios: conceptos.length > 1, fuente: deLaOrden ? 'orden' : 'guias',
       remitente: Number(remitente), transportadora: elegido.t.nombre, motivo_transportadora: elegido.motivo, ciudad: o.nombre_ciudad,
       antecedentes: candidatas[0]?.n ?? null, ...(rec ? { recomendacion: rec } : {}),
     };
