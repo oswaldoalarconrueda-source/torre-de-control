@@ -166,6 +166,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     .map(([id, t]) => ({ id: Number(id), nombre: String(t.nombre ?? id).split("|").map((s) => s.trim()).join(" · "), guias: Number(t.guias ?? 0) }))
     .sort((a, b) => b.guias - a.guias);
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null); // avisos que no son error (p. ej. «ya la creó el agente»)
   const [guardando, setGuardando] = useState<string | null>(null);
   const modo = datos.config?.modo ?? "apagado";
   const alerta = datos.config?.minutos_alerta ?? 30;
@@ -411,7 +412,7 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
   async function prepararYEjecutar(o: OrdenAuto) {
     const clave = `${o.sucursal}-${o.id}`;
     const ids = { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id };
-    setError(null); setPreparando(clave);
+    setError(null); setAviso(null); setPreparando(clave);
     const supabase = createClient();
     const { error: e } = await supabase.rpc("auto_preparar_orden", ids);
     if (e) { setPreparando(null); setError(e.message); return; }
@@ -419,12 +420,19 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     while (Date.now() - inicio < 90_000) {
       await new Promise((r) => setTimeout(r, 2500));
       const { data } = await supabase.rpc("auto_estado_orden", ids);
-      const d = data as { plan_estado?: string | null; plan_motivo?: string | null; plan_en?: string | null; con_remision?: boolean } | null;
+      const d = data as { plan_estado?: string | null; plan_motivo?: string | null; plan_en?: string | null; con_remision?: boolean; id_remision?: number | null } | null;
+      // Mientras tanto el agente ya la creó (corre cada 2 minutos): se avisa eso, no un error.
+      if (d && (d.plan_estado === "creada" || d.id_remision != null)) {
+        setPreparando(null);
+        setAviso(`La orden ${o.id} ya la creó el agente${d.id_remision ? ` (remisión ${d.id_remision})` : ""}: no hay que ejecutarla.`);
+        router.refresh();
+        return;
+      }
       // Se compara la hora (la base y la lista la escriben en formatos distintos).
       if (d?.plan_estado && Date.parse(d.plan_en ?? "") !== Date.parse(o.plan_en ?? "")) {
         setPreparando(null);
         if (d.plan_estado === "lista" || d.plan_estado === "error" || (d.plan_estado === "revision" && d.con_remision)) setAbrirAlLlegar({ clave, en: d.plan_en ?? null });
-        else setError(`La orden ${o.id} no se puede crear todavía: ${d.plan_motivo ?? "la debe revisar una persona"}`);
+        else setError(`La orden ${o.id} no se puede crear: ${d.plan_motivo ?? "falta un dato en Effi para armar la remisión"}`);
         router.refresh();
         return;
       }
@@ -442,7 +450,8 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
     setAbrirAlLlegar(null);
     if (puedeEjecutar(o)) abrirEjecutar(o);
     else if (sinConvenioOrden(o)) setConvenioPara(o);
-    else setError(`La orden ${o.id} no se puede crear todavía: ${o.plan_motivo ?? "la debe revisar una persona"}`);
+    else if (o.plan_estado === "creada" || o.id_remision != null) setAviso(`La orden ${o.id} ya la creó el agente: no hay que ejecutarla.`);
+    else setError(`La orden ${o.id} no se puede crear: ${o.plan_motivo ?? "falta un dato en Effi para armar la remisión"}`);
   }, [ordenes, abrirAlLlegar]); // eslint-disable-line react-hooks/exhaustive-deps
   // La orden llegó sin convenio de dropshipping (y todavía no se le escogió uno): se escoge en la ventana.
   const sinConvenioOrden = (o: OrdenAuto) => porOrden && !rango && o.id_remision == null && o.estado === "sin_remision" &&
@@ -1178,6 +1187,13 @@ export function Agente({ cuenta, datos, transportes = {}, fabrica, rango = null,
       </div>
       )}
 
+      {aviso && !error && (
+        <div role="status" className="fixed inset-x-4 bottom-20 z-[90] mx-auto flex max-w-xl items-start gap-3 rounded-2xl border border-green/60 bg-panel p-4 shadow-2xl">
+          <span className="text-xl" aria-hidden>✅</span>
+          <div className="min-w-0 flex-1 text-sm">{aviso}</div>
+          <button type="button" onClick={() => setAviso(null)} aria-label="Cerrar el aviso" className="rounded-full p-1 text-muted hover:text-text"><X size={16} /></button>
+        </div>
+      )}
       {/* Errores a la vista (25-nov-2026): antes salían al final de la página y parecía que «Ejecutar» no hacía nada. */}
       {error && (
         <div role="alert" className="fixed inset-x-4 bottom-20 z-[90] mx-auto flex max-w-xl items-start gap-3 rounded-2xl border border-red/60 bg-panel p-4 shadow-2xl"
