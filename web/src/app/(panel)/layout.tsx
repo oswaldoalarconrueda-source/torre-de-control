@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { SinAcceso } from "@/components/sin-acceso";
 import { AgenteFlotante } from "@/components/agente-flotante";
 import { AlertaHuella } from "@/components/alerta-huella";
+import { AvisoCancelados } from "@/components/aviso-cancelados";
 import { tieneModulo } from "@/lib/modulos";
 import { infoCuenta, nombreAgente } from "@/lib/paises";
 import { SelectorTema } from "@/components/selector-tema";
@@ -60,6 +61,8 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
       {!demo && tieneModulo(usuario, "automatizacion") && <AgenteFlotante esOwner={esOwner} nombre={agente} />}
       {/* Huella del cliente: aviso al hacerse cada guía de Guatemala (solo trae las tiendas que el usuario ve). */}
       {!demo && tieneModulo(usuario, "automatizacion") && <AlertaHuella />}
+      {/* Pedido cancelado en icomfly con guía de Effi: pop-up para anularla antes del despacho (25-nov-2026). */}
+      {!demo && tieneModulo(usuario, "automatizacion") && <AvisoCancelados />}
       <main className="relative flex-1 min-w-0 px-4 sm:px-6 lg:px-8 pb-24 lg:pb-16 max-w-[1400px]">
         <div className="absolute right-8 top-6 z-30 hidden md:block"><SelectorTema /></div>
         {demo && <div className="-mx-4 sm:-mx-6 lg:-mx-8"><SoloLectura /><BorrosoProductos /></div>}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { dinero, entero } from "@/lib/formato";
 import { AsignarProducto, AceptarSugeridas, type ProductoHistorico } from "./asignar-producto";
 import { MarcaOtroPais } from "./marca-otro-pais";
+import { nombrePais } from "@/lib/paises";
 import { ExportarExcel, SubirExcel } from "./homologar-excel";
 
 // Lista de campañas con gasto y su producto: a mano (manda), por regla de palabra, o "Sin identificar". El dueño o un
@@ -78,6 +79,42 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar, de
   const base = vista === "sin" && !fProducto.trim() ? sinId : campanas;
   const lista = base.filter((c) => coincide(c.campana, fCampana) && coincide(c.cuentas, fCuenta) && coincide(productoDe(c), fProducto));
   const totalLista = lista.reduce((s, c) => s + c.cop, 0);
+  // Pauta entregada en otro país (pedido del dueño, 25-nov-2026): va aparte, al final, con el gasto por país, para que se
+  // vea que no es de esta tienda (p. ej. campañas de A un clic que salieron en Colombia y se cargan a Honduras).
+  const propias = lista.filter((c) => !c.otros_paises);
+  const fuera = lista.filter((c) => c.otros_paises);
+  const nombresPais = (p: string) => [...new Set(p.split(","))].map(nombrePais).join(" y ");
+  const porPais = [...fuera.reduce((m, c) => m.set(nombresPais(c.otros_paises!), (m.get(nombresPais(c.otros_paises!)) ?? 0) + c.cop), new Map<string, number>())]
+    .sort((a, b) => b[1] - a[1]);
+  const totalFuera = campanas.filter((c) => c.otros_paises).reduce((s, c) => s + c.cop, 0);
+
+  const fila = (c: CampanaHomologar) => {
+              const actual = c.manual ?? c.regla;
+              return (
+                <tr key={c.campana}>
+                  <td data-l="Campaña" className="text-left max-w-[26rem] whitespace-normal break-words font-medium max-md:col-span-6">{c.campana}<MarcaOtroPais paises={c.otros_paises} /></td>
+                  <td data-l="Cuenta" className="text-left text-muted max-w-[10rem] truncate max-md:col-span-6" title={c.cuentas}>{c.cuentas}</td>
+                  <td data-l="Gasto (COP)" className="num text-right max-md:col-span-4 max-md:text-left">{dinero(c.cop, "TIENDA_CO")}</td>
+                  <td data-l="Días" className="num text-right max-md:col-span-2 max-md:text-left">{c.dias}</td>
+                  <Fechas c={c} />
+                  <td data-l="Producto" className="text-left max-md:col-span-6">
+                    {actual ? (
+                      <span>
+                        {actual}{" "}
+                        <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${c.manual ? "bg-blue-2/15 text-blue-2" : "bg-tinte/5 text-muted"}`} title={c.manual ? `Asignado por ${c.asignado_por ?? "—"}` : `Regla: ${c.patron}`}>
+                          {c.manual ? "a mano" : "regla"}
+                        </span>
+                      </span>
+                    ) : <i className="text-amber">Sin identificar</i>}
+                  </td>
+                  {puedeEditar && (
+                    <td data-l="Asignar" className="text-left max-md:col-span-6">
+                      <AsignarProducto cuenta={cuenta} campana={c.campana} productos={productos} actual={actual} quitar={!!c.manual} />
+                    </td>
+                  )}
+                </tr>
+              );
+  };
 
   return (
     <section className="card p-4 sm:p-5 min-w-0">
@@ -87,6 +124,7 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar, de
           <p className="text-xs text-muted mt-0.5">
             {entero(campanas.length)} campañas · {dinero(total, "TIENDA_CO")} · sin identificar: {entero(sinId.length)} ({dinero(totalSin, "TIENDA_CO")}
             {total > 0 ? `, ${((totalSin / total) * 100).toFixed(1).replace(".", ",")} %` : ""})
+            {totalFuera > 0 && <> · <span className="text-red">{dinero(totalFuera, "TIENDA_CO")} en otros países (abajo)</span></>}
           </p>
         </div>
         <div className="flex gap-1 rounded-full border border-line p-0.5 text-sm">
@@ -115,9 +153,6 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar, de
         </div>
       )}
       {!puedeEditar && <p className="mt-2 text-xs text-muted">Solo el dueño o un socio pueden asignar productos.</p>}
-      {campanas.some((c) => c.otros_paises) && (
-        <p className="mt-2 text-xs text-muted"><span className="font-bold text-red">*</span> Pauta entregada en otro país donde la sociedad no tiene tienda; se carga a esta (pasa el mouse para ver el país).</p>
-      )}
       {puedeEditar && sinId.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
           <span>Las verdes son sugerencias por el nombre de la campaña (clic para aceptarlas); las amarillas, parecidos parciales para revisar.</span>
@@ -138,37 +173,33 @@ export function HomologarCampanas({ cuenta, campanas, productos, puedeEditar, de
             </tr>
           </thead>
           <tbody>
-            {lista.map((c) => {
-              const actual = c.manual ?? c.regla;
-              return (
-                <tr key={c.campana}>
-                  <td data-l="Campaña" className="text-left max-w-[26rem] whitespace-normal break-words font-medium max-md:col-span-6">{c.campana}<MarcaOtroPais paises={c.otros_paises} /></td>
-                  <td data-l="Cuenta" className="text-left text-muted max-w-[10rem] truncate max-md:col-span-6" title={c.cuentas}>{c.cuentas}</td>
-                  <td data-l="Gasto (COP)" className="num text-right max-md:col-span-4 max-md:text-left">{dinero(c.cop, "TIENDA_CO")}</td>
-                  <td data-l="Días" className="num text-right max-md:col-span-2 max-md:text-left">{c.dias}</td>
-                  <Fechas c={c} />
-                  <td data-l="Producto" className="text-left max-md:col-span-6">
-                    {actual ? (
-                      <span>
-                        {actual}{" "}
-                        <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${c.manual ? "bg-blue-2/15 text-blue-2" : "bg-tinte/5 text-muted"}`} title={c.manual ? `Asignado por ${c.asignado_por ?? "—"}` : `Regla: ${c.patron}`}>
-                          {c.manual ? "a mano" : "regla"}
-                        </span>
-                      </span>
-                    ) : <i className="text-amber">Sin identificar</i>}
-                  </td>
-                  {puedeEditar && (
-                    <td data-l="Asignar" className="text-left max-md:col-span-6">
-                      <AsignarProducto cuenta={cuenta} campana={c.campana} productos={productos} actual={actual} quitar={!!c.manual} />
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-            {lista.length === 0 && <tr><td colSpan={puedeEditar ? 9 : 8} className="text-center text-muted">{filtrando ? "Ninguna campaña coincide con los filtros." : vista === "sin" ? "✓ Todas las campañas del periodo tienen producto." : "Sin campañas con gasto en el periodo."}</td></tr>}
+            {propias.map(fila)}
+            {propias.length === 0 && <tr><td colSpan={puedeEditar ? 9 : 8} className="text-center text-muted">{filtrando ? "Ninguna campaña coincide con los filtros." : vista === "sin" ? "✓ Todas las campañas del periodo tienen producto." : "Sin campañas con gasto en el periodo."}</td></tr>}
           </tbody>
         </table>
       </div>
+
+      {fuera.length > 0 && (
+        <div className="mt-5 rounded-xl border border-red/40 bg-red/5 p-3 sm:p-4">
+          <h3 className="font-display text-sm font-semibold text-red">🌎 Gasto en otros países · {dinero(fuera.reduce((s, c) => s + c.cop, 0), "TIENDA_CO")}</h3>
+          <p className="mt-0.5 text-xs text-muted">Campañas que salieron en un país donde esta sociedad no tiene tienda; el gasto se carga a esta tienda, pero sus ventas no pueden estar aquí.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {porPais.map(([pais, cop]) => (
+              <span key={pais} className="rounded-full border border-red/40 bg-panel px-3 py-1 text-xs font-semibold">
+                {pais}: <span className="num text-red">{dinero(cop, "TIENDA_CO")}</span>
+              </span>
+            ))}
+          </div>
+          <div className="fichas-caja mt-3 overflow-x-auto max-md:mx-0">
+            <table className="tabla fichas w-full min-w-max text-sm">
+              <thead>
+                <tr><th className="text-left">Campaña</th><th className="text-left">Cuenta</th><th className="text-right">Gasto (COP)</th><th className="text-right">Días</th><th className="text-left">Inicio</th><th className="text-left">Último gasto</th><th className="text-left">Estado en Meta</th><th className="text-left">Producto</th>{puedeEditar && <th className="text-left">Asignar</th>}</tr>
+              </thead>
+              <tbody>{fuera.map(fila)}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

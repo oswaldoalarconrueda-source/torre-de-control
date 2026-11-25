@@ -1116,6 +1116,46 @@ async function anularGuiaFlete(cuenta: string, sucursal: number, id: number) {
   return { ok: true };
 }
 
+// Pedido cancelado en icomfly con guía de Effi (25-nov-2026, cancelado_decidir): se revisa en Effi que la guía no tenga
+// relación de despacho y se anula. Si ya tiene relación, queda «ya salió» para gestionarla como devolución. La remisión
+// queda en «Novedad en la orden» para que el agente no le vuelva a hacer guía.
+async function anularGuiaCancelada(cuenta: string, sucursal: number, id: number) {
+  const [fila] = await tabla(`cancelados_gestion?cuenta=eq.${cuenta}&sucursal=eq.${sucursal}&id_guia=eq.${id}&decision=eq.anulando&select=decision_por,pedido`);
+  if (!fila) return { ok: false, motivo: 'No está marcada para anular' };
+  const fin = (decision: string, mensaje: string | null) =>
+    rpc('cancelado_resultado', { p_cuenta: cuenta, p_sucursal: sucursal, p_id: id, p_decision: decision, p_mensaje: mensaje });
+  const keys: { slug: string; api_key: string }[] = await rpc('effi_get_api_keys', {});
+  const key = keys.find((k) => k.slug === cuenta)?.api_key;
+  if (!key) { await fin('ya_salio', 'Sin llave de Effi: no se pudo anular'); return { ok: false }; }
+  const api = new Effi(key);
+  const [g] = (await api.get('guia_transporte', { id, sucursal, por_pagina: 1, pagina: 1 })).data;
+  if (!g) { await fin('ya_salio', 'Effi no encuentra esta guía'); return { ok: false }; }
+  if (g.vigente !== '0') {
+    if (g.id_relacion_despacho) {
+      await fin('ya_salio', `Ya tiene la relación de despacho ${g.id_relacion_despacho}: gestiónala como devolución con la transportadora`);
+      return { ok: false };
+    }
+    const r = await api.post('guia_transporte', { sucursal, id,
+      observacion_anular: `Cliente canceló el pedido ${fila.pedido ?? ''} (icomfly): anulada desde el Centro de Control por ${fila.decision_por ?? 'una persona'}`.slice(0, 255) }, 'DELETE');
+    if (!r.ok) {
+      const mensaje = r.respuesta?.mensaje ?? r.respuesta?.texto ?? `HTTP ${r.status}`;
+      await fin('ya_salio', `Effi no dejó anular: ${typeof mensaje === 'string' ? mensaje.slice(0, 300) : JSON.stringify(mensaje).slice(0, 300)}`);
+      return { ok: false };
+    }
+  }
+  await fin('anulada', `Guía ${g.guia} anulada`);
+  if (String(g.t_trans_ref) === '4' && g.id_ref) {
+    const [o] = await tabla(`auto_ordenes?cuenta=eq.${cuenta}&sucursal_remision=eq.${g.sucursal_ref}&id_remision=eq.${g.id_ref}&select=sucursal,id`);
+    if (o) {
+      const motivo = `Cliente canceló el pedido en icomfly: guía ${g.guia} anulada. Anula la remisión ${g.id_ref} en Effi o márcala resuelta`;
+      await rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_paso: 'guia', p_ok: null, p_mensaje: `${motivo} (${fila.decision_por ?? 'una persona'})`, p_datos: null });
+      await rpc('auto_resultado', { p_cuenta: cuenta, p_sucursal: o.sucursal, p_id: o.id, p_estado: 'error', p_motivo: motivo, p_resultado: {
+        paso: 'guia', remision: { id: Number(g.id_ref), sucursal: Number(g.sucursal_ref), id_transaccion: g.id_ref } } });
+    }
+  }
+  return { ok: true };
+}
+
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 Deno.serve(async (req) => {
@@ -1133,6 +1173,17 @@ Deno.serve(async (req) => {
       return json(200, await anularGuiaFlete(cuenta, suc, id));
     } catch (e) {
       await rpc('auto_flete_resultado', { p_cuenta: cuenta, p_sucursal: suc, p_id: id, p_ok: false, p_mensaje: `Falla inesperada: ${String(e).slice(0, 300)}` }).catch(() => {});
+      return json(500, { ok: false, mensaje: String(e) });
+    }
+  }
+  const canceladaParam = url.searchParams.get('anular_cancelada');
+  if (canceladaParam) {
+    const [suc, id] = canceladaParam.split('-').map(Number);
+    if (!suc || !id) return json(400, { ok: false, mensaje: 'anular_cancelada=sucursal-id' });
+    try {
+      return json(200, await anularGuiaCancelada(cuenta, suc, id));
+    } catch (e) {
+      await rpc('cancelado_resultado', { p_cuenta: cuenta, p_sucursal: suc, p_id: id, p_decision: 'ya_salio', p_mensaje: `Falla inesperada: ${String(e).slice(0, 300)}` }).catch(() => {});
       return json(500, { ok: false, mensaje: String(e) });
     }
   }
