@@ -41,7 +41,7 @@ const MAX_ORDENES = 15;       // órdenes ya preparadas antes que se vuelven a r
 // Pedido del dueño (25-nov-2026): cada corrida saca todo lo pendiente, no solo 15. Las órdenes nunca preparadas (y las que
 // una persona marcó, como el convenio puesto a mano) se preparan todas; si no alcanza el tiempo, la corrida siguiente
 // arranca enseguida en vez de esperar los 2 minutos.
-const PREPARAR_MAX_MS = 100_000;
+const PREPARAR_MAX_MS = 60_000;
 const NUEVAS_MAX = 200;
 const ENCADENAR_MAX = 10;
 // Regla del dueño (23-nov): en Joalix todo va con convenio y el remitente de la guía sale del convenio. La orden o la
@@ -198,7 +198,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Prueba de capacidad (pedido del dueño, 5-nov): con auto_config.paralelo > 1 se crean varias órdenes (o guías) a la vez,
 // cada una con su propia conexión a Effi, hasta auto_config.max_crear por corrida y sin empezar ninguna después de
 // CORRIDA_MAX_MS (el candado de la corrida dura 360 s). Con paralelo = 1 todo sigue en serie como antes.
-const CORRIDA_MAX_MS = 240_000;
+// 25-nov-2026: 120 s (antes 240). Con «sacar todo» la corrida pasaba de 6 minutos, Supabase la cortaba y el candado dejaba
+// al país 6 minutos quieto. Mejor corridas cortas que se encadenan una tras otra.
+const CORRIDA_MAX_MS = 120_000;
 async function enParalelo<T>(items: T[], n: number, inicio: number, fn: (x: T) => Promise<unknown>) {
   const cola = [...items];
   const salida: unknown[] = [];
@@ -682,6 +684,8 @@ async function convertir(cuenta: string, ahora = false, una: { sucursal: number;
       salida.creadas = await enParalelo(listas, Number(cfg.paralelo), inicio, async (p) =>
         ahora || (await sigueAutomatico(cuenta)) ? crear(cuenta, Number(p.sucursal), Number(p.id), true)
           .catch((e) => ({ creada: false, error: String(e) })) : { creada: false, motivo: 'automático pausado' });
+      // Se acabó el tiempo con listas sin intentar: la corrida siguiente arranca enseguida.
+      if ((salida.creadas as Json[]).length < listas.length) salida.quedan = Number(salida.quedan ?? 0) + 1;
       await rpc('auto_evento', { p_cuenta: cuenta, p_sucursal: null, p_id: null, p_paso: 'corrida', p_ok: true,
         p_mensaje: `Corrida con ${cfg.paralelo} a la vez: ${listas.length} listas, ${(salida.creadas as Json[]).filter((c) => c?.creada).length} creadas en ${Math.round((Date.now() - inicio) / 1000)} s`,
         p_datos: { paralelo: Number(cfg.paralelo), listas: listas.length, resultados: salida.creadas } }).catch(() => {});
