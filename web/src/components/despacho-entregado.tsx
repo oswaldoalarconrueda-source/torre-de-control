@@ -80,7 +80,9 @@ export async function DespachoEntregado({ f, plataforma }: { f: Filtros; platafo
           pie={prom(full.total, E.n)} />
       </Fila>
 
-      {u ? <UtilidadNeta u={u} ventaTotal={D.venta} cuenta={cuenta} /> : <p className="text-sm text-red">No se pudo calcular la utilidad neta: {ut.error}</p>}
+      {u ? <UtilidadNeta u={u} ventaTotal={D.venta} cuenta={cuenta}
+        cierre={<CierreMes total={D.n} entregadas={E.n} devueltas={d.devoluciones?.n ?? 0} />} />
+        : <p className="text-sm text-red">No se pudo calcular la utilidad neta: {ut.error}</p>}
     </section>
   );
 }
@@ -123,14 +125,52 @@ export function Tarjeta({ titulo, valor, badge, ayuda, pie, pendiente, children 
 
 // "Resumen real: utilidad neta" del Dashboard Joalix: solo el resultado y su % sobre la venta total.
 // El desglose (PyG, proyección de pendientes, publicidad y gastos) va en la pestaña 📈 Utilidad.
-export function UtilidadNeta({ u, ventaTotal, cuenta }: { u: Pick<Utilidad, "utilidad_neta">; ventaTotal: number; cuenta: string }) {
+export function UtilidadNeta({ u, ventaTotal, cuenta, cierre }: { u: Pick<Utilidad, "utilidad_neta">; ventaTotal: number; cuenta: string; cierre?: ReactNode }) {
   const neta = u.utilidad_neta;
   return (
-    <div className="card card-glow p-4 sm:p-5">
-      <div className="text-[11px] uppercase tracking-widest font-mono text-green">Resumen real: utilidad neta</div>
-      <div className={`num text-3xl sm:text-4xl font-semibold mt-1 ${neta >= 0 ? "text-green" : "text-red"}`}>{dinero(neta, cuenta)}</div>
-      <div className="text-sm text-muted mt-1">
-        {ventaTotal ? `${((neta / ventaTotal) * 100).toFixed(1).replace(".", ",")}%` : "—"} de utilidad neta real sobre venta total
+    <div className="card card-glow flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-8 sm:p-5">
+      <div className="min-w-0">
+        <div className="text-[11px] uppercase tracking-widest font-mono text-green">Resumen real: utilidad neta</div>
+        <div className={`num text-3xl sm:text-4xl font-semibold mt-1 ${neta >= 0 ? "text-green" : "text-red"}`}>{dinero(neta, cuenta)}</div>
+        <div className="text-sm text-muted mt-1">
+          {ventaTotal ? `${((neta / ventaTotal) * 100).toFixed(1).replace(".", ",")}%` : "—"} de utilidad neta real sobre venta total
+        </div>
+      </div>
+      {cierre}
+    </div>
+  );
+}
+
+// Cierre del periodo (pedido del dueño, 25-nov-2026, propuesta B «arco que se llena»): de las guías despachadas en el
+// periodo, cuántas ya cerraron (entregadas con su pago en la wallet, o devueltas) y cuántas siguen en camino. Verde con
+// 90 % o más, naranja de 80 % a 90 %, rojo por debajo de 80 %.
+export function CierreMes({ total, entregadas, devueltas }: { total: number; entregadas: number; devueltas: number }) {
+  if (!total) return null;
+  const cerradas = Math.min(total, entregadas + devueltas), faltan = total - cerradas;
+  const pct = (cerradas / total) * 100;
+  const color = pct >= 90 ? "var(--green)" : pct >= 80 ? "var(--naranja)" : "var(--red)";
+  // Medio círculo de izquierda a derecha; el arco de color llega hasta el %.
+  const R = 78, CX = 100, CY = 96;
+  const punto = (p: number) => { const a = Math.PI * (1 - p / 100); return `${(CX + R * Math.cos(a)).toFixed(1)} ${(CY - R * Math.sin(a)).toFixed(1)}`; };
+  const arco = (p: number) => `M${punto(0)} A${R} ${R} 0 0 1 ${punto(Math.max(0.5, Math.min(99.9, p)))}`;
+  const pctTxt = `${pct.toFixed(1).replace(".", ",")} %`;
+  return (
+    <div className="flex flex-col items-center gap-3 sm:ml-auto sm:flex-row sm:gap-5"
+      title="Guías del periodo que ya cerraron: entregadas con su pago en la wallet, o devueltas. Las que faltan siguen en camino.">
+      <div className="w-48 shrink-0 text-center">
+        <div className="text-[11px] uppercase tracking-widest font-mono text-muted">Cierre del periodo</div>
+        <svg viewBox="0 0 200 110" className="w-full" role="img" aria-label={`Cierre del periodo: ${pctTxt}`}>
+          <path d={arco(100)} stroke="color-mix(in srgb, var(--muted) 22%, transparent)" strokeWidth="16" fill="none" strokeLinecap="round" />
+          {pct > 0 && <path d={arco(pct)} stroke={color} strokeWidth="16" fill="none" strokeLinecap="round" />}
+          <text x="100" y="86" textAnchor="middle" className="num" style={{ fontSize: 26, fontWeight: 600, fill: color }}>{pctTxt}</text>
+          <text x="100" y="106" textAnchor="middle" style={{ fontSize: 11, fill: "var(--muted)" }}>{entero(cerradas)} de {entero(total)} guías</text>
+        </svg>
+      </div>
+      <div className="w-full min-w-[12rem] space-y-1 text-sm sm:w-auto">
+        <div className="flex justify-between gap-6"><span className="text-muted">Entregadas y pagadas</span><span className="num font-semibold">{entero(entregadas)}</span></div>
+        <div className="flex justify-between gap-6"><span className="text-muted">Devueltas</span><span className="num font-semibold">{entero(devueltas)}</span></div>
+        <div className="flex justify-between gap-6 border-t border-line pt-1"><span className="text-muted">En camino (faltan)</span>
+          <span className="num font-semibold" style={{ color: faltan ? color : undefined }}>{entero(faltan)}</span></div>
       </div>
     </div>
   );
