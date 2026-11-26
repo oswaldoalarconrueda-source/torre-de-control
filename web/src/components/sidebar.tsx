@@ -166,7 +166,7 @@ export function Sidebar({ acceso, email, ultimoSync, sociedad, sociedades, vista
   };
 
   // Grupo plegable (Logistics, Productos): se ve como cualquier otro ítem del menú y al tocarlo despliega sus pantallas,
-  // alineadas con el resto (pedido del dueño, 24-nov-2026: sin correrlas a la derecha). Cerrado, salvo que se esté en una
+  // un poco a la derecha cuando el grupo lleva «sangria» (Logistics y Productos, 25-nov-2026). Cerrado, salvo que se esté en una
   // de sus pantallas; con el grupo cerrado, el número de pendientes de sus pantallas sale al lado del grupo.
   const grupo = (it: ItemMenu) => {
     const hijos = (it.hijos ?? []).filter(visible);

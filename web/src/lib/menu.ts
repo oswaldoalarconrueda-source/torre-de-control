@@ -26,7 +26,8 @@ export const MENU_JOALIX: ItemMenu[] = [
   { href: "/tasa-despacho", label: "Tasa de despacho", emoji: "📦", estado: "vivo", modulo: "resumen", noProveeduria: true },
   // «Logistics» (pedido del dueño, 24-nov-2026; antes «Novedades logística»): se despliega al tocarlo. «Disp. en oficina» es
   // Effi; «Disp. en oficina (Others)» son los pedidos de la otra plataforma, con su número de pendientes. Novedades es solo Effi.
-  { href: "#logistica", label: "Logistics", emoji: "🚚", estado: "vivo", hijos: [
+  // Sus pantallas van corridas a la derecha, como submenú (pedido del dueño, 25-nov-2026).
+  { href: "#logistica", label: "Logistics", emoji: "🚚", estado: "vivo", sangria: true, hijos: [
     { href: "/oficina", label: "Disp. en oficina", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
     { href: "/oficina-others", label: "Disp. en oficina (Others)", emoji: "🏤", estado: "vivo", modulo: "oficina", noProveeduria: true },
     { href: "/novedades", label: "Novedades", emoji: "⚠️", estado: "vivo", modulo: "novedades", noProveeduria: true },
